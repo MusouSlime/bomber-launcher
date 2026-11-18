@@ -25,7 +25,7 @@ Requires `python3-gi`, GTK 4 and libadwaita 1.4+ (standard on Bazzite and most
 modern desktops).
 
 ```sh
-git clone git@github.com:MusouSlime/bomber-launcher.git
+git clone https://github.com/MusouSlime/bomber-launcher.git
 cd bomber-launcher
 ./install.sh            # menu entry + icon
 ```
