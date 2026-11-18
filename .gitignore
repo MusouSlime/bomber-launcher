@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.extract/
+assets/*
+!assets/README.md
+!assets/intro_blank.mp4
+*.orig
+savedata*.bin
+bomber-launcher.desktop
