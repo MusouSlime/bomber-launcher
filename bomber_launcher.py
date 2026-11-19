@@ -36,6 +36,8 @@ CONFIG_PATH = HOME / ".config" / "bomber-launcher" / "config.json"
 DLL_REL = Path("SuperBombermanR_Data/Managed/Assembly-CSharp.dll")
 BIN_REL = Path("SuperBombermanR_Data/StreamingAssets/bin")
 SAVE_REL = Path("savedata.bin")
+PLUGIN_REL = Path("BepInEx/plugins/BomberQoL.dll")
+PLUGIN_CFG_REL = Path("BepInEx/config/bomber.qol.cfg")
 INTROS = ("bom_00_intro_a", "bom_00_intro_b")
 
 PAT_E = bytes.fromhex("05 5f 00 45 00 00")  # #US literal "_E"
@@ -348,6 +350,62 @@ class Mods:
             raise RuntimeError("Close the game first.")
         SaveFile.set_language(self.save, value)
 
+    # -- BepInEx plugin ---------------------------------------------------
+    def plugin_installed(self):
+        return (self.game / PLUGIN_REL).exists()
+
+    def plugin_config(self):
+        cfg = {
+            "Movies": {"SkipEnabled": "true", "SkipKey": "Space"},
+            "Graphics": {
+                "DisableMotionBlur": "true",
+                "DisableDepthOfField": "true",
+                "DisableBloom": "false",
+                "DisableVignette": "false",
+                "DisableGrain": "false",
+            },
+        }
+        path = self.game / PLUGIN_CFG_REL
+        if path.exists():
+            section = None
+            for line in path.read_text(errors="replace").splitlines():
+                s = line.strip()
+                if s.startswith("[") and s.endswith("]"):
+                    section = s[1:-1].strip()
+                    cfg.setdefault(section, {})
+                elif section and "=" in s and not s.startswith("#"):
+                    k, v = s.split("=", 1)
+                    cfg[section][k.strip()] = v.strip()
+        return cfg
+
+    def set_plugin_option(self, section, key, value):
+        path = self.game / PLUGIN_CFG_REL
+        text = path.read_text(errors="replace") if path.exists() else ""
+        out = text.splitlines()
+        in_sec = False
+        found_sec = False
+        written = False
+        for i, line in enumerate(list(out)):
+            s = line.strip()
+            if s.startswith("[") and s.endswith("]"):
+                in_sec = s[1:-1].strip() == section
+                found_sec = found_sec or in_sec
+            elif in_sec and "=" in s and s.split("=", 1)[0].strip() == key:
+                out[i] = f"{key} = {value}"
+                written = True
+        if not found_sec:
+            if out and out[-1].strip():
+                out.append("")
+            out.extend([f"[{section}]", f"{key} = {value}"])
+        elif not written:
+            for i, line in enumerate(out):
+                s = line.strip()
+                if s.startswith("[") and s[1:-1].strip() == section:
+                    out.insert(i + 1, f"{key} = {value}")
+                    break
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(out) + "\n")
+
     def restore_all(self):
         if game_running():
             raise RuntimeError("Close the game first.")
@@ -386,9 +444,9 @@ class BomberWindow(Adw.ApplicationWindow):
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         root.append(scroller)
 
-        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        page.set_margin_top(14)
-        page.set_margin_bottom(18)
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        page.set_margin_top(12)
+        page.set_margin_bottom(14)
         page.set_margin_start(18)
         page.set_margin_end(18)
         scroller.set_child(page)
@@ -432,7 +490,37 @@ class BomberWindow(Adw.ApplicationWindow):
         basic.append(self._row("avatar_green.png", "Skip Boot Intro",
                                "Replaces the ~4 minute opening movie",
                                self.intro_sw))
+        basic.append(self._separator())
+
+        self.skip_movies_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.skip_movies_sw.connect("notify::active", self.on_skip_movies)
+        basic.append(self._row(
+            "avatar_yellow.png", "Skip Cutscenes",
+            "Press Space during any movie (BepInEx, next launch)",
+            self.skip_movies_sw))
         page.append(basic)
+
+        # ----- environment / post processing
+        page.append(self._section("environment"))
+        env = self._card()
+        self.mblur_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.mblur_sw.connect("notify::active", self.on_motion_blur)
+        env.append(self._row("avatar_pink.png", "Motion Blur",
+                             "Post-processing effect (BepInEx, next launch)",
+                             self.mblur_sw))
+        env.append(self._separator())
+        self.dof_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.dof_sw.connect("notify::active", self.on_dof)
+        env.append(self._row("avatar_blue.png", "Depth of Field",
+                             "Post-processing effect (BepInEx, next launch)",
+                             self.dof_sw))
+        env.append(self._separator())
+        self.bloom_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.bloom_sw.connect("notify::active", self.on_bloom)
+        env.append(self._row("avatar_green.png", "Bloom",
+                             "Post-processing effect (BepInEx, next launch)",
+                             self.bloom_sw))
+        page.append(env)
 
         # ----- maintenance
         page.append(self._section("other"))
@@ -460,7 +548,7 @@ class BomberWindow(Adw.ApplicationWindow):
 
         strip = Gtk.Picture.new_for_filename(str(ASSETS / "mountain.png"))
         strip.set_content_fit(Gtk.ContentFit.COVER)
-        strip.set_size_request(-1, 34)
+        strip.set_size_request(-1, 28)
         strip.set_margin_top(4)
         page.append(strip)
 
@@ -477,7 +565,7 @@ class BomberWindow(Adw.ApplicationWindow):
         pic = Gtk.Picture.new_for_filename(str(ASSETS / "hero.png"))
         pic.set_content_fit(Gtk.ContentFit.COVER)
         pic.set_can_shrink(True)
-        pic.set_size_request(-1, 278)
+        pic.set_size_request(-1, 240)
         overlay.set_child(pic)
 
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -510,7 +598,7 @@ class BomberWindow(Adw.ApplicationWindow):
         pic = Gtk.Picture.new_for_filename(str(ASSETS / f"section_{name}.png"))
         pic.set_content_fit(Gtk.ContentFit.FILL)
         pic.set_can_shrink(True)
-        pic.set_size_request(-1, 38)
+        pic.set_size_request(-1, 36)
         pic.set_hexpand(True)
         box.append(pic)
         return box
@@ -529,7 +617,7 @@ class BomberWindow(Adw.ApplicationWindow):
     def _row(self, avatar, title, subtitle, control):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         for side in ("top", "bottom", "start", "end"):
-            getattr(row, f"set_margin_{side}")(8)
+            getattr(row, f"set_margin_{side}")(6)
         row.set_margin_start(12)
 
         pic = Gtk.Picture.new_for_filename(str(ASSETS / avatar))
@@ -598,6 +686,14 @@ class BomberWindow(Adw.ApplicationWindow):
 
         for w in (self.dual_sw, self.intro_sw, self.lang_dd, self.border_sw):
             w.set_sensitive(self.mods is not None and not running)
+        plugin = self.mods is not None and self.mods.plugin_installed()
+        for w in (self.skip_movies_sw, self.mblur_sw, self.dof_sw,
+                  self.bloom_sw):
+            w.set_sensitive(plugin and not running)
+        if not plugin:
+            for w in (self.skip_movies_sw, self.mblur_sw, self.dof_sw,
+                      self.bloom_sw):
+                w.set_active(False)
 
         if self.mods:
             try:
@@ -618,6 +714,19 @@ class BomberWindow(Adw.ApplicationWindow):
                     self.lang_dd.set_selected(0)
             except Exception:
                 pass
+            if plugin:
+                try:
+                    cfg = self.mods.plugin_config()
+                    self.skip_movies_sw.set_active(
+                        cfg["Movies"].get("SkipEnabled", "true").lower() == "true")
+                    self.mblur_sw.set_active(
+                        cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
+                    self.dof_sw.set_active(
+                        cfg["Graphics"].get("DisableDepthOfField", "true").lower() != "true")
+                    self.bloom_sw.set_active(
+                        cfg["Graphics"].get("DisableBloom", "false").lower() != "true")
+                except Exception:
+                    pass
         self._loading = False
 
     # -- handlers ---------------------------------------------------------
@@ -675,6 +784,36 @@ class BomberWindow(Adw.ApplicationWindow):
         except Exception as e:
             self.toast(str(e))
         self.refresh()
+
+    def _plugin_write(self, section, key, value):
+        if self._loading:
+            return
+        if not self.mods or not self.mods.plugin_installed():
+            self.toast("BomberQoL plugin not installed")
+            self.refresh()
+            return
+        try:
+            self.mods.set_plugin_option(
+                section, key, "true" if value else "false")
+            self.toast("Saved — applies next launch")
+        except Exception as e:
+            self.toast(str(e))
+        self.refresh()
+
+    def on_skip_movies(self, row, _pspec):
+        self._plugin_write("Movies", "SkipEnabled", row.get_active())
+
+    def on_motion_blur(self, row, _pspec):
+        self._plugin_write("Graphics", "DisableMotionBlur",
+                           not row.get_active())
+
+    def on_dof(self, row, _pspec):
+        self._plugin_write("Graphics", "DisableDepthOfField",
+                           not row.get_active())
+
+    def on_bloom(self, row, _pspec):
+        self._plugin_write("Graphics", "DisableBloom",
+                           not row.get_active())
 
     def on_language(self, row, _pspec):
         if self._loading or not self._guard():
@@ -756,6 +895,7 @@ def check():
     print("intro skip:", m.intro_state())
     print("save language:", m.language())
     print("running:", game_running())
+    print("bepinex plugin:", m.plugin_installed())
     return 0
 
 

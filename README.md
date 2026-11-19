@@ -13,6 +13,8 @@ artwork extracted from the game itself.
 | **Borderless Fullscreen** | Launches `steam -applaunch 702700 -popupwindow -screen-width … -screen-height …` |
 | **Japanese Voices** | Patches `Assembly-CSharp.dll` so the voice suffix defaults to `_J`; text stays in the selected language |
 | **Skip Boot Intro** | Replaces the two ~4-minute opening MP4s with a 1-second clip |
+| **Skip Cutscenes** | BepInEx plugin: press Space during any movie |
+| **Motion Blur / DoF / Bloom** | BepInEx plugin: per-effect post-processing switches |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
 
@@ -47,6 +49,32 @@ python3 bomber_launcher.py --check     # state without opening the window
 ```
 
 Paths can be overridden with `SBR_GAME` and `SBR_MODKIT`.
+
+## Optional: BepInEx code mods
+
+```sh
+./install-bepinex.sh
+```
+
+Then make Proton load BepInEx's `winhttp.dll`, either with the Steam launch
+option:
+
+```
+WINEDLLOVERRIDES="winhttp=n,b" %command%
+```
+
+or by adding `"winhttp"="native,builtin"` under
+`[Software\\Wine\\DllOverrides]` in the game's prefix `user.reg`.
+
+The plugin adds:
+
+- **Skip Cutscenes** — press `Space` while any movie is playing (includes the
+  boot intro).
+- **Motion Blur / Depth of Field / Bloom** — independent switches.
+
+Both are exposed in the launcher and stored in
+`BepInEx/config/bomber.qol.cfg`; changes apply on the next launch. Plugin
+source is in `plugin/` (`./plugin/build.sh`).
 
 ## Artwork and legal
 
@@ -96,6 +124,8 @@ docs/screenshot.png
 modkit/                   CLI fallbacks (dual audio, intros, save, pack crypto)
 tools/extract_ui_assets.py
 tools/sbr_pack.py
+plugin/                    BepInEx plugin source + prebuilt DLL
+install-bepinex.sh
 ```
 
 ## License

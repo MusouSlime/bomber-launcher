@@ -84,7 +84,8 @@ def main():
     export(res, "BG_Title_mountain", OUT / "mountain.png")
     for src, dst in (("DecorationWord_Other_VariousSettings", "header_basic.png"),
                      ("DecorationWord_Other_ChangeLanguage", "header_language.png"),
-                     ("DecorationWord_Other", "header_other.png")):
+                     ("DecorationWord_Other", "header_other.png"),
+                     ("DecorationWord_Other_EnvironmentSettings", "header_environment.png")):
         export(locale, src, tmp / dst)
     export(res, "Select_Bar_Long_default", tmp / "bar.png")
 
@@ -106,7 +107,7 @@ def main():
     wide.paste(left, (0, 0))
     wide.paste(right, (W - right.width, 0))
 
-    for name in ("basic", "language", "other"):
+    for name in ("basic", "language", "other", "environment"):
         wm = Image.open(tmp / f"header_{name}.png").convert("RGBA")
         h = 44
         wm = wm.resize((int(wm.width * h / wm.height), h), Image.LANCZOS)
