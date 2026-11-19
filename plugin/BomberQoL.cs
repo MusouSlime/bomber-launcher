@@ -6,6 +6,7 @@ using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.PostProcessing;
+using UnityEngine.SceneManagement;
 using UnityEngine.Video;
 
 namespace BomberQoL
@@ -59,7 +60,29 @@ namespace BomberQoL
             harmony.PatchAll(typeof(MovieSkipPatch));
             harmony.PatchAll(typeof(PostFxPatch));
 
+            SceneManager.sceneLoaded += OnSceneLoaded;
             Log.LogInfo("Bomber QoL loaded (skip key: " + SkipKey + ")");
+        }
+
+        private void Start()
+        {
+            ApplyAllPostFx();
+        }
+
+        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            ApplyAllPostFx();
+        }
+
+        internal static void ApplyAllPostFx()
+        {
+            UnityEngine.Object[] all =
+                Resources.FindObjectsOfTypeAll(typeof(PostProcessingBehaviour));
+            for (int i = 0; i < all.Length; i++)
+            {
+                PostProcessingBehaviour b = all[i] as PostProcessingBehaviour;
+                if (b != null) PostFxPatch.Apply(b);
+            }
         }
     }
 
@@ -68,11 +91,23 @@ namespace BomberQoL
     {
         private static readonly FieldInfo VideoField =
             AccessTools.Field(typeof(AbstractMoviePlayScene), "_video");
+        private static bool _loggedScene;
+        private static bool _loggedKey;
 
         private static void Prefix(AbstractMoviePlayScene __instance)
         {
             if (!Plugin.SkipEnabled.Value) return;
+            if (!_loggedScene)
+            {
+                Plugin.Log.LogInfo("Movie scene active (skip hook running)");
+                _loggedScene = true;
+            }
             if (!Input.GetKeyDown(Plugin.SkipKey)) return;
+            if (!_loggedKey)
+            {
+                Plugin.Log.LogInfo("Skip key detected");
+                _loggedKey = true;
+            }
 
             VideoPlayer video = VideoField == null ? null :
                 VideoField.GetValue(__instance) as VideoPlayer;
@@ -92,10 +127,21 @@ namespace BomberQoL
     [HarmonyPatch(typeof(PostProcessingBehaviour), "OnEnable")]
     internal static class PostFxPatch
     {
+        private static bool _logged;
         private static void Prefix(PostProcessingBehaviour __instance)
         {
-            PostProcessingProfile p = __instance.profile;
+            Apply(__instance);
+        }
+
+        internal static void Apply(PostProcessingBehaviour behaviour)
+        {
+            PostProcessingProfile p = behaviour.profile;
             if (p == null) return;
+            if (!_logged)
+            {
+                Plugin.Log.LogInfo("Post-processing profile patched");
+                _logged = true;
+            }
 
             if (Plugin.NoMotionBlur.Value && p.motionBlur != null)
                 p.motionBlur.enabled = false;

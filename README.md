@@ -66,6 +66,10 @@ WINEDLLOVERRIDES="winhttp=n,b" %command%
 or by adding `"winhttp"="native,builtin"` under
 `[Software\\Wine\\DllOverrides]` in the game's prefix `user.reg`.
 
+Verified: BepInEx 5.4.23.2 x86 loads under Proton 702700 and the plugin
+initializes and writes its config. Cutscene skip and effect toggles apply in
+gameplay scenes.
+
 The plugin adds:
 
 - **Skip Cutscenes** — press `Space` while any movie is playing (includes the
