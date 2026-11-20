@@ -31,6 +31,10 @@ BACKUPS = MODKIT / "backups"
 VIDEO_BACKUPS = BACKUPS / "videos"
 SAVE_BACKUPS = BACKUPS / "saves"
 ASSETS = Path(__file__).resolve().parent / "assets"
+ART = Path(os.environ.get("BOMBER_ASSETS", str(ASSETS)))
+if not (ART / "hero.png").exists() and not os.environ.get("BOMBER_ASSETS"):
+    ART = HOME / ".local/share/bomber-launcher/assets"
+HAVE_ART = (ART / "hero.png").exists()
 CONFIG_PATH = HOME / ".config" / "bomber-launcher" / "config.json"
 
 DLL_REL = Path("SuperBombermanR_Data/Managed/Assembly-CSharp.dll")
@@ -109,6 +113,21 @@ CSS = """
 .header-title { font-weight: 800; font-size: 13pt; letter-spacing: .5px; color: #16202e; }
 .lang-drop { min-width: 190px; }
 .lang-drop button { background: #ffffff; border-radius: 10px; }
+.fallback-hero {
+  background: linear-gradient(135deg, #16233d 0%, #0d1526 100%);
+  min-height: 170px;
+}
+.fallback-title {
+  color: #ffcc00; font-weight: 900; font-size: 22pt; letter-spacing: 1px;
+}
+.fallback-sub {
+  color: #e8f2ff; font-size: 11pt; letter-spacing: 5px;
+}
+.section-fallback {
+  background: #3c4647; color: #ffffff; padding: 8px 16px;
+  font-weight: 800; font-size: 10pt; letter-spacing: 2px; border-radius: 3px;
+}
+.avatar-fallback { color: #46555a; }
 """
 
 
@@ -546,11 +565,12 @@ class BomberWindow(Adw.ApplicationWindow):
         foot.set_margin_top(6)
         page.append(foot)
 
-        strip = Gtk.Picture.new_for_filename(str(ASSETS / "mountain.png"))
-        strip.set_content_fit(Gtk.ContentFit.COVER)
-        strip.set_size_request(-1, 28)
-        strip.set_margin_top(4)
-        page.append(strip)
+        if (ART / "mountain.png").exists():
+            strip = Gtk.Picture.new_for_filename(str(ART / "mountain.png"))
+            strip.set_content_fit(Gtk.ContentFit.COVER)
+            strip.set_size_request(-1, 28)
+            strip.set_margin_top(4)
+            page.append(strip)
 
         self.refresh()
         GLib.timeout_add_seconds(3, self._poll)
@@ -561,8 +581,31 @@ class BomberWindow(Adw.ApplicationWindow):
         frame.add_css_class("hero-frame")
         frame.set_overflow(Gtk.Overflow.HIDDEN)
 
+        if not HAVE_ART:
+            frame.add_css_class("fallback-hero")
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            box.set_valign(Gtk.Align.CENTER)
+            box.set_halign(Gtk.Align.CENTER)
+            title = Gtk.Label(label="SUPER BOMBERMAN R")
+            title.add_css_class("fallback-title")
+            sub = Gtk.Label(label="BOMBER LAUNCHER")
+            sub.add_css_class("fallback-sub")
+            play = self._play_button()
+            self.status_pill = Gtk.Label(label="READY")
+            self.status_pill.add_css_class("status-pill")
+            bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            bar.set_halign(Gtk.Align.CENTER)
+            bar.set_margin_top(12)
+            bar.append(play)
+            bar.append(self.status_pill)
+            box.append(title)
+            box.append(sub)
+            box.append(bar)
+            frame.append(box)
+            return frame
+
         overlay = Gtk.Overlay()
-        pic = Gtk.Picture.new_for_filename(str(ASSETS / "hero.png"))
+        pic = Gtk.Picture.new_for_filename(str(ART / "hero.png"))
         pic.set_content_fit(Gtk.ContentFit.COVER)
         pic.set_can_shrink(True)
         pic.set_size_request(-1, 240)
@@ -573,14 +616,7 @@ class BomberWindow(Adw.ApplicationWindow):
         for side in ("top", "bottom", "start", "end"):
             getattr(bar, f"set_margin_{side}")(14)
 
-        play = Gtk.Button()
-        play.add_css_class("play")
-        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        label = Gtk.Label(label="PLAY")
-        label.add_css_class("play-text")
-        inner.append(label)
-        play.set_child(inner)
-        play.connect("clicked", self.on_launch)
+        play = self._play_button()
 
         self.status_pill = Gtk.Label(label="READY")
         self.status_pill.add_css_class("status-pill")
@@ -592,10 +628,31 @@ class BomberWindow(Adw.ApplicationWindow):
         frame.append(overlay)
         return frame
 
+    def _play_button(self):
+        play = Gtk.Button()
+        play.add_css_class("play")
+        label = Gtk.Label(label="PLAY")
+        label.add_css_class("play-text")
+        play.set_child(label)
+        play.connect("clicked", self.on_launch)
+        return play
+
     def _section(self, name):
+        labels = {
+            "language": "CHANGE LANGUAGE",
+            "basic": "BASIC SETTINGS",
+            "environment": "ENVIRONMENT",
+            "other": "OTHER",
+        }
+        path = ART / f"section_{name}.png"
+        if not path.exists():
+            label = Gtk.Label(label=labels.get(name, name.upper()))
+            label.add_css_class("section-fallback")
+            label.set_xalign(0)
+            return label
         box = Gtk.Box()
         box.add_css_class("section")
-        pic = Gtk.Picture.new_for_filename(str(ASSETS / f"section_{name}.png"))
+        pic = Gtk.Picture.new_for_filename(str(path))
         pic.set_content_fit(Gtk.ContentFit.FILL)
         pic.set_can_shrink(True)
         pic.set_size_request(-1, 36)
@@ -620,11 +677,18 @@ class BomberWindow(Adw.ApplicationWindow):
             getattr(row, f"set_margin_{side}")(6)
         row.set_margin_start(12)
 
-        pic = Gtk.Picture.new_for_filename(str(ASSETS / avatar))
-        pic.set_size_request(40, 40)
-        pic.set_content_fit(Gtk.ContentFit.COVER)
-        pic.set_overflow(Gtk.Overflow.HIDDEN)
-        pic.add_css_class("avatar")
+        apath = ART / avatar
+        if apath.exists():
+            pic = Gtk.Picture.new_for_filename(str(apath))
+            pic.set_size_request(40, 40)
+            pic.set_content_fit(Gtk.ContentFit.COVER)
+            pic.set_overflow(Gtk.Overflow.HIDDEN)
+            pic.add_css_class("avatar")
+        else:
+            pic = Gtk.Image.new_from_icon_name("applications-games-symbolic")
+            pic.set_pixel_size(26)
+            pic.set_size_request(40, 40)
+            pic.add_css_class("avatar-fallback")
         row.append(pic)
 
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)

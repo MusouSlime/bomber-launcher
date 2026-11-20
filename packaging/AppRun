@@ -1,0 +1,17 @@
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+APP="$HERE/usr/share/bomber-launcher/bomber_launcher.py"
+
+if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")' >/dev/null 2>&1; then
+  MSG="Bomber Launcher needs python3-gi, GTK 4 and libadwaita 1.4+ (install your distro's packages)."
+  if command -v zenity >/dev/null 2>&1; then
+    zenity --error --text="$MSG"
+  elif command -v kdialog >/dev/null 2>&1; then
+    kdialog --error "$MSG"
+  else
+    echo "$MSG" >&2
+  fi
+  exit 1
+fi
+
+exec python3 "$APP" "$@"

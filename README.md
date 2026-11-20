@@ -80,6 +80,14 @@ Both are exposed in the launcher and stored in
 `BepInEx/config/bomber.qol.cfg`; changes apply on the next launch. Plugin
 source is in `plugin/` (`./plugin/build.sh`).
 
+## Distribution
+
+- **Linux:** `packaging/build-appimage.sh` produces
+  `dist/BomberLauncher-x86_64.AppImage`. It is thin (uses the host's GTK4 /
+  libadwaita) and ships no Konami artwork; the UI falls back gracefully.
+- **Windows:** needs a Windows/MSYS2 or native port build; see
+  `packaging/README.md` for the options.
+
 ## Artwork and legal
 
 No Konami assets are stored in this repository. `tools/extract_ui_assets.py`

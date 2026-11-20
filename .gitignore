@@ -8,3 +8,7 @@ assets/*
 *.orig
 savedata*.bin
 bomber-launcher.desktop
+dist/
+packaging/AppDir/
+packaging/appimagetool
+dist/
