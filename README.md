@@ -13,7 +13,7 @@ artwork extracted from the game itself.
 | **Borderless Fullscreen** | Launches `steam -applaunch 702700 -popupwindow -screen-width … -screen-height …` |
 | **Japanese Voices** | Patches `Assembly-CSharp.dll` so the voice suffix defaults to `_J`; text stays in the selected language |
 | **Skip Boot Intro** | Replaces the two ~4-minute opening MP4s with a 1-second clip |
-| **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (B/Circle by default) |
+| **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
 | **Motion Blur / DoF / Bloom** | BepInEx plugin: per-effect post-processing switches |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
@@ -75,9 +75,11 @@ The plugin adds:
 - **Skip Cutscenes** — press `Space` or a controller button while any movie is
   playing. A global watcher finds any active `VideoPlayer` and seeks to the end;
   if the movie is paused it falls back to the active movie scene's
-  `moveScene()`. The button defaults to B/Circle and is selectable in the
-  launcher (`SkipJoystickButton`: 0=A, 1=B, 2=X, 3=Y, 4=LB, 5=RB, 6=Back,
-  7=Start, -1=off). If a skip does nothing, `BepInEx/LogOutput.log` records what happened:
+  `moveScene()`. The button defaults to A/Cross and is selectable in the launcher
+  (`SkipJoystickButton`: 0=A, 1=B, 2=X, 3=Y, 4=LB, 5=RB, 6=Back, 7=Start,
+  -1=off). Use A/Cross, not B: the game's Submit-based cutscenes ignore Cancel.
+  Publisher logos (Konami, 33rd, HexaDrive) are auto-skipped via
+  `AutoSkipLogos` (default true). If a skip does nothing, `BepInEx/LogOutput.log` records what happened:
   `UI_ANY injected via …` (native logo/cutscene skip), `Skipping movie …`,
   `Skipping movie scene …`, or `no movie scene found`.
 - **Motion Blur / Depth of Field / Bloom** — independent switches.

@@ -11,7 +11,7 @@ using UnityEngine.Video;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.3")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.1.4")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -20,6 +20,7 @@ namespace BomberQoL
         internal static ConfigEntry<bool> SkipEnabled;
         internal static ConfigEntry<string> SkipKeyName;
         internal static ConfigEntry<int> SkipJoystickButton;
+        internal static ConfigEntry<bool> AutoSkipLogos;
         internal static ConfigEntry<bool> NoMotionBlur;
         internal static ConfigEntry<bool> NoDepthOfField;
         internal static ConfigEntry<bool> NoBloom;
@@ -35,8 +36,10 @@ namespace BomberQoL
                 "Allow skipping cutscenes and the boot intro with a key.");
             SkipKeyName = Config.Bind("Movies", "SkipKey", "Space",
                 "Unity KeyCode used to skip a playing movie (Space, Escape, ...).");
-            SkipJoystickButton = Config.Bind("Movies", "SkipJoystickButton", 1,
-                "Joystick button used to skip a playing movie: 0=A/Cross, 1=B/Circle, 2=X/Square, 3=Y/Triangle, 4=LB, 5=RB, 6=Back, 7=Start; -1 disables.");
+            SkipJoystickButton = Config.Bind("Movies", "SkipJoystickButton", 0,
+                "Joystick button used to skip a playing movie: 0=A/Cross, 1=B/Circle, 2=X/Square, 3=Y/Triangle, 4=LB, 5=RB, 6=Back, 7=Start; -1 disables. Prefer A/Cross: the game's Submit-based skips ignore Cancel (B).");
+            AutoSkipLogos = Config.Bind("Movies", "AutoSkipLogos", true,
+                "Automatically skip publisher/logo animations (Konami, 33rd, HexaDrive).");
 
             NoMotionBlur = Config.Bind("Graphics", "DisableMotionBlur", true,
                 "Disable the motion blur post effect.");
@@ -71,6 +74,9 @@ namespace BomberQoL
             if (logoExec != null && logoSkip != null)
             {
                 LogoSkipPatch.SkippableField = logoSkip;
+                LogoSkipPatch.AnimField = AccessTools.Field(logoType, "_anim");
+                LogoSkipPatch.SkippedField = AccessTools.Field(logoType, "_isSkiped");
+                LogoSkipPatch.NameField = AccessTools.Field(logoType, "_name");
                 harmony.Patch(logoExec, prefix: new HarmonyMethod(
                     typeof(LogoSkipPatch).GetMethod("Prefix",
                         BindingFlags.Static | BindingFlags.NonPublic)));
@@ -153,6 +159,40 @@ namespace BomberQoL
             Log.LogInfo("Skipping movie via " + source + " [" + name + "]");
             return true;
         }
+
+        private static float _movieCheckTime;
+        private static bool _movieActive;
+
+        internal static bool MovieActive()
+        {
+            if (Time.unscaledTime - _movieCheckTime < 0.2f)
+                return _movieActive;
+            _movieCheckTime = Time.unscaledTime;
+            _movieActive = false;
+            UnityEngine.Object[] videos =
+                Resources.FindObjectsOfTypeAll(typeof(VideoPlayer));
+            for (int i = 0; i < videos.Length; i++)
+            {
+                VideoPlayer v = videos[i] as VideoPlayer;
+                if (v != null && (v.isPlaying || v.isPrepared))
+                {
+                    _movieActive = true;
+                    return true;
+                }
+            }
+            UnityEngine.Object[] scenes =
+                Resources.FindObjectsOfTypeAll(typeof(AbstractMoviePlayScene));
+            for (int i = 0; i < scenes.Length; i++)
+            {
+                AbstractMoviePlayScene s = scenes[i] as AbstractMoviePlayScene;
+                if (s != null && s.isActiveAndEnabled)
+                {
+                    _movieActive = true;
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     [HarmonyPatch(typeof(InputAdapter), "getEvent")]
@@ -163,15 +203,18 @@ namespace BomberQoL
         private static void Postfix(InputAdapter.EVENT e, ref bool __result)
         {
             if (__result) return;
-            if ((int)e != 0x15) return;   // InputAdapter.EVENT.UI_ANY
+            int ev = (int)e;
+            if (ev != 0x15 && ev != 0x0b) return; // UI_ANY, UI_SUBMIT
             if (!Plugin.SkipEnabled.Value) return;
+            if (ev == 0x0b && !Plugin.MovieActive()) return;
             string source;
             if (!Plugin.SkipPressed(out source)) return;
             __result = true;
             if (Time.unscaledTime - _lastLog > 1f)
             {
                 _lastLog = Time.unscaledTime;
-                Plugin.Log.LogInfo("UI_ANY injected via " + source);
+                Plugin.Log.LogInfo((ev == 0x0b ? "UI_SUBMIT" : "UI_ANY") +
+                    " injected via " + source);
             }
         }
     }
@@ -179,14 +222,36 @@ namespace BomberQoL
     internal static class LogoSkipPatch
     {
         internal static FieldInfo SkippableField;
+        internal static FieldInfo AnimField;
+        internal static FieldInfo SkippedField;
+        internal static FieldInfo NameField;
+        private static readonly int IsSkipHash =
+            Animator.StringToHash("isSkip");
 
         private static void Prefix(object __instance)
         {
             if (!Plugin.SkipEnabled.Value) return;
             try
             {
-                if (SkippableField != null)
+                if (Plugin.AutoSkipLogos.Value)
+                {
+                    Animator anim = AnimField == null ? null :
+                        AnimField.GetValue(__instance) as Animator;
+                    if (anim != null)
+                    {
+                        bool already = anim.GetBool(IsSkipHash);
+                        anim.SetBool(IsSkipHash, true);
+                        if (SkippedField != null)
+                            SkippedField.SetValue(__instance, true);
+                        if (!already && NameField != null)
+                            Plugin.Log.LogInfo("Auto-skipping logo " +
+                                NameField.GetValue(__instance));
+                    }
+                }
+                else if (SkippableField != null)
+                {
                     SkippableField.SetValue(__instance, true);
+                }
             }
             catch { }
         }

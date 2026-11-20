@@ -416,7 +416,7 @@ class Mods:
     def plugin_config(self):
         cfg = {
             "Movies": {"SkipEnabled": "true", "SkipKey": "Space",
-                       "SkipJoystickButton": "1"},
+                       "SkipJoystickButton": "0", "AutoSkipLogos": "true"},
             "Graphics": {
                 "DisableMotionBlur": "true",
                 "DisableDepthOfField": "true",
@@ -570,7 +570,14 @@ class BomberWindow(Adw.ApplicationWindow):
         self.pad_dd.connect("notify::selected", self.on_pad_button)
         basic.append(self._row(
             "avatar_pink.png", "Controller Skip Button",
-            "B / Circle by default; applies next launch", self.pad_dd))
+            "A / Cross by default (B is Cancel); next launch", self.pad_dd))
+        basic.append(self._separator())
+
+        self.logos_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.logos_sw.connect("notify::active", self.on_auto_logos)
+        basic.append(self._row(
+            "avatar_blue.png", "Skip Publisher Logos",
+            "Auto-skip Konami / 33rd / HexaDrive stings", self.logos_sw))
         page.append(basic)
 
         # ----- environment / post processing
@@ -805,12 +812,12 @@ class BomberWindow(Adw.ApplicationWindow):
         for w in (self.dual_sw, self.intro_sw, self.lang_dd, self.border_sw):
             w.set_sensitive(self.mods is not None and not running)
         plugin = self.mods is not None and self.mods.plugin_installed()
-        for w in (self.skip_movies_sw, self.pad_dd, self.mblur_sw,
-                  self.dof_sw, self.bloom_sw):
+        for w in (self.skip_movies_sw, self.pad_dd, self.logos_sw,
+                  self.mblur_sw, self.dof_sw, self.bloom_sw):
             w.set_sensitive(plugin and not running)
         if not plugin:
-            for w in (self.skip_movies_sw, self.mblur_sw, self.dof_sw,
-                      self.bloom_sw):
+            for w in (self.skip_movies_sw, self.logos_sw, self.mblur_sw,
+                      self.dof_sw, self.bloom_sw):
                 w.set_active(False)
 
         if self.mods:
@@ -837,11 +844,13 @@ class BomberWindow(Adw.ApplicationWindow):
                     cfg = self.mods.plugin_config()
                     self.skip_movies_sw.set_active(
                         cfg["Movies"].get("SkipEnabled", "true").lower() == "true")
-                    pad = int(cfg["Movies"].get("SkipJoystickButton", "1"))
+                    pad = int(cfg["Movies"].get("SkipJoystickButton", "0"))
                     for idx, (_, val) in enumerate(PAD_BUTTONS):
                         if val == pad:
                             self.pad_dd.set_selected(idx)
                             break
+                    self.logos_sw.set_active(
+                        cfg["Movies"].get("AutoSkipLogos", "true").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -925,6 +934,9 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_skip_movies(self, row, _pspec):
         self._plugin_write("Movies", "SkipEnabled", row.get_active())
+
+    def on_auto_logos(self, row, _pspec):
+        self._plugin_write("Movies", "AutoSkipLogos", row.get_active())
 
     def on_pad_button(self, row, _pspec):
         if self._loading or not self.mods or not self.mods.plugin_installed():
