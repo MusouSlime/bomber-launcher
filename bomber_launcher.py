@@ -1170,8 +1170,8 @@ class BomberApp(Adw.Application):
         Adw.StyleManager.get_default().set_color_scheme(
             Adw.ColorScheme.FORCE_LIGHT)
         css = Gtk.CssProvider()
-        css.load_from_data(
-            CSS.replace("__ASSETS__", ASSETS.as_uri()).encode("utf-8"))
+        css.load_from_string(
+            CSS.replace("__ASSETS__", ASSETS.as_uri()))
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(), css,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
