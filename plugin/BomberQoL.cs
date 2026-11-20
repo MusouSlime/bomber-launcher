@@ -130,7 +130,8 @@ namespace BomberQoL
             if (target < 0.0) target = 0.0;
             if (video.time >= target) return false;
             video.time = target;
-            Log.LogInfo("Skipping movie via " + source);
+            string name = video.clip != null ? video.clip.name : video.url;
+            Log.LogInfo("Skipping movie via " + source + " [" + name + "]");
             return true;
         }
     }
