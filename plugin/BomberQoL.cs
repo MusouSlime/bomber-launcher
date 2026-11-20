@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
@@ -11,7 +12,7 @@ using UnityEngine.Video;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.6")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.1.7")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -22,6 +23,9 @@ namespace BomberQoL
         internal static ConfigEntry<int> SkipJoystickButton;
         internal static ConfigEntry<int> SkipJoystickButtonAlt;
         internal static ConfigEntry<bool> AutoSkipLogos;
+        internal static ConfigEntry<float> AutoSkipMovies;
+        internal static ConfigEntry<bool> FastResults;
+        internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
         internal static ConfigEntry<bool> NoDepthOfField;
         internal static ConfigEntry<bool> NoBloom;
@@ -43,6 +47,12 @@ namespace BomberQoL
                 "Secondary joystick button (default 1=B/Circle); -1 disables. Both buttons skip.");
             AutoSkipLogos = Config.Bind("Movies", "AutoSkipLogos", true,
                 "Automatically skip publisher/logo animations (Konami, 33rd, HexaDrive).");
+            AutoSkipMovies = Config.Bind("Movies", "AutoSkipMovies", 0f,
+                "Automatically skip every movie after this many seconds (0 = off).");
+            FastResults = Config.Bind("Results", "FastResults", false,
+                "Shorten the post-battle result screen delays.");
+            ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
+                "Multiplier for result-screen intervals (0.1 - 1.0).");
 
             NoMotionBlur = Config.Bind("Graphics", "DisableMotionBlur", true,
                 "Disable the motion blur post effect.");
@@ -118,11 +128,13 @@ namespace BomberQoL
         private void Start()
         {
             ApplyAllPostFx();
+            ApplyResultTweaks();
         }
 
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             ApplyAllPostFx();
+            ApplyResultTweaks();
         }
 
         internal static void ApplyAllPostFx()
@@ -134,6 +146,52 @@ namespace BomberQoL
                 PostProcessingBehaviour b = all[i] as PostProcessingBehaviour;
                 if (b != null) PostFxPatch.Apply(b);
             }
+        }
+
+        private static readonly HashSet<int> ScaledResults = new HashSet<int>();
+        private static readonly string[] ResultFields =
+        {
+            "_postLoadInterval", "_postRemainingInterval", "_postCountInterval",
+            "_postSpecialInterval", "_postNoContinueInterval", "_postTotalInterval",
+            "_postAddInterval", "_postEvaluateInterval"
+        };
+
+        internal static void ApplyResultTweaks()
+        {
+            if (!FastResults.Value) return;
+            UnityEngine.Object[] all =
+                Resources.FindObjectsOfTypeAll(typeof(WorldResultDefData));
+            for (int i = 0; i < all.Length; i++)
+            {
+                WorldResultDefData d = all[i] as WorldResultDefData;
+                if (d != null) ScaleResult(d);
+            }
+        }
+
+        private static void ScaleResult(WorldResultDefData data)
+        {
+            int id = data.GetInstanceID();
+            if (ScaledResults.Contains(id)) return;
+            ScaledResults.Add(id);
+            float speed = ResultSpeed.Value;
+            if (speed <= 0f) speed = 0.1f;
+            if (speed > 1f) speed = 1f;
+            Type type = data.GetType();
+            int changed = 0;
+            for (int i = 0; i < ResultFields.Length; i++)
+            {
+                FieldInfo f = type.GetField(ResultFields[i],
+                    BindingFlags.Instance | BindingFlags.NonPublic |
+                    BindingFlags.Public);
+                if (f == null || f.FieldType != typeof(float)) continue;
+                float v = (float)f.GetValue(data);
+                if (v <= 0f) continue;
+                f.SetValue(data, v * speed);
+                changed++;
+            }
+            if (changed > 0)
+                Log.LogInfo("Result timings scaled by " + speed +
+                            " (" + changed + " fields)");
         }
 
         internal static bool SkipPressed(out string source)
@@ -310,9 +368,11 @@ namespace BomberQoL
     public class SkipWatcher : MonoBehaviour
     {
         private float _lastPress;
+        private float _lastAutoScan;
 
         private void Update()
         {
+            AutoSkipMovies();
             if (!Plugin.SkipEnabled.Value) return;
             string source;
             if (!Plugin.SkipPressed(out source)) return;
@@ -345,6 +405,23 @@ namespace BomberQoL
 
             Plugin.Log.LogInfo("Skip input (" + source + "): " +
                 (playing ? "movie not seekable" : "no movie scene found"));
+        }
+
+        private void AutoSkipMovies()
+        {
+            float seconds = Plugin.AutoSkipMovies.Value;
+            if (seconds <= 0f) return;
+            if (Time.unscaledTime - _lastAutoScan < 0.5f) return;
+            _lastAutoScan = Time.unscaledTime;
+            UnityEngine.Object[] videos =
+                Resources.FindObjectsOfTypeAll(typeof(VideoPlayer));
+            for (int i = 0; i < videos.Length; i++)
+            {
+                VideoPlayer video = videos[i] as VideoPlayer;
+                if (video == null || !video.isPlaying) continue;
+                if (video.time < seconds) continue;
+                Plugin.SkipVideo(video, "auto-skip " + seconds + "s");
+            }
         }
     }
 

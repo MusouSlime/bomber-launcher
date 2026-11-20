@@ -17,6 +17,18 @@ public class MainForm : Form
         public override string ToString() => Name;
     }
 
+    private sealed record PadItem(string Name, int Value)
+    {
+        public override string ToString() => Name;
+    }
+
+    private static readonly PadItem[] Pads =
+    {
+        new("Disabled", -1), new("A / Cross", 0), new("B / Circle", 1),
+        new("X / Square", 2), new("Y / Triangle", 3), new("LB / L1", 4),
+        new("RB / R1", 5), new("Back / Share", 6), new("Start / Options", 7),
+    };
+
     private static readonly LangItem[] Languages =
     {
         new("Auto (Steam)", 255), new("English", 1), new("Japanese", 0),
@@ -34,6 +46,10 @@ public class MainForm : Form
     private readonly CheckBox _dual = new();
     private readonly CheckBox _intro = new();
     private readonly CheckBox _skipMovies = new();
+    private readonly ComboBox _padCombo = new();
+    private readonly CheckBox _logos = new();
+    private readonly CheckBox _autoSkip = new();
+    private readonly CheckBox _fastResults = new();
     private readonly CheckBox _motionBlur = new();
     private readonly CheckBox _dof = new();
     private readonly CheckBox _bloom = new();
@@ -135,7 +151,19 @@ public class MainForm : Form
             "Replaces the ~4 minute opening movie", _intro);
         Separator(basic);
         AddRow(basic, "Skip Cutscenes",
-            "Press Space during any movie (BepInEx, next launch)", _skipMovies);
+            "Space, A/Cross or B/Circle (BepInEx, next launch)", _skipMovies);
+        Separator(basic);
+        _padCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+        _padCombo.Width = 230;
+        foreach (var p in Pads) _padCombo.Items.Add(p);
+        AddRow(basic, "Controller Skip Button",
+            "Primary pad button; B is also accepted", _padCombo);
+        Separator(basic);
+        AddRow(basic, "Remove Publisher Logos",
+            "Konami / 33rd / HexaDrive logo states", _logos);
+        Separator(basic);
+        AddRow(basic, "Auto-skip Cutscenes",
+            "Skips every movie after 5 seconds", _autoSkip);
 
         AddSection("ENVIRONMENT");
         var env = AddCard();
@@ -147,6 +175,9 @@ public class MainForm : Form
         Separator(env);
         AddRow(env, "Bloom",
             "Post-processing effect (BepInEx, next launch)", _bloom);
+        Separator(env);
+        AddRow(env, "Faster Result Screens",
+            "Halves post-battle result delays (BepInEx)", _fastResults);
 
         AddSection("OTHER");
         var other = AddCard();
@@ -176,6 +207,10 @@ public class MainForm : Form
         _motionBlur.CheckedChanged += (_, _) => SavePlugin("Graphics", "DisableMotionBlur", !_motionBlur.Checked);
         _dof.CheckedChanged += (_, _) => SavePlugin("Graphics", "DisableDepthOfField", !_dof.Checked);
         _bloom.CheckedChanged += (_, _) => SavePlugin("Graphics", "DisableBloom", !_bloom.Checked);
+        _padCombo.SelectedIndexChanged += (_, _) => SavePadButton();
+        _logos.CheckedChanged += (_, _) => SavePlugin("Movies", "AutoSkipLogos", _logos.Checked);
+        _autoSkip.CheckedChanged += (_, _) => SavePluginValue("Movies", "AutoSkipMovies", _autoSkip.Checked ? "5" : "0");
+        _fastResults.CheckedChanged += (_, _) => SavePlugin("Results", "FastResults", _fastResults.Checked);
 
         Shown += (_, _) => RefreshState();
     }
@@ -352,6 +387,10 @@ public class MainForm : Form
             _dual.Enabled = editable;
             _intro.Enabled = editable;
             _skipMovies.Enabled = editable && plugin;
+            _padCombo.Enabled = editable && plugin;
+            _logos.Enabled = editable && plugin;
+            _autoSkip.Enabled = editable && plugin;
+            _fastResults.Enabled = editable && plugin;
             _motionBlur.Enabled = editable && plugin;
             _dof.Enabled = editable && plugin;
             _bloom.Enabled = editable && plugin;
@@ -359,6 +398,10 @@ public class MainForm : Form
             _dual.Checked = false;
             _intro.Checked = false;
             _skipMovies.Checked = true;
+            _logos.Checked = true;
+            _autoSkip.Checked = false;
+            _fastResults.Checked = false;
+            _padCombo.SelectedIndex = 1;
             _motionBlur.Checked = false;
             _dof.Checked = false;
             _bloom.Checked = true;
@@ -384,6 +427,17 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Graphics", "DisableDepthOfField", "true") != "true";
                     _bloom.Checked =
                         Core.GetPluginOption(_game, "Graphics", "DisableBloom", "false") != "true";
+                    _logos.Checked =
+                        Core.GetPluginOption(_game, "Movies", "AutoSkipLogos", "true") == "true";
+                    _autoSkip.Checked =
+                        float.TryParse(Core.GetPluginOption(_game, "Movies", "AutoSkipMovies", "0"), out float asec) && asec > 0;
+                    _fastResults.Checked =
+                        Core.GetPluginOption(_game, "Results", "FastResults", "false") == "true";
+                    if (int.TryParse(Core.GetPluginOption(_game, "Movies", "SkipJoystickButton", "0"), out int pad))
+                    {
+                        int idx = Array.FindIndex(Pads, p => p.Value == pad);
+                        if (idx >= 0) _padCombo.SelectedIndex = idx;
+                    }
                 }
             }
         }
@@ -469,6 +523,22 @@ public class MainForm : Form
             return;
         }
         Guard(() => Core.SetPluginOption(_game!, section, key, value));
+    }
+
+    private void SavePadButton()
+    {
+        if (_loading || _game == null) return;
+        if (!Core.PluginInstalled(_game)) return;
+        if (_padCombo.SelectedItem is not PadItem pad) return;
+        Guard(() => Core.SetPluginValue(_game!, "Movies",
+            "SkipJoystickButton", pad.Value.ToString()));
+    }
+
+    private void SavePluginValue(string section, string key, string value)
+    {
+        if (_loading || _game == null) return;
+        if (!Core.PluginInstalled(_game)) return;
+        Guard(() => Core.SetPluginValue(_game!, section, key, value));
     }
 
     private void RestoreAll()

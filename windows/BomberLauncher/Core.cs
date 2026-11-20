@@ -334,6 +334,12 @@ internal static class Core
     public static void SetPluginOption(string game, string section,
                                        string key, bool value)
     {
+        SetPluginValue(game, section, key, value ? "true" : "false");
+    }
+
+    public static void SetPluginValue(string game, string section,
+                                      string key, string value)
+    {
         string path = PluginCfg(game);
         var lines = File.Exists(path)
             ? new List<string>(File.ReadAllLines(path))
@@ -350,7 +356,7 @@ internal static class Core
             else if (inSec && s.Contains('=') &&
                      s[..s.IndexOf('=')].Trim() == key)
             {
-                lines[i] = $"{key} = {(value ? "true" : "false")}";
+                lines[i] = $"{key} = {value}";
                 written = true;
             }
         }
@@ -358,13 +364,13 @@ internal static class Core
         {
             if (lines.Count > 0 && lines[^1].Trim().Length > 0) lines.Add("");
             lines.Add($"[{section}]");
-            lines.Add($"{key} = {(value ? "true" : "false")}");
+            lines.Add($"{key} = {value}");
         }
         else if (!written)
         {
             int at = lines.FindIndex(l =>
                 l.Trim().StartsWith('[') && l.Trim()[1..^1].Trim() == section);
-            lines.Insert(at + 1, $"{key} = {(value ? "true" : "false")}");
+            lines.Insert(at + 1, $"{key} = {value}");
         }
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllLines(path, lines);

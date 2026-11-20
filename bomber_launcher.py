@@ -416,7 +416,9 @@ class Mods:
     def plugin_config(self):
         cfg = {
             "Movies": {"SkipEnabled": "true", "SkipKey": "Space",
-                       "SkipJoystickButton": "0", "AutoSkipLogos": "true"},
+                       "SkipJoystickButton": "0", "AutoSkipLogos": "true",
+                       "AutoSkipMovies": "0"},
+            "Results": {"FastResults": "false", "ResultSpeed": "0.5"},
             "Graphics": {
                 "DisableMotionBlur": "true",
                 "DisableDepthOfField": "true",
@@ -578,6 +580,14 @@ class BomberWindow(Adw.ApplicationWindow):
         basic.append(self._row(
             "avatar_blue.png", "Remove Publisher Logos",
             "Removes Konami / 33rd / HexaDrive logo states", self.logos_sw))
+        basic.append(self._separator())
+
+        self.autoskip_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.autoskip_sw.connect("notify::active", self.on_auto_skip)
+        basic.append(self._row(
+            "avatar_white.png", "Auto-skip Cutscenes",
+            "Skips every movie after 5 seconds (next launch)",
+            self.autoskip_sw))
         page.append(basic)
 
         # ----- environment / post processing
@@ -600,6 +610,14 @@ class BomberWindow(Adw.ApplicationWindow):
         env.append(self._row("avatar_green.png", "Bloom",
                              "Post-processing effect (BepInEx, next launch)",
                              self.bloom_sw))
+        env.append(self._separator())
+
+        self.fast_results_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.fast_results_sw.connect("notify::active", self.on_fast_results)
+        env.append(self._row(
+            "avatar_yellow.png", "Faster Result Screens",
+            "Halves post-battle result delays (BepInEx, next launch)",
+            self.fast_results_sw))
         page.append(env)
 
         # ----- maintenance
@@ -813,11 +831,13 @@ class BomberWindow(Adw.ApplicationWindow):
             w.set_sensitive(self.mods is not None and not running)
         plugin = self.mods is not None and self.mods.plugin_installed()
         for w in (self.skip_movies_sw, self.pad_dd, self.logos_sw,
-                  self.mblur_sw, self.dof_sw, self.bloom_sw):
+                  self.autoskip_sw, self.mblur_sw, self.dof_sw,
+                  self.bloom_sw, self.fast_results_sw):
             w.set_sensitive(plugin and not running)
         if not plugin:
-            for w in (self.skip_movies_sw, self.logos_sw, self.mblur_sw,
-                      self.dof_sw, self.bloom_sw):
+            for w in (self.skip_movies_sw, self.logos_sw, self.autoskip_sw,
+                      self.mblur_sw, self.dof_sw, self.bloom_sw,
+                      self.fast_results_sw):
                 w.set_active(False)
 
         if self.mods:
@@ -851,6 +871,10 @@ class BomberWindow(Adw.ApplicationWindow):
                             break
                     self.logos_sw.set_active(
                         cfg["Movies"].get("AutoSkipLogos", "true").lower() == "true")
+                    self.autoskip_sw.set_active(
+                        float(cfg["Movies"].get("AutoSkipMovies", "0")) > 0)
+                    self.fast_results_sw.set_active(
+                        cfg.get("Results", {}).get("FastResults", "false").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -937,6 +961,20 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_auto_logos(self, row, _pspec):
         self._plugin_write("Movies", "AutoSkipLogos", row.get_active())
+
+    def on_auto_skip(self, row, _pspec):
+        if self._loading or not self.mods or not self.mods.plugin_installed():
+            return
+        try:
+            self.mods.set_plugin_value(
+                "Movies", "AutoSkipMovies", "5" if row.get_active() else "0")
+            self.toast("Auto-skip saved (next launch)")
+        except Exception as e:
+            self.toast(str(e))
+        self.refresh()
+
+    def on_fast_results(self, row, _pspec):
+        self._plugin_write("Results", "FastResults", row.get_active())
 
     def on_pad_button(self, row, _pspec):
         if self._loading or not self.mods or not self.mods.plugin_installed():
