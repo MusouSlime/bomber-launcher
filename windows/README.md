@@ -32,6 +32,9 @@ as the header image.
 
 ## BepInEx (optional, for cutscene skip and post-FX)
 
+The launcher has an **Install BepInEx + Plugin** action that does steps 1–3 for
+you. Manual steps:
+
 1. Download `BepInEx_win_x86_5.4.23.2.zip` from the BepInEx releases page.
 2. Extract it into the game folder (next to `SuperBombermanR.exe`).
 3. Copy `plugin/BomberQoL.dll` from this repo into `BepInEx/plugins/`.

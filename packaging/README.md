@@ -2,13 +2,13 @@
 
 ## Portable Linux AppImage (recommended)
 
-Bundles Python, PyGObject, GTK 4, libadwaita, typelibs, schemas and the
-Adwaita icon theme. No host GTK/Python needed (glibc, X11/Wayland and GPU
+Bundles Python, PyGObject, GTK 4, libadwaita, typelibs, schemas, the Adwaita
+icon theme, UnityPy and the artwork extractor. No host GTK/Python needed (glibc, X11/Wayland and GPU
 drivers still come from the system, as with any AppImage).
 
 ```sh
 python3 -m venv --system-site-packages .venv-build
-.venv-build/bin/pip install pyinstaller
+.venv-build/bin/pip install pyinstaller UnityPy pillow cryptography
 PYI=.venv-build/bin/pyinstaller ./packaging/build-appimage-portable.sh
 # -> dist/BomberLauncher-portable-x86_64.AppImage
 ```
