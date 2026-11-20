@@ -37,6 +37,9 @@ mkdir -p "$BUILD" "$DIST"
 mkdir -p "$APPDIR/usr/share/bomber-launcher"
 cp -a "$BUILD/dist/BomberLauncher/." "$APPDIR/usr/share/bomber-launcher/"
 cp "$HERE/bomber-launcher.desktop" "$APPDIR/"
+mkdir -p "$APPDIR/usr/share/metainfo"
+cp "$HERE/io.github.bomberlauncher.BomberLauncher.appdata.xml" \
+   "$APPDIR/usr/share/metainfo/"
 cp "$HERE/AppRun-portable" "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
 
