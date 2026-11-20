@@ -23,9 +23,10 @@ BOMBER_ASSETS="$HOME/.local/share/bomber-launcher/assets" \
 
 ## Windows
 
-There is no Windows binary yet. This app is Python + PyGObject + GTK4 +
-libadwaita, and PyInstaller cannot cross-compile from Linux. A Windows exe needs
-one of:
+A native WinForms port lives in `windows/BomberLauncher` and builds a
+self-contained `BomberLauncher-win-x64.exe` without Python or GTK (see
+`windows/README.md`). The GTK app itself cannot be cross-built by PyInstaller
+from Linux; the older options were:
 
 1. **CI build of this app** on a Windows runner with MSYS2
    (`python-gobject`, `gtk4`, `libadwaita`, PyInstaller). Same UI, but bundling

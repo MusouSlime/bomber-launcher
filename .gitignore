@@ -12,3 +12,5 @@ dist/
 packaging/AppDir/
 packaging/appimagetool
 dist/
+windows/**/bin/
+windows/**/obj/

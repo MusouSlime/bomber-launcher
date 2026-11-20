@@ -85,8 +85,9 @@ source is in `plugin/` (`./plugin/build.sh`).
 - **Linux:** `packaging/build-appimage.sh` produces
   `dist/BomberLauncher-x86_64.AppImage`. It is thin (uses the host's GTK4 /
   libadwaita) and ships no Konami artwork; the UI falls back gracefully.
-- **Windows:** needs a Windows/MSYS2 or native port build; see
-  `packaging/README.md` for the options.
+- **Windows:** `windows/BomberLauncher` is a native WinForms port; build it to
+  `BomberLauncher-win-x64.exe` (self-contained, no Python/GTK). See
+  `windows/README.md`.
 
 ## Artwork and legal
 
@@ -137,6 +138,8 @@ modkit/                   CLI fallbacks (dual audio, intros, save, pack crypto)
 tools/extract_ui_assets.py
 tools/sbr_pack.py
 plugin/                    BepInEx plugin source + prebuilt DLL
+windows/                   native Windows (WinForms) port
+packaging/                 AppImage build
 install-bepinex.sh
 ```
 
