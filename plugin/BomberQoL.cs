@@ -35,10 +35,13 @@ namespace BomberQoL
         internal static ConfigEntry<bool> NoVignette;
         internal static ConfigEntry<bool> NoGrain;
         internal static KeyCode SkipKey = KeyCode.Space;
+        internal static bool ForceMasterEnv;
 
         private void Awake()
         {
             Log = Logger;
+            ForceMasterEnv = Environment.GetEnvironmentVariable(
+                "BOMBER_FORCE_MASTER") == "1";
 
             SkipEnabled = Config.Bind("Movies", "SkipEnabled", true,
                 "Allow skipping cutscenes and the boot intro with a key.");
@@ -174,6 +177,19 @@ namespace BomberQoL
             if (enabled > 0)
                 Log.LogInfo("Master difficulty button enabled (" +
                             enabled + ")");
+        }
+
+        internal static bool TryForceMaster()
+        {
+            if (!ForceMasterEnv) return false;
+            if (FindWorldMapUI() == null) return false;
+            StoryManager sm = SingletonBase<StoryManager>.getInstance();
+            if (sm == null) return false;
+            DifficultyDataTable.DifficultyData data = sm.findDifficulty("super");
+            if (data == null) return false;
+            sm.setCurrentDifficulty(data);
+            Log.LogInfo("Forced Master difficulty via BOMBER_FORCE_MASTER");
+            return true;
         }
 
         private static Button FindUiButton(string name)
@@ -472,9 +488,17 @@ namespace BomberQoL
     {
         private float _lastPress;
         private float _lastAutoScan;
+        private float _lastForce;
+        private bool _masterForced;
 
         private void Update()
         {
+            if (Plugin.ForceMasterEnv && !_masterForced &&
+                Time.unscaledTime - _lastForce > 1f)
+            {
+                _lastForce = Time.unscaledTime;
+                if (Plugin.TryForceMaster()) _masterForced = true;
+            }
             AutoSkipMovies();
             if (!Plugin.SkipEnabled.Value) return;
             string source;

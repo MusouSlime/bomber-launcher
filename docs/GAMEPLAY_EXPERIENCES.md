@@ -57,6 +57,22 @@ plugin also sets explicit Up/Down links and re-wires the click to
 from a development build; there is no end-user debug menu or command-line flag.
 The Master button mod is the only retail access route besides save editing.
 
+## Launch switch
+
+The game has **no command-line parsing** (no `GetCommandLineArgs`, no custom
+flags), so there is no native argument for difficulty or the debug menu. The
+plugin adds one:
+
+```
+BOMBER_FORCE_MASTER=1 %command%
+```
+
+Set that in Steam launch options on Linux. When the world map loads, the plugin
+calls `StoryManager.setCurrentDifficulty(findDifficulty("super"))` and logs
+`Forced Master difficulty via BOMBER_FORCE_MASTER`. On Windows, set the same
+environment variable in a shortcut/batch that calls `steam -applaunch 702700`,
+or use the launcher toggle.
+
 ## 2. Hard modes — easy/medium
 
 The selector only names a difficulty; the difficulty is expressed elsewhere:

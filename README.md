@@ -91,6 +91,17 @@ Both are exposed in the launcher and stored in
 `BepInEx/config/bomber.qol.cfg`; changes apply on the next launch. Plugin
 source is in `plugin/` (`./plugin/build.sh`).
 
+## Launching straight into Master
+
+With the BepInEx plugin installed, add this to Steam launch options on Linux:
+
+```
+BOMBER_FORCE_MASTER=1 %command%
+```
+
+The plugin forces the `super` difficulty when the world map loads. There is no
+native game argument; the executable does not parse custom command line flags.
+
 ## Setup helpers
 
 - **Install BepInEx + Plugin** (both launchers): downloads BepInEx x86, copies
