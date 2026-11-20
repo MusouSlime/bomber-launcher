@@ -11,7 +11,7 @@ using UnityEngine.Video;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.1")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.1.2")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -60,11 +60,15 @@ namespace BomberQoL
             }
 
             var harmony = new Harmony(GUID);
-            harmony.PatchAll(typeof(MovieSkipPatch));
             harmony.PatchAll(typeof(PostFxPatch));
 
+            var watcher = new GameObject("BomberQoLSkipper");
+            UnityEngine.Object.DontDestroyOnLoad(watcher);
+            watcher.AddComponent<SkipWatcher>();
+
             SceneManager.sceneLoaded += OnSceneLoaded;
-            Log.LogInfo("Bomber QoL loaded (skip key: " + SkipKey + ")");
+            Log.LogInfo("Bomber QoL loaded (skip key: " + SkipKey +
+                        ", pad button: " + SkipJoystickButton.Value + ")");
         }
 
         private void Start()
@@ -87,55 +91,88 @@ namespace BomberQoL
                 if (b != null) PostFxPatch.Apply(b);
             }
         }
-    }
 
-    [HarmonyPatch(typeof(AbstractMoviePlayScene), "mainUpdate")]
-    internal static class MovieSkipPatch
-    {
-        private static readonly FieldInfo VideoField =
-            AccessTools.Field(typeof(AbstractMoviePlayScene), "_video");
-        private static bool _loggedScene;
-        private static bool _loggedKey;
-
-        private static void Prefix(AbstractMoviePlayScene __instance)
+        internal static bool SkipPressed(out string source)
         {
-            if (!Plugin.SkipEnabled.Value) return;
-            if (!_loggedScene)
+            if (Input.GetKeyDown(SkipKey))
             {
-                Plugin.Log.LogInfo("Movie scene active (skip hook running)");
-                _loggedScene = true;
+                source = SkipKey.ToString();
+                return true;
             }
-            bool keyDown = Input.GetKeyDown(Plugin.SkipKey);
-            bool padDown = false;
-            int padButton = Plugin.SkipJoystickButton.Value;
-            if (padButton >= 0 && padButton <= 19)
+            int button = SkipJoystickButton.Value;
+            if (button >= 0 && button <= 19)
             {
-                padDown = Input.GetKeyDown((KeyCode)(330 + padButton));
-                for (int joy = 1; joy <= 8 && !padDown; joy++)
-                    padDown = Input.GetKeyDown(
-                        (KeyCode)(350 + (joy - 1) * 20 + padButton));
+                if (Input.GetKeyDown((KeyCode)(330 + button)))
+                {
+                    source = "joystick button " + button;
+                    return true;
+                }
+                for (int joy = 1; joy <= 8; joy++)
+                {
+                    if (Input.GetKeyDown(
+                        (KeyCode)(350 + (joy - 1) * 20 + button)))
+                    {
+                        source = "joystick button " + button +
+                                 " (pad " + joy + ")";
+                        return true;
+                    }
+                }
             }
-            if (!keyDown && !padDown) return;
-            if (!_loggedKey)
-            {
-                Plugin.Log.LogInfo("Skip input detected");
-                _loggedKey = true;
-            }
+            source = null;
+            return false;
+        }
 
-            VideoPlayer video = VideoField == null ? null :
-                VideoField.GetValue(__instance) as VideoPlayer;
-            if (video == null || !video.isPlaying) return;
-            if (video.frameRate <= 0f || video.frameCount == 0) return;
-
+        internal static bool SkipVideo(VideoPlayer video, string source)
+        {
+            if (video == null || !video.isPlaying) return false;
+            if (video.frameRate <= 0f || video.frameCount == 0) return false;
             double target = (double)video.frameCount / video.frameRate - 0.05;
             if (target < 0.0) target = 0.0;
-            if (video.time < target)
+            if (video.time >= target) return false;
+            video.time = target;
+            Log.LogInfo("Skipping movie via " + source);
+            return true;
+        }
+    }
+
+    public class SkipWatcher : MonoBehaviour
+    {
+        private float _lastPress;
+
+        private void Update()
+        {
+            if (!Plugin.SkipEnabled.Value) return;
+            string source;
+            if (!Plugin.SkipPressed(out source)) return;
+            if (Time.unscaledTime - _lastPress < 0.5f) return;
+            _lastPress = Time.unscaledTime;
+
+            bool playing = false;
+            UnityEngine.Object[] videos =
+                Resources.FindObjectsOfTypeAll(typeof(VideoPlayer));
+            for (int i = 0; i < videos.Length; i++)
             {
-                video.time = target;
-                Plugin.Log.LogInfo(keyDown
-                    ? "Skipping movie via " + Plugin.SkipKey
-                    : "Skipping movie via joystick button " + padButton);
+                VideoPlayer video = videos[i] as VideoPlayer;
+                if (video == null || !video.isPlaying) continue;
+                playing = true;
+                if (Plugin.SkipVideo(video, source)) return;
             }
+
+            UnityEngine.Object[] scenes =
+                Resources.FindObjectsOfTypeAll(typeof(AbstractMoviePlayScene));
+            for (int i = 0; i < scenes.Length; i++)
+            {
+                AbstractMoviePlayScene scene =
+                    scenes[i] as AbstractMoviePlayScene;
+                if (scene == null || !scene.isActiveAndEnabled) continue;
+                Plugin.Log.LogInfo("Skipping movie scene " +
+                    scene.GetType().Name + " via " + source);
+                scene.moveScene();
+                return;
+            }
+
+            Plugin.Log.LogInfo("Skip input (" + source + "): " +
+                (playing ? "movie not seekable" : "no movie scene found"));
         }
     }
 

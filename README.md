@@ -73,9 +73,12 @@ gameplay scenes.
 The plugin adds:
 
 - **Skip Cutscenes** — press `Space` or a controller button while any movie is
-  playing (includes the boot intro). The button defaults to B/Circle and is
-  selectable in the launcher (`SkipJoystickButton`: 0=A, 1=B, 2=X, 3=Y,
-  4=LB, 5=RB, 6=Back, 7=Start, -1=off).
+  playing. A global watcher finds any active `VideoPlayer` and seeks to the end;
+  if the movie is paused it falls back to the active movie scene's
+  `moveScene()`. The button defaults to B/Circle and is selectable in the
+  launcher (`SkipJoystickButton`: 0=A, 1=B, 2=X, 3=Y, 4=LB, 5=RB, 6=Back,
+  7=Start, -1=off). If a skip does nothing, `BepInEx/LogOutput.log` records
+  whether a video/scene was found (`no movie scene found`, `movie not seekable`).
 - **Motion Blur / Depth of Field / Bloom** — independent switches.
 
 Both are exposed in the launcher and stored in
