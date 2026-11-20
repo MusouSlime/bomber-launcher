@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.8")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.1.9")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -169,9 +169,75 @@ namespace BomberQoL
                 Button button = go.GetComponent<Button>();
                 if (button != null) button.interactable = true;
             }
+            WireMasterNavigation();
+            WireMasterClick();
             if (enabled > 0)
                 Log.LogInfo("Master difficulty button enabled (" +
                             enabled + ")");
+        }
+
+        private static Button FindUiButton(string name)
+        {
+            UnityEngine.Object[] all =
+                Resources.FindObjectsOfTypeAll(typeof(GameObject));
+            for (int i = 0; i < all.Length; i++)
+            {
+                GameObject go = all[i] as GameObject;
+                if (go == null || go.name != name || !go.scene.IsValid())
+                    continue;
+                Button b = go.GetComponent<Button>();
+                if (b != null) return b;
+            }
+            return null;
+        }
+
+        private static WorldMapUI FindWorldMapUI()
+        {
+            UnityEngine.Object[] all =
+                Resources.FindObjectsOfTypeAll(typeof(WorldMapUI));
+            for (int i = 0; i < all.Length; i++)
+            {
+                WorldMapUI ui = all[i] as WorldMapUI;
+                if (ui != null && ui.isActiveAndEnabled) return ui;
+            }
+            return null;
+        }
+
+        private static void WireMasterClick()
+        {
+            Button master = FindUiButton("SuperButton");
+            if (master == null) return;
+            master.onClick.RemoveAllListeners();
+            master.onClick.AddListener(() =>
+            {
+                WorldMapUI ui = FindWorldMapUI();
+                if (ui != null) ui.closeDialog(3);
+            });
+            Log.LogInfo("Master difficulty click wired");
+        }
+
+        private static void WireMasterNavigation()
+        {
+            Button easy = FindUiButton("EasyButton");
+            Button hard = FindUiButton("HardButton");
+            Button master = FindUiButton("SuperButton");
+            if (easy == null || hard == null || master == null) return;
+
+            Navigation hn = hard.navigation;
+            hn.mode = Navigation.Mode.Explicit;
+            hn.selectOnDown = master;
+            hard.navigation = hn;
+
+            Navigation en = easy.navigation;
+            en.mode = Navigation.Mode.Explicit;
+            en.selectOnUp = master;
+            easy.navigation = en;
+
+            Navigation mn = master.navigation;
+            mn.mode = Navigation.Mode.Explicit;
+            mn.selectOnUp = hard;
+            mn.selectOnDown = easy;
+            master.navigation = mn;
         }
 
         internal static void ApplyAllPostFx()

@@ -44,8 +44,18 @@ already has a four-entry option array: `EasyButton`, `NormalButton`,
 hidden.
 
 Plugin config `[Gameplay] UnlockMaster = true` (launcher: **Master
-Difficulty**) activates the button at scene load. If it is visible but blank,
-the button's localized sprite/label needs one more patch.
+Difficulty**) activates the button at scene load. The vanilla Login/Logout
+navigation loop did not include it (Hard's Down pointed back to Easy), so the
+plugin also sets explicit Up/Down links and re-wires the click to
+`WorldMapUI.closeDialog(3)`.
+
+## Debug menu
+
+`StreamingAssets/.../debug/debug_menu_pack` contains a complete `DebugCanvas`
+(bool/int/float fields, buttons, scroll view), but its scripts (`DebugMenuBool`,
+`DebugCanvas`, ...) are **not present in any shipped DLL**. It is dead content
+from a development build; there is no end-user debug menu or command-line flag.
+The Master button mod is the only retail access route besides save editing.
 
 ## 2. Hard modes — easy/medium
 
