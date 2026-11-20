@@ -5,7 +5,11 @@ no Python, GTK or .NET runtime needed.
 
 ## Download
 
-`BomberLauncher-win-x64.exe` from the GitHub release. Windows 10/11 x64.
+`BomberLauncher-portable-win-x64.zip` from the GitHub release. Extract anywhere
+and run `BomberLauncher.exe`. Windows 10/11 x64; no installer, no .NET runtime.
+
+Settings and backups are written to `data\` next to the exe when that folder is
+writable, otherwise `%LOCALAPPDATA%\BomberLauncher`.
 
 ## Features
 
@@ -17,7 +21,7 @@ no Python, GTK or .NET runtime needed.
 - BepInEx config toggles: skip cutscenes, motion blur, depth of field, bloom
 - Restore originals, save backup, open backup folder
 
-Backups live in `%LOCALAPPDATA%\BomberLauncher\backup`.
+Backups live in `data\backup` in portable mode.
 
 The exe ships with no Konami artwork. If you have extracted the art from the
 Linux repo (`assets/hero.png`), put an `assets` folder next to the exe to use it

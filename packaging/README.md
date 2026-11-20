@@ -1,13 +1,29 @@
 # Packaging
 
-## Linux AppImage
+## Portable Linux AppImage (recommended)
+
+Bundles Python, PyGObject, GTK 4, libadwaita, typelibs, schemas and the
+Adwaita icon theme. No host GTK/Python needed (glibc, X11/Wayland and GPU
+drivers still come from the system, as with any AppImage).
+
+```sh
+python3 -m venv --system-site-packages .venv-build
+.venv-build/bin/pip install pyinstaller
+PYI=.venv-build/bin/pyinstaller ./packaging/build-appimage-portable.sh
+# -> dist/BomberLauncher-portable-x86_64.AppImage
+```
+
+Settings and backups are written to `BomberLauncher.data/` next to the
+AppImage, so the pair is fully portable.
+
+## Thin Linux AppImage
 
 ```sh
 ./packaging/build-appimage.sh
 # -> dist/BomberLauncher-x86_64.AppImage
 ```
 
-The AppImage is **thin**: it bundles the launcher, its generated intro clip and
+The thin AppImage: it bundles the launcher, its generated intro clip and
 icon, but uses the host's `python3-gi`, GTK 4 and libadwaita 1.4+ (standard on
 Bazzite, Fedora, Ubuntu 24.04+, Arch, ...). It deliberately ships no Konami
 artwork; the interface falls back to a clean text/theme-icon layout.

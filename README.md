@@ -82,12 +82,21 @@ source is in `plugin/` (`./plugin/build.sh`).
 
 ## Distribution
 
-- **Linux:** `packaging/build-appimage.sh` produces
-  `dist/BomberLauncher-x86_64.AppImage`. It is thin (uses the host's GTK4 /
-  libadwaita) and ships no Konami artwork; the UI falls back gracefully.
-- **Windows:** `windows/BomberLauncher` is a native WinForms port; build it to
-  `BomberLauncher-win-x64.exe` (self-contained, no Python/GTK). See
+Both builds are portable: no installer, no registry changes, and data lives
+next to the application.
+
+- **Linux (portable AppImage):** `packaging/build-appimage-portable.sh`
+  produces `dist/BomberLauncher-portable-x86_64.AppImage`. It bundles Python,
+  PyGObject, GTK 4 and libadwaita; settings and backups go to
+  `BomberLauncher.data/` beside the AppImage.
+- **Linux (thin dev build):** `packaging/build-appimage.sh` produces a small
+  AppImage that uses the host GTK stack.
+- **Windows:** `windows/BomberLauncher` is a native WinForms port, published as
+  a self-contained zip. Settings and backups go to `data/` beside the exe. See
   `windows/README.md`.
+
+Neither build includes Konami artwork; the UI falls back to a neutral layout
+and can load locally extracted art.
 
 ## Artwork and legal
 

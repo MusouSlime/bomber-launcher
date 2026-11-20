@@ -26,16 +26,44 @@ STEAM_APPID = "702700"
 GAME_DIR_NAME = "Super Bomberman R"
 
 HOME = Path.home()
-MODKIT = Path(os.environ.get("SBR_MODKIT", HOME / "Projects" / "sbr-modkit"))
+
+
+def _portable_dir():
+    """Writable data folder next to a portable build (AppImage / unpacked)."""
+    candidates = []
+    data = os.environ.get("BOMBER_DATA")
+    if data:
+        candidates.append(Path(data))
+    appimage = os.environ.get("APPIMAGE")
+    if appimage:
+        candidates.append(Path(appimage).resolve().parent / "BomberLauncher.data")
+    appdir = os.environ.get("APPDIR")
+    if appdir:
+        candidates.append(Path(appdir).resolve().parent / "BomberLauncher.data")
+    for c in candidates:
+        try:
+            c.mkdir(parents=True, exist_ok=True)
+            probe = c / ".write-test"
+            probe.write_text("ok")
+            probe.unlink()
+            return c
+        except Exception:
+            continue
+    return None
+
+
+PORTABLE = _portable_dir()
+MODKIT = Path(os.environ.get("SBR_MODKIT",
+    (PORTABLE / "modkit") if PORTABLE else (HOME / "Projects" / "sbr-modkit")))
 BACKUPS = MODKIT / "backups"
 VIDEO_BACKUPS = BACKUPS / "videos"
 SAVE_BACKUPS = BACKUPS / "saves"
 ASSETS = Path(__file__).resolve().parent / "assets"
 ART = Path(os.environ.get("BOMBER_ASSETS", str(ASSETS)))
 if not (ART / "hero.png").exists() and not os.environ.get("BOMBER_ASSETS"):
-    ART = HOME / ".local/share/bomber-launcher/assets"
+    ART = (PORTABLE / "art") if PORTABLE else (HOME / ".local/share/bomber-launcher/assets")
 HAVE_ART = (ART / "hero.png").exists()
-CONFIG_PATH = HOME / ".config" / "bomber-launcher" / "config.json"
+CONFIG_PATH = (PORTABLE / "config.json") if PORTABLE else (HOME / ".config" / "bomber-launcher" / "config.json")
 
 DLL_REL = Path("SuperBombermanR_Data/Managed/Assembly-CSharp.dll")
 BIN_REL = Path("SuperBombermanR_Data/StreamingAssets/bin")

@@ -9,9 +9,27 @@ namespace BomberLauncher;
 internal static class Core
 {
     public const string AppId = "702700";
-    public static readonly string BackupRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "BomberLauncher");
+    public static readonly string BackupRoot = ResolveBackupRoot();
+
+    private static string ResolveBackupRoot()
+    {
+        string local = Path.Combine(AppContext.BaseDirectory, "data");
+        try
+        {
+            Directory.CreateDirectory(local);
+            string probe = Path.Combine(local, ".write-test");
+            File.WriteAllText(probe, "ok");
+            File.Delete(probe);
+            return local;
+        }
+        catch
+        {
+            return Path.Combine(
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.LocalApplicationData),
+                "BomberLauncher");
+        }
+    }
 
     private static readonly byte[] PatE = { 0x05, 0x5f, 0x00, 0x45, 0x00, 0x00 };
     private static readonly byte[] PatJ = { 0x05, 0x5f, 0x00, 0x4a, 0x00, 0x00 };

@@ -14,3 +14,7 @@ packaging/appimagetool
 dist/
 windows/**/bin/
 windows/**/obj/
+packaging/AppDir-*/
+packaging/build-portable/
+build/
+*.spec

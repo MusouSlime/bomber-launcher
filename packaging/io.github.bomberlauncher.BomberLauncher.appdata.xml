@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.bomberlauncher.BomberLauncher</id>
+  <name>Bomber Launcher</name>
+  <summary>Quality-of-life launcher for Super Bomberman R</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      Portable launcher for Super Bomberman R with language selection,
+      dual-audio voices, boot-intro skip, borderless launch and optional
+      BepInEx quality-of-life toggles.
+    </p>
+  </description>
+  <launchable type="desktop-id">bomber-launcher.desktop</launchable>
+  <url type="homepage">https://github.com/MusouSlime/bomber-launcher</url>
+  <developer id="io.github.mouslime">
+    <name>MusouSlime</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.2.0" date="2026-11-20"/>
+  </releases>
+</component>
