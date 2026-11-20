@@ -78,7 +78,7 @@ The plugin adds:
   `moveScene()`. The button defaults to A/Cross and is selectable in the launcher
   (`SkipJoystickButton`: 0=A, 1=B, 2=X, 3=Y, 4=LB, 5=RB, 6=Back, 7=Start,
   -1=off). Use A/Cross, not B: the game's Submit-based cutscenes ignore Cancel.
-  Publisher logos (Konami, 33rd, HexaDrive) are auto-skipped via
+  Publisher logos (Konami, 33rd, HexaDrive) are removed entirely via
   `AutoSkipLogos` (default true). If a skip does nothing, `BepInEx/LogOutput.log` records what happened:
   `UI_ANY injected via …` (native logo/cutscene skip), `Skipping movie …`,
   `Skipping movie scene …`, or `no movie scene found`.

@@ -576,8 +576,8 @@ class BomberWindow(Adw.ApplicationWindow):
         self.logos_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.logos_sw.connect("notify::active", self.on_auto_logos)
         basic.append(self._row(
-            "avatar_blue.png", "Skip Publisher Logos",
-            "Auto-skip Konami / 33rd / HexaDrive stings", self.logos_sw))
+            "avatar_blue.png", "Remove Publisher Logos",
+            "Removes Konami / 33rd / HexaDrive logo states", self.logos_sw))
         page.append(basic)
 
         # ----- environment / post processing

@@ -11,7 +11,7 @@ using UnityEngine.Video;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.4")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.1.5")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -85,6 +85,22 @@ namespace BomberQoL
             else
             {
                 Log.LogWarning("LogoState patch target not found");
+            }
+
+            MethodInfo titleInit = AccessTools.Method(typeof(TitleUI), "init",
+                new[] { typeof(TitleScene), typeof(string), typeof(string) });
+            FieldInfo logoInfos = AccessTools.Field(typeof(TitleUI), "_logoInfos");
+            if (titleInit != null && logoInfos != null)
+            {
+                TitleLogosPatch.LogosField = logoInfos;
+                harmony.Patch(titleInit, prefix: new HarmonyMethod(
+                    typeof(TitleLogosPatch).GetMethod("Prefix",
+                        BindingFlags.Static | BindingFlags.NonPublic)));
+                Log.LogInfo("Title logo removal patch applied");
+            }
+            else
+            {
+                Log.LogWarning("TitleUI init patch target not found");
             }
 
             var watcher = new GameObject("BomberQoLSkipper");
@@ -192,6 +208,27 @@ namespace BomberQoL
                 }
             }
             return false;
+        }
+    }
+
+    internal static class TitleLogosPatch
+    {
+        internal static FieldInfo LogosField;
+
+        private static void Prefix(TitleUI __instance)
+        {
+            if (!Plugin.AutoSkipLogos.Value) return;
+            try
+            {
+                Type elem = LogosField.FieldType.GetElementType();
+                LogosField.SetValue(__instance,
+                    Array.CreateInstance(elem, 0));
+                Plugin.Log.LogInfo("Publisher logo states removed");
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning("Logo removal failed: " + e.Message);
+            }
         }
     }
 

@@ -20,7 +20,7 @@ writable, otherwise `%LOCALAPPDATA%\BomberLauncher`.
 - Skip boot intro — one-second clip, originals backed up
 - BepInEx config toggles: skip cutscenes, motion blur, depth of field, bloom
 - Cutscene skip works from Space or controller button (A/Cross default;
-  `SkipJoystickButton` in the plugin config). Publisher logos auto-skip via
+  `SkipJoystickButton` in the plugin config). Publisher logo states are removed via
   `AutoSkipLogos`.
 - Restore originals, save backup, open backup folder
 
