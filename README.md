@@ -75,9 +75,9 @@ The plugin adds:
 - **Skip Cutscenes** — press `Space` or a controller button while any movie is
   playing. A global watcher finds any active `VideoPlayer` and seeks to the end;
   if the movie is paused it falls back to the active movie scene's
-  `moveScene()`. The button defaults to A/Cross and is selectable in the launcher
+  `moveScene()`. The button defaults to A/Cross, with B/Circle as a secondary
   (`SkipJoystickButton`: 0=A, 1=B, 2=X, 3=Y, 4=LB, 5=RB, 6=Back, 7=Start,
-  -1=off). Use A/Cross, not B: the game's Submit-based cutscenes ignore Cancel.
+  -1=off; `SkipJoystickButtonAlt` defaults to 1). Use A/Cross, not B: the game's Submit-based cutscenes ignore Cancel.
   Publisher logos (Konami, 33rd, HexaDrive) are removed entirely via
   `AutoSkipLogos` (default true). If a skip does nothing, `BepInEx/LogOutput.log` records what happened:
   `UI_ANY injected via …` (native logo/cutscene skip), `Skipping movie …`,

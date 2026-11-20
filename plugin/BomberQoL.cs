@@ -11,7 +11,7 @@ using UnityEngine.Video;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.5")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.1.6")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -20,6 +20,7 @@ namespace BomberQoL
         internal static ConfigEntry<bool> SkipEnabled;
         internal static ConfigEntry<string> SkipKeyName;
         internal static ConfigEntry<int> SkipJoystickButton;
+        internal static ConfigEntry<int> SkipJoystickButtonAlt;
         internal static ConfigEntry<bool> AutoSkipLogos;
         internal static ConfigEntry<bool> NoMotionBlur;
         internal static ConfigEntry<bool> NoDepthOfField;
@@ -38,6 +39,8 @@ namespace BomberQoL
                 "Unity KeyCode used to skip a playing movie (Space, Escape, ...).");
             SkipJoystickButton = Config.Bind("Movies", "SkipJoystickButton", 0,
                 "Joystick button used to skip a playing movie: 0=A/Cross, 1=B/Circle, 2=X/Square, 3=Y/Triangle, 4=LB, 5=RB, 6=Back, 7=Start; -1 disables. Prefer A/Cross: the game's Submit-based skips ignore Cancel (B).");
+            SkipJoystickButtonAlt = Config.Bind("Movies", "SkipJoystickButtonAlt", 1,
+                "Secondary joystick button (default 1=B/Circle); -1 disables. Both buttons skip.");
             AutoSkipLogos = Config.Bind("Movies", "AutoSkipLogos", true,
                 "Automatically skip publisher/logo animations (Konami, 33rd, HexaDrive).");
 
@@ -140,26 +143,36 @@ namespace BomberQoL
                 source = SkipKey.ToString();
                 return true;
             }
-            int button = SkipJoystickButton.Value;
-            if (button >= 0 && button <= 19)
+            int primary = SkipJoystickButton.Value;
+            if (primary >= 0 && CheckButton(primary, out source))
+                return true;
+            int alt = SkipJoystickButtonAlt.Value;
+            if (primary >= 0 && alt >= 0 && alt != primary &&
+                CheckButton(alt, out source))
+                return true;
+            source = null;
+            return false;
+        }
+
+        private static bool CheckButton(int button, out string source)
+        {
+            source = null;
+            if (button < 0 || button > 19) return false;
+            if (Input.GetKeyDown((KeyCode)(330 + button)))
             {
-                if (Input.GetKeyDown((KeyCode)(330 + button)))
+                source = "joystick button " + button;
+                return true;
+            }
+            for (int joy = 1; joy <= 8; joy++)
+            {
+                if (Input.GetKeyDown(
+                    (KeyCode)(350 + (joy - 1) * 20 + button)))
                 {
-                    source = "joystick button " + button;
+                    source = "joystick button " + button +
+                             " (pad " + joy + ")";
                     return true;
                 }
-                for (int joy = 1; joy <= 8; joy++)
-                {
-                    if (Input.GetKeyDown(
-                        (KeyCode)(350 + (joy - 1) * 20 + button)))
-                    {
-                        source = "joystick button " + button +
-                                 " (pad " + joy + ")";
-                        return true;
-                    }
-                }
             }
-            source = null;
             return false;
         }
 
