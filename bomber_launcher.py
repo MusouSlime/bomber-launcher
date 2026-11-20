@@ -482,6 +482,68 @@ class Mods:
             if backup.exists():
                 shutil.copy2(backup, p)
 
+    # -- BepInEx bootstrap -------------------------------------------------
+    BEPINEX_URL = ("https://github.com/BepInEx/BepInEx/releases/download/"
+                   "v5.4.23.2/BepInEx_win_x86_5.4.23.2.zip")
+
+    def install_bepinex(self):
+        if game_running():
+            raise RuntimeError("Close the game first.")
+        import io
+        import urllib.request
+        import zipfile
+        with urllib.request.urlopen(self.BEPINEX_URL, timeout=60) as r:
+            data = r.read()
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            z.extractall(self.game)
+        plugins = self.game / "BepInEx" / "plugins"
+        plugins.mkdir(parents=True, exist_ok=True)
+        src = Path(__file__).resolve().parent / "plugin" / "BomberQoL.dll"
+        if not src.exists():
+            src = ASSETS.parent / "plugin" / "BomberQoL.dll"
+        if not src.exists():
+            raise RuntimeError("Bundled BomberQoL.dll not found")
+        shutil.copy2(src, plugins / "BomberQoL.dll")
+        self._ensure_winhttp_override()
+        return "BepInEx + BomberQoL installed"
+
+    def extract_art(self):
+        import importlib.util
+        script = Path(__file__).resolve().parent / "tools" / "extract_ui_assets.py"
+        if not script.exists():
+            raise RuntimeError("Artwork extractor not bundled")
+        ART.mkdir(parents=True, exist_ok=True)
+        os.environ["BOMBER_ASSETS"] = str(ART)
+        spec = importlib.util.spec_from_file_location(
+            "bomber_extract_art", script)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.main(str(self.game))
+        return "Artwork extracted — restart the launcher"
+
+    def _ensure_winhttp_override(self):
+        reg = Path.home() / ".local/share/Steam/steamapps/compatdata/702700/pfx/user.reg"
+        if not reg.exists():
+            return False
+        shutil.copy2(reg, reg.with_suffix(".bomber-backup"))
+        text = reg.read_text(errors="replace")
+        header = "[Software\\\\Wine\\\\DllOverrides]"
+        if header not in text:
+            import time
+            text += (f"\n{header} {int(time.time())}\n"
+                     "#time=1dd000000000000\n"
+                     '"winhttp"="native,builtin"\n')
+        else:
+            idx = text.index(header)
+            end = text.find("\n[", idx + 1)
+            if end < 0:
+                end = len(text)
+            if '"winhttp"' not in text[idx:end]:
+                text = (text[:end] + '\n"winhttp"="native,builtin"\n'
+                        + text[end:])
+        reg.write_text(text)
+        return True
+
 
 # ------------------------------------------------------------------------ GUI
 class BomberWindow(Adw.ApplicationWindow):
@@ -623,6 +685,15 @@ class BomberWindow(Adw.ApplicationWindow):
         # ----- maintenance
         page.append(self._section("other"))
         maint = self._card()
+        maint.append(self._action(
+            "avatar_pink.png", "Install BepInEx + Plugin",
+            "Downloads BepInEx x86 and installs BomberQoL",
+            self.on_install_bepinex))
+        maint.append(self._separator())
+        maint.append(self._action(
+            "avatar_white.png", "Extract Game Artwork",
+            "Rebuilds the interface from your game files", self.on_extract_art))
+        maint.append(self._separator())
         maint.append(self._action("avatar_yellow.png",
                                   "Restore Original Files",
                                   "Reverts dual audio and intro changes",
@@ -1011,6 +1082,26 @@ class BomberWindow(Adw.ApplicationWindow):
         try:
             self.mods.set_language(value)
             self.toast(f"Text language set to {name}")
+        except Exception as e:
+            self.toast(str(e))
+        self.refresh()
+
+    def on_install_bepinex(self, _row):
+        if not self._guard():
+            return
+        try:
+            msg = self.mods.install_bepinex()
+            self.toast(msg + " — restart the game")
+        except Exception as e:
+            self.toast(str(e))
+        self.refresh()
+
+    def on_extract_art(self, _row):
+        if not self._guard():
+            return
+        try:
+            msg = self.mods.extract_art()
+            self.toast(msg)
         except Exception as e:
             self.toast(str(e))
         self.refresh()

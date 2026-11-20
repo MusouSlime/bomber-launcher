@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.IO.Compression;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -397,6 +399,28 @@ internal static class Core
             if (File.Exists(b))
                 File.Copy(b, Path.Combine(BinDir(game), f), true);
         }
+    }
+
+    public static void InstallBepInEx(string game)
+    {
+        if (GameRunning()) throw new InvalidOperationException("Close the game first.");
+        const string url = "https://github.com/BepInEx/BepInEx/releases/download/" +
+                           "v5.4.23.2/BepInEx_win_x86_5.4.23.2.zip";
+        string tmp = Path.Combine(Path.GetTempPath(), "BepInEx_win_x86.zip");
+        using (var http = new HttpClient())
+        {
+            byte[] data = http.GetByteArrayAsync(url).GetAwaiter().GetResult();
+            File.WriteAllBytes(tmp, data);
+        }
+        ZipFile.ExtractToDirectory(tmp, game, true);
+        File.Delete(tmp);
+        string plugins = Path.Combine(game, "BepInEx", "plugins");
+        Directory.CreateDirectory(plugins);
+        using Stream src = typeof(Core).Assembly
+            .GetManifestResourceStream("BomberQoL.dll")
+            ?? throw new InvalidOperationException("Embedded BomberQoL.dll missing");
+        using FileStream dst = File.Create(Path.Combine(plugins, "BomberQoL.dll"));
+        src.CopyTo(dst);
     }
 
     public static void Launch(string game, bool borderless)

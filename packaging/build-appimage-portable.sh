@@ -24,6 +24,10 @@ mkdir -p "$BUILD" "$DIST"
   --distpath "$BUILD/dist" --workpath "$BUILD/work" --specpath "$BUILD" \
   --runtime-hook "$HERE/rthook_portable.py" \
   --add-data "$ROOT/assets/intro_blank.mp4:assets" \
+  --add-data "$ROOT/plugin/BomberQoL.dll:plugin" \
+  --add-data "$ROOT/tools/extract_ui_assets.py:tools" \
+  --collect-all UnityPy \
+  --hidden-import PIL --hidden-import cryptography \
   --add-data "$SCHEMAS:share/glib-2.0/schemas" \
   --add-data "/usr/share/icons/Adwaita:share/icons/Adwaita" \
   --hidden-import gi --hidden-import gi.repository.Gtk \

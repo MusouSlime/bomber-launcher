@@ -181,6 +181,10 @@ public class MainForm : Form
 
         AddSection("OTHER");
         var other = AddCard();
+        AddButtonRow(other, "Install BepInEx + Plugin",
+            "Downloads BepInEx x86 and installs BomberQoL", "Install",
+            InstallBepInEx);
+        Separator(other);
         AddButtonRow(other, "Restore Original Files",
             "Reverts dual audio and intro changes", "Restore", RestoreAll);
         Separator(other);
@@ -539,6 +543,21 @@ public class MainForm : Form
         if (_loading || _game == null) return;
         if (!Core.PluginInstalled(_game)) return;
         Guard(() => Core.SetPluginValue(_game!, section, key, value));
+    }
+
+    private void InstallBepInEx()
+    {
+        if (_game == null || !NeedClosed()) return;
+        if (MessageBox.Show(this,
+                "Download BepInEx x86 and install BomberQoL?",
+                AppName, MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) != DialogResult.Yes) return;
+        Guard(() =>
+        {
+            Core.InstallBepInEx(_game!);
+            MessageBox.Show(this, "BepInEx + BomberQoL installed. Restart the game.",
+                AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        });
     }
 
     private void RestoreAll()

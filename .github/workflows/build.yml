@@ -1,0 +1,88 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTK test deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 \
+            python3-venv librsvg2-bin libglib2.0-bin desktop-file-utils
+      - name: Build portable AppImage
+        run: |
+          python3 -m venv --system-site-packages .venv-build
+          .venv-build/bin/pip install pyinstaller UnityPy pillow cryptography
+          PYI=.venv-build/bin/pyinstaller ./packaging/build-appimage-portable.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BomberLauncher-x86_64.AppImage
+          path: dist/BomberLauncher-portable-x86_64.AppImage
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Publish exe
+        run: >
+          dotnet publish windows/BomberLauncher/BomberLauncher.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o out
+      - name: Build portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path stage/extras | Out-Null
+          Copy-Item out/BomberLauncher.exe stage/
+          Copy-Item LICENSE stage/LICENSE.txt
+          Copy-Item plugin/BomberQoL.dll stage/extras/
+          Copy-Item windows/README.md stage/README.md
+          Compress-Archive -Path stage/* -DestinationPath BomberLauncher-portable-win-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BomberLauncher-win-x64.zip
+          path: BomberLauncher-portable-win-x64.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [test, linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Checksums
+        run: |
+          cd artifacts
+          find . -type f -exec cp {} . \;
+          sha256sum *.AppImage *.zip > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.AppImage
+            artifacts/*.zip
+            artifacts/SHA256SUMS

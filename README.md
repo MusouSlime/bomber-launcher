@@ -1,5 +1,7 @@
 # Bomber Launcher
 
+![build](https://github.com/MusouSlime/bomber-launcher/actions/workflows/build.yml/badge.svg)
+
 QoL launcher for **Super Bomberman R** (Steam 702700) on Linux, styled with
 artwork extracted from the game itself.
 
@@ -87,6 +89,13 @@ The plugin adds:
 Both are exposed in the launcher and stored in
 `BepInEx/config/bomber.qol.cfg`; changes apply on the next launch. Plugin
 source is in `plugin/` (`./plugin/build.sh`).
+
+## Setup helpers
+
+- **Install BepInEx + Plugin** (both launchers): downloads BepInEx x86, copies
+  the plugin and sets the Linux `winhttp` override automatically.
+- **Extract Game Artwork** (Linux): rebuilds the interface art from your own
+  game files into the portable data folder.
 
 ## Distribution
 

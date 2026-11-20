@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 """Rebuild Bomber Launcher art from Super Bomberman R's own assets.
 
 Requires: UnityPy, Pillow (use a venv). Usage:
@@ -28,7 +29,7 @@ except ImportError:
 
 PW, SALT, ITER = "c4GXA8FT", b"t4ChYLcH", 1103
 HERE = Path(__file__).resolve().parent.parent
-OUT = HERE / "assets"
+OUT = Path(os.environ.get("BOMBER_ASSETS", str(HERE / "assets")))
 DEFAULT_GAME = (Path.home() / ".local/share/Steam/steamapps/common/"
                 "Super Bomberman R")
 
@@ -67,8 +68,13 @@ def export(path, name, dst, size=None):
     return img
 
 
-def main():
-    game = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_GAME
+def main(game_dir=None):
+    if game_dir is not None:
+        game = Path(game_dir)
+    elif len(sys.argv) > 1:
+        game = Path(sys.argv[1])
+    else:
+        game = DEFAULT_GAME
     if not (game / "SuperBombermanR.exe").exists():
         sys.exit(f"game not found: {game}")
     OUT.mkdir(parents=True, exist_ok=True)
