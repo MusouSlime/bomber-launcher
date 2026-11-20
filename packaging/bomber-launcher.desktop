@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Bomber Launcher
+Comment=Quality-of-life launcher for Super Bomberman R
+Exec=bomber-launcher
+Icon=bomber-launcher
+Terminal=false
+Categories=Game;
+StartupWMClass=io.github.bomberlauncher.BomberLauncher
+X-AppImage-Version=0.2.2

@@ -7,7 +7,7 @@ assets/*
 !assets/intro_blank.mp4
 *.orig
 savedata*.bin
-bomber-launcher.desktop
+/bomber-launcher.desktop
 dist/
 packaging/AppDir/
 packaging/appimagetool
