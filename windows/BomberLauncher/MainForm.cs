@@ -151,13 +151,13 @@ public class MainForm : Form
         AddSection("OTHER");
         var other = AddCard();
         AddButtonRow(other, "Restore Original Files",
-            "Reverts dual audio and intro changes", RestoreAll);
+            "Reverts dual audio and intro changes", "Restore", RestoreAll);
         Separator(other);
         AddButtonRow(other, "Back Up Save",
-            "Timestamped copy under LocalAppData", BackupSave);
+            "Timestamped copy under LocalAppData", "Back up", BackupSave);
         Separator(other);
         AddButtonRow(other, "Open Backup Folder",
-            Core.BackupRoot, OpenBackups);
+            Core.BackupRoot, "Open", OpenBackups);
 
         var footer = new Label
         {
@@ -281,11 +281,11 @@ public class MainForm : Form
     }
 
     private void AddButtonRow(TableLayoutPanel card, string title,
-                              string subtitle, Action action)
+                              string subtitle, string linkText, Action action)
     {
         var link = new LinkLabel
         {
-            Text = "Open",
+            Text = linkText,
             AutoSize = true,
             LinkColor = Color.FromArgb(30, 90, 160),
             Anchor = AnchorStyles.Right,
