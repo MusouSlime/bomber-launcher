@@ -11,7 +11,7 @@ using UnityEngine.Video;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.2")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.1.3")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -61,6 +61,25 @@ namespace BomberQoL
 
             var harmony = new Harmony(GUID);
             harmony.PatchAll(typeof(PostFxPatch));
+            harmony.PatchAll(typeof(InputAdapterSkipPatch));
+
+            Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
+            MethodInfo logoExec = logoType == null ? null :
+                AccessTools.Method(logoType, "execute");
+            FieldInfo logoSkip = logoType == null ? null :
+                AccessTools.Field(logoType, "_skippable");
+            if (logoExec != null && logoSkip != null)
+            {
+                LogoSkipPatch.SkippableField = logoSkip;
+                harmony.Patch(logoExec, prefix: new HarmonyMethod(
+                    typeof(LogoSkipPatch).GetMethod("Prefix",
+                        BindingFlags.Static | BindingFlags.NonPublic)));
+                Log.LogInfo("Logo skip patch applied");
+            }
+            else
+            {
+                Log.LogWarning("LogoState patch target not found");
+            }
 
             var watcher = new GameObject("BomberQoLSkipper");
             UnityEngine.Object.DontDestroyOnLoad(watcher);
@@ -133,6 +152,43 @@ namespace BomberQoL
             string name = video.clip != null ? video.clip.name : video.url;
             Log.LogInfo("Skipping movie via " + source + " [" + name + "]");
             return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(InputAdapter), "getEvent")]
+    internal static class InputAdapterSkipPatch
+    {
+        private static float _lastLog;
+
+        private static void Postfix(InputAdapter.EVENT e, ref bool __result)
+        {
+            if (__result) return;
+            if ((int)e != 0x15) return;   // InputAdapter.EVENT.UI_ANY
+            if (!Plugin.SkipEnabled.Value) return;
+            string source;
+            if (!Plugin.SkipPressed(out source)) return;
+            __result = true;
+            if (Time.unscaledTime - _lastLog > 1f)
+            {
+                _lastLog = Time.unscaledTime;
+                Plugin.Log.LogInfo("UI_ANY injected via " + source);
+            }
+        }
+    }
+
+    internal static class LogoSkipPatch
+    {
+        internal static FieldInfo SkippableField;
+
+        private static void Prefix(object __instance)
+        {
+            if (!Plugin.SkipEnabled.Value) return;
+            try
+            {
+                if (SkippableField != null)
+                    SkippableField.SetValue(__instance, true);
+            }
+            catch { }
         }
     }
 

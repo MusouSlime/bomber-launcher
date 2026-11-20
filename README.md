@@ -77,8 +77,9 @@ The plugin adds:
   if the movie is paused it falls back to the active movie scene's
   `moveScene()`. The button defaults to B/Circle and is selectable in the
   launcher (`SkipJoystickButton`: 0=A, 1=B, 2=X, 3=Y, 4=LB, 5=RB, 6=Back,
-  7=Start, -1=off). If a skip does nothing, `BepInEx/LogOutput.log` records
-  whether a video/scene was found (`no movie scene found`, `movie not seekable`).
+  7=Start, -1=off). If a skip does nothing, `BepInEx/LogOutput.log` records what happened:
+  `UI_ANY injected via …` (native logo/cutscene skip), `Skipping movie …`,
+  `Skipping movie scene …`, or `no movie scene found`.
 - **Motion Blur / Depth of Field / Bloom** — independent switches.
 
 Both are exposed in the launcher and stored in
