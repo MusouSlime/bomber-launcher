@@ -77,6 +77,18 @@ PAT_J = bytes.fromhex("05 5f 00 4a 00 00")  # #US literal "_J"
 
 LANG_OFFSET = 1132
 LANG_AUTO = 0xFF
+PAD_BUTTONS = [
+    ("Disabled", -1),
+    ("A / Cross", 0),
+    ("B / Circle", 1),
+    ("X / Square", 2),
+    ("Y / Triangle", 3),
+    ("LB / L1", 4),
+    ("RB / R1", 5),
+    ("Back / Share", 6),
+    ("Start / Options", 7),
+]
+
 LANGUAGES = [
     ("Auto (Steam)", LANG_AUTO),
     ("English", 1),
@@ -403,7 +415,8 @@ class Mods:
 
     def plugin_config(self):
         cfg = {
-            "Movies": {"SkipEnabled": "true", "SkipKey": "Space"},
+            "Movies": {"SkipEnabled": "true", "SkipKey": "Space",
+                       "SkipJoystickButton": "1"},
             "Graphics": {
                 "DisableMotionBlur": "true",
                 "DisableDepthOfField": "true",
@@ -426,6 +439,10 @@ class Mods:
         return cfg
 
     def set_plugin_option(self, section, key, value):
+        self.set_plugin_value(section, key,
+                              "true" if value else "false")
+
+    def set_plugin_value(self, section, key, value):
         path = self.game / PLUGIN_CFG_REL
         text = path.read_text(errors="replace") if path.exists() else ""
         out = text.splitlines()
@@ -545,6 +562,15 @@ class BomberWindow(Adw.ApplicationWindow):
             "avatar_yellow.png", "Skip Cutscenes",
             "Press Space during any movie (BepInEx, next launch)",
             self.skip_movies_sw))
+        basic.append(self._separator())
+
+        self.pad_dd = Gtk.DropDown.new_from_strings(
+            [name for name, _ in PAD_BUTTONS])
+        self.pad_dd.set_valign(Gtk.Align.CENTER)
+        self.pad_dd.connect("notify::selected", self.on_pad_button)
+        basic.append(self._row(
+            "avatar_pink.png", "Controller Skip Button",
+            "B / Circle by default; applies next launch", self.pad_dd))
         page.append(basic)
 
         # ----- environment / post processing
@@ -779,8 +805,8 @@ class BomberWindow(Adw.ApplicationWindow):
         for w in (self.dual_sw, self.intro_sw, self.lang_dd, self.border_sw):
             w.set_sensitive(self.mods is not None and not running)
         plugin = self.mods is not None and self.mods.plugin_installed()
-        for w in (self.skip_movies_sw, self.mblur_sw, self.dof_sw,
-                  self.bloom_sw):
+        for w in (self.skip_movies_sw, self.pad_dd, self.mblur_sw,
+                  self.dof_sw, self.bloom_sw):
             w.set_sensitive(plugin and not running)
         if not plugin:
             for w in (self.skip_movies_sw, self.mblur_sw, self.dof_sw,
@@ -811,6 +837,11 @@ class BomberWindow(Adw.ApplicationWindow):
                     cfg = self.mods.plugin_config()
                     self.skip_movies_sw.set_active(
                         cfg["Movies"].get("SkipEnabled", "true").lower() == "true")
+                    pad = int(cfg["Movies"].get("SkipJoystickButton", "1"))
+                    for idx, (_, val) in enumerate(PAD_BUTTONS):
+                        if val == pad:
+                            self.pad_dd.set_selected(idx)
+                            break
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -894,6 +925,22 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_skip_movies(self, row, _pspec):
         self._plugin_write("Movies", "SkipEnabled", row.get_active())
+
+    def on_pad_button(self, row, _pspec):
+        if self._loading or not self.mods or not self.mods.plugin_installed():
+            return
+        if game_running():
+            self.toast("Close the game first")
+            self.refresh()
+            return
+        name, value = PAD_BUTTONS[row.get_selected()]
+        try:
+            self.mods.set_plugin_value(
+                "Movies", "SkipJoystickButton", str(value))
+            self.toast(f"Controller skip: {name} (next launch)")
+        except Exception as e:
+            self.toast(str(e))
+        self.refresh()
 
     def on_motion_blur(self, row, _pspec):
         self._plugin_write("Graphics", "DisableMotionBlur",

@@ -11,7 +11,7 @@ using UnityEngine.Video;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.0")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.1.1")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -19,6 +19,7 @@ namespace BomberQoL
         internal static ManualLogSource Log;
         internal static ConfigEntry<bool> SkipEnabled;
         internal static ConfigEntry<string> SkipKeyName;
+        internal static ConfigEntry<int> SkipJoystickButton;
         internal static ConfigEntry<bool> NoMotionBlur;
         internal static ConfigEntry<bool> NoDepthOfField;
         internal static ConfigEntry<bool> NoBloom;
@@ -34,6 +35,8 @@ namespace BomberQoL
                 "Allow skipping cutscenes and the boot intro with a key.");
             SkipKeyName = Config.Bind("Movies", "SkipKey", "Space",
                 "Unity KeyCode used to skip a playing movie (Space, Escape, ...).");
+            SkipJoystickButton = Config.Bind("Movies", "SkipJoystickButton", 1,
+                "Joystick button used to skip a playing movie: 0=A/Cross, 1=B/Circle, 2=X/Square, 3=Y/Triangle, 4=LB, 5=RB, 6=Back, 7=Start; -1 disables.");
 
             NoMotionBlur = Config.Bind("Graphics", "DisableMotionBlur", true,
                 "Disable the motion blur post effect.");
@@ -102,10 +105,20 @@ namespace BomberQoL
                 Plugin.Log.LogInfo("Movie scene active (skip hook running)");
                 _loggedScene = true;
             }
-            if (!Input.GetKeyDown(Plugin.SkipKey)) return;
+            bool keyDown = Input.GetKeyDown(Plugin.SkipKey);
+            bool padDown = false;
+            int padButton = Plugin.SkipJoystickButton.Value;
+            if (padButton >= 0 && padButton <= 19)
+            {
+                padDown = Input.GetKeyDown((KeyCode)(330 + padButton));
+                for (int joy = 1; joy <= 8 && !padDown; joy++)
+                    padDown = Input.GetKeyDown(
+                        (KeyCode)(350 + (joy - 1) * 20 + padButton));
+            }
+            if (!keyDown && !padDown) return;
             if (!_loggedKey)
             {
-                Plugin.Log.LogInfo("Skip key detected");
+                Plugin.Log.LogInfo("Skip input detected");
                 _loggedKey = true;
             }
 
@@ -119,7 +132,9 @@ namespace BomberQoL
             if (video.time < target)
             {
                 video.time = target;
-                Plugin.Log.LogInfo("Skipping movie via " + Plugin.SkipKey);
+                Plugin.Log.LogInfo(keyDown
+                    ? "Skipping movie via " + Plugin.SkipKey
+                    : "Skipping movie via joystick button " + padButton);
             }
         }
     }

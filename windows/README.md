@@ -19,6 +19,8 @@ writable, otherwise `%LOCALAPPDATA%\BomberLauncher`.
 - Japanese voices (dual audio) — DLL patch with backup
 - Skip boot intro — one-second clip, originals backed up
 - BepInEx config toggles: skip cutscenes, motion blur, depth of field, bloom
+- Cutscene skip works from Space or controller button (B/Circle default;
+  `SkipJoystickButton` in the plugin config)
 - Restore originals, save backup, open backup folder
 
 Backups live in `data\backup` in portable mode.

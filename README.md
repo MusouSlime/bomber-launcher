@@ -13,7 +13,7 @@ artwork extracted from the game itself.
 | **Borderless Fullscreen** | Launches `steam -applaunch 702700 -popupwindow -screen-width … -screen-height …` |
 | **Japanese Voices** | Patches `Assembly-CSharp.dll` so the voice suffix defaults to `_J`; text stays in the selected language |
 | **Skip Boot Intro** | Replaces the two ~4-minute opening MP4s with a 1-second clip |
-| **Skip Cutscenes** | BepInEx plugin: press Space during any movie |
+| **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (B/Circle by default) |
 | **Motion Blur / DoF / Bloom** | BepInEx plugin: per-effect post-processing switches |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
@@ -72,8 +72,10 @@ gameplay scenes.
 
 The plugin adds:
 
-- **Skip Cutscenes** — press `Space` while any movie is playing (includes the
-  boot intro).
+- **Skip Cutscenes** — press `Space` or a controller button while any movie is
+  playing (includes the boot intro). The button defaults to B/Circle and is
+  selectable in the launcher (`SkipJoystickButton`: 0=A, 1=B, 2=X, 3=Y,
+  4=LB, 5=RB, 6=Back, 7=Start, -1=off).
 - **Motion Blur / Depth of Field / Bloom** — independent switches.
 
 Both are exposed in the launcher and stored in
