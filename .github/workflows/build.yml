@@ -78,11 +78,13 @@ jobs:
       - name: Checksums
         run: |
           cd artifacts
-          find . -type f -exec cp {} . \;
-          sha256sum *.AppImage *.zip > SHA256SUMS
+          find . -type f \( -name '*.AppImage' -o -name '*.zip' \) -exec cp {} . \;
+          find . -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.zip' \) -print0 \
+            | sort -z | xargs -0 sha256sum > SHA256SUMS
+          cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/*.AppImage
-            artifacts/*.zip
+            artifacts/BomberLauncher-portable-x86_64.AppImage
+            artifacts/BomberLauncher-portable-win-x64.zip
             artifacts/SHA256SUMS
