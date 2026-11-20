@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
@@ -9,10 +10,11 @@ using UnityEngine;
 using UnityEngine.PostProcessing;
 using UnityEngine.SceneManagement;
 using UnityEngine.Video;
+using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.7")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.1.8")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -24,6 +26,7 @@ namespace BomberQoL
         internal static ConfigEntry<int> SkipJoystickButtonAlt;
         internal static ConfigEntry<bool> AutoSkipLogos;
         internal static ConfigEntry<float> AutoSkipMovies;
+        internal static ConfigEntry<bool> UnlockMaster;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -49,6 +52,8 @@ namespace BomberQoL
                 "Automatically skip publisher/logo animations (Konami, 33rd, HexaDrive).");
             AutoSkipMovies = Config.Bind("Movies", "AutoSkipMovies", 0f,
                 "Automatically skip every movie after this many seconds (0 = off).");
+            UnlockMaster = Config.Bind("Gameplay", "UnlockMaster", false,
+                "Add the hidden Master difficulty button to the difficulty menu.");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -123,6 +128,7 @@ namespace BomberQoL
             SceneManager.sceneLoaded += OnSceneLoaded;
             Log.LogInfo("Bomber QoL loaded (skip key: " + SkipKey +
                         ", pad button: " + SkipJoystickButton.Value + ")");
+            StartCoroutine(EnableMasterSoon());
         }
 
         private void Start()
@@ -135,6 +141,37 @@ namespace BomberQoL
         {
             ApplyAllPostFx();
             ApplyResultTweaks();
+            EnableMasterButton();
+        }
+
+        private IEnumerator EnableMasterSoon()
+        {
+            yield return new WaitForSeconds(0.5f);
+            EnableMasterButton();
+        }
+
+        internal static void EnableMasterButton()
+        {
+            if (!UnlockMaster.Value) return;
+            UnityEngine.Object[] all =
+                Resources.FindObjectsOfTypeAll(typeof(GameObject));
+            int enabled = 0;
+            for (int i = 0; i < all.Length; i++)
+            {
+                GameObject go = all[i] as GameObject;
+                if (go == null || go.name != "SuperButton") continue;
+                if (!go.scene.IsValid()) continue;
+                if (!go.activeSelf)
+                {
+                    go.SetActive(true);
+                    enabled++;
+                }
+                Button button = go.GetComponent<Button>();
+                if (button != null) button.interactable = true;
+            }
+            if (enabled > 0)
+                Log.LogInfo("Master difficulty button enabled (" +
+                            enabled + ")");
         }
 
         internal static void ApplyAllPostFx()

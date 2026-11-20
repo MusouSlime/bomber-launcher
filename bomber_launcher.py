@@ -418,6 +418,7 @@ class Mods:
             "Movies": {"SkipEnabled": "true", "SkipKey": "Space",
                        "SkipJoystickButton": "0", "AutoSkipLogos": "true",
                        "AutoSkipMovies": "0"},
+            "Gameplay": {"UnlockMaster": "false"},
             "Results": {"FastResults": "false", "ResultSpeed": "0.5"},
             "Graphics": {
                 "DisableMotionBlur": "true",
@@ -650,6 +651,14 @@ class BomberWindow(Adw.ApplicationWindow):
             "avatar_white.png", "Auto-skip Cutscenes",
             "Skips every movie after 5 seconds (next launch)",
             self.autoskip_sw))
+        basic.append(self._separator())
+
+        self.master_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.master_sw.connect("notify::active", self.on_master)
+        basic.append(self._row(
+            "avatar_yellow.png", "Master Difficulty",
+            "Adds the hidden Master option to the difficulty menu",
+            self.master_sw))
         page.append(basic)
 
         # ----- environment / post processing
@@ -902,13 +911,13 @@ class BomberWindow(Adw.ApplicationWindow):
             w.set_sensitive(self.mods is not None and not running)
         plugin = self.mods is not None and self.mods.plugin_installed()
         for w in (self.skip_movies_sw, self.pad_dd, self.logos_sw,
-                  self.autoskip_sw, self.mblur_sw, self.dof_sw,
-                  self.bloom_sw, self.fast_results_sw):
+                  self.autoskip_sw, self.master_sw, self.mblur_sw,
+                  self.dof_sw, self.bloom_sw, self.fast_results_sw):
             w.set_sensitive(plugin and not running)
         if not plugin:
             for w in (self.skip_movies_sw, self.logos_sw, self.autoskip_sw,
-                      self.mblur_sw, self.dof_sw, self.bloom_sw,
-                      self.fast_results_sw):
+                      self.master_sw, self.mblur_sw, self.dof_sw,
+                      self.bloom_sw, self.fast_results_sw):
                 w.set_active(False)
 
         if self.mods:
@@ -946,6 +955,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         float(cfg["Movies"].get("AutoSkipMovies", "0")) > 0)
                     self.fast_results_sw.set_active(
                         cfg.get("Results", {}).get("FastResults", "false").lower() == "true")
+                    self.master_sw.set_active(
+                        cfg.get("Gameplay", {}).get("UnlockMaster", "false").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -1046,6 +1057,9 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_fast_results(self, row, _pspec):
         self._plugin_write("Results", "FastResults", row.get_active())
+
+    def on_master(self, row, _pspec):
+        self._plugin_write("Gameplay", "UnlockMaster", row.get_active())
 
     def on_pad_button(self, row, _pspec):
         if self._loading or not self.mods or not self.mods.plugin_installed():

@@ -15,6 +15,7 @@ artwork extracted from the game itself.
 | **Borderless Fullscreen** | Launches `steam -applaunch 702700 -popupwindow -screen-width … -screen-height …` |
 | **Japanese Voices** | Patches `Assembly-CSharp.dll` so the voice suffix defaults to `_J`; text stays in the selected language |
 | **Skip Boot Intro** | Replaces the two ~4-minute opening MP4s with a 1-second clip |
+| **Master Difficulty** | BepInEx plugin: activates the hidden Master option in the difficulty menu |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
 | **Motion Blur / DoF / Bloom** | BepInEx plugin: per-effect post-processing switches |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |

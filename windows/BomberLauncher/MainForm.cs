@@ -49,6 +49,7 @@ public class MainForm : Form
     private readonly ComboBox _padCombo = new();
     private readonly CheckBox _logos = new();
     private readonly CheckBox _autoSkip = new();
+    private readonly CheckBox _master = new();
     private readonly CheckBox _fastResults = new();
     private readonly CheckBox _motionBlur = new();
     private readonly CheckBox _dof = new();
@@ -164,6 +165,9 @@ public class MainForm : Form
         Separator(basic);
         AddRow(basic, "Auto-skip Cutscenes",
             "Skips every movie after 5 seconds", _autoSkip);
+        Separator(basic);
+        AddRow(basic, "Master Difficulty",
+            "Adds the hidden Master option to the difficulty menu", _master);
 
         AddSection("ENVIRONMENT");
         var env = AddCard();
@@ -214,6 +218,7 @@ public class MainForm : Form
         _padCombo.SelectedIndexChanged += (_, _) => SavePadButton();
         _logos.CheckedChanged += (_, _) => SavePlugin("Movies", "AutoSkipLogos", _logos.Checked);
         _autoSkip.CheckedChanged += (_, _) => SavePluginValue("Movies", "AutoSkipMovies", _autoSkip.Checked ? "5" : "0");
+        _master.CheckedChanged += (_, _) => SavePlugin("Gameplay", "UnlockMaster", _master.Checked);
         _fastResults.CheckedChanged += (_, _) => SavePlugin("Results", "FastResults", _fastResults.Checked);
 
         Shown += (_, _) => RefreshState();
@@ -394,6 +399,7 @@ public class MainForm : Form
             _padCombo.Enabled = editable && plugin;
             _logos.Enabled = editable && plugin;
             _autoSkip.Enabled = editable && plugin;
+            _master.Enabled = editable && plugin;
             _fastResults.Enabled = editable && plugin;
             _motionBlur.Enabled = editable && plugin;
             _dof.Enabled = editable && plugin;
@@ -404,6 +410,7 @@ public class MainForm : Form
             _skipMovies.Checked = true;
             _logos.Checked = true;
             _autoSkip.Checked = false;
+            _master.Checked = false;
             _fastResults.Checked = false;
             _padCombo.SelectedIndex = 1;
             _motionBlur.Checked = false;
@@ -437,6 +444,8 @@ public class MainForm : Form
                         float.TryParse(Core.GetPluginOption(_game, "Movies", "AutoSkipMovies", "0"), out float asec) && asec > 0;
                     _fastResults.Checked =
                         Core.GetPluginOption(_game, "Results", "FastResults", "false") == "true";
+                    _master.Checked =
+                        Core.GetPluginOption(_game, "Gameplay", "UnlockMaster", "false") == "true";
                     if (int.TryParse(Core.GetPluginOption(_game, "Movies", "SkipJoystickButton", "0"), out int pad))
                     {
                         int idx = Array.FindIndex(Pads, p => p.Value == pad);

@@ -9,7 +9,7 @@ BEP="$GAME/BepInEx/core"
 mcs -nostdlib -target:library -out:"$HERE/BomberQoL.dll" \
   -r:"$MAN/mscorlib.dll" -r:"$MAN/System.dll" -r:"$MAN/System.Core.dll" \
   -r:"$BEP/BepInEx.dll" -r:"$BEP/0Harmony.dll" \
-  -r:"$MAN/UnityEngine.dll" -r:"$MAN/Assembly-CSharp.dll" \
+  -r:"$MAN/UnityEngine.dll" -r:"$MAN/UnityEngine.UI.dll" -r:"$MAN/Assembly-CSharp.dll" \
   "$HERE/BomberQoL.cs"
 
 echo "built $HERE/BomberQoL.dll"

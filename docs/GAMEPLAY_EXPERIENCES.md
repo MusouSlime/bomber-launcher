@@ -34,6 +34,19 @@ Everything below is based on the shipped data tables, decrypted from
   runtime shuffle at battle load. `_skillAssetsPath` / `_skillIconPath` only
   affect visuals; the enum drives the actual behaviour.
 
+## Hidden Master difficulty
+
+`level8` (the world map scene) contains a **`SuperButton`** under
+`DifficultyCanvas`, but the GameObject is inactive. The difficulty `Dialog`
+already has a four-entry option array: `EasyButton`, `NormalButton`,
+`HardButton`, `SuperButton`, and the button's click handler is wired to
+`closeDialog`. There is no unlock condition in the code — the button is simply
+hidden.
+
+Plugin config `[Gameplay] UnlockMaster = true` (launcher: **Master
+Difficulty**) activates the button at scene load. If it is visible but blank,
+the button's localized sprite/label needs one more patch.
+
 ## 2. Hard modes — easy/medium
 
 The selector only names a difficulty; the difficulty is expressed elsewhere:
