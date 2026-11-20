@@ -86,11 +86,33 @@ The selector only names a difficulty; the difficulty is expressed elsewhere:
 | hard | 5 | 70 | 600 | 1000 |
 | super | 3 | 100 | 800 | 1200 |
 
-- Four `EnemyDataTable` variants change enemy move speeds (roughly
-  0.8 / 2.0 / 2.6 / 3.0).
+- Four `EnemyDataTable` variants change enemy move speeds
+  (average 0.91 / 2.20 / 2.86 / 3.30 for easy / normal / hard / super).
 - `BattleDefData` holds gravity, fall speed, ready timers, block placement
   rate, result timings.
 - `BossNPCDataTable` selects boss AI packs.
+
+### Master (`super`) table audit
+
+All per-difficulty data referenced by `DifficultyData.fileNameSuffix ==
+"_super"` exists in the retail packs:
+
+| Data | Super variant | Status |
+| --- | --- | --- |
+| `DifficultyDataTable` | `id=3`, `_fileNameSuffix="_super"` | present |
+| `StoryInfoDataTable_super` | 7 worlds; stock 3, 1200/2300 gems | present |
+| `EnemyDataTable_super` | 30 enemies, speeds 1.5–4.5 | present |
+| `BossRobotData` | `br001…br008 *_super` | present |
+| `BossNPCEquipmentItemDataTable_super` | all boss characters | present |
+| `BossNPCDataTable` AI files | `BossNpcGolem/Phantom/Plasma/Sexy/TestAi_super` | present |
+
+`WorldMapScene.loadDifficultyWorldData` sizes its array from
+`DifficultyDataTable.difficultyDataCount` (4), and each entry has 32 star
+slots, so Master progress/star display is supported. `StoryData.difficulty`
+stores `DifficultyData.id` directly (3) with no clamp, and loading a save uses
+`getDifficultyData(3)`. No stage/map layout is difficulty-suffixed; layouts are
+shared and only story economy, enemy stats, boss stats/AI and boss equipment
+change per difficulty.
 
 **Design:** a "Nightmare" plugin mode that sets stock to 1, disables
 continues, scales enemy life/speed and boss AI, optionally halves the battle
