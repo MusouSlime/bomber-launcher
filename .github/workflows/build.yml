@@ -34,6 +34,18 @@ jobs:
           python3 -m venv --system-site-packages .venv-build
           .venv-build/bin/pip install pyinstaller UnityPy pillow cryptography
           PYI=.venv-build/bin/pyinstaller ./packaging/build-appimage-portable.sh
+      - name: Smoke-test bundled GTK
+        run: |
+          sudo apt-get install -y xvfb
+          mkdir -p "$RUNNER_TEMP/home"
+          set +e
+          HOME="$RUNNER_TEMP/home" timeout 8 xvfb-run -a \
+            ./dist/BomberLauncher-portable-x86_64.AppImage \
+            --appimage-extract-and-run >"$RUNNER_TEMP/appimage.log" 2>&1
+          code=$?
+          cat "$RUNNER_TEMP/appimage.log"
+          test $code -eq 124
+          ! grep -qE 'Traceback|Namespace Gtk not available' "$RUNNER_TEMP/appimage.log"
       - uses: actions/upload-artifact@v4
         with:
           name: BomberLauncher-x86_64.AppImage

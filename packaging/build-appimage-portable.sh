@@ -34,6 +34,20 @@ mkdir -p "$BUILD" "$DIST"
   --hidden-import gi.repository.Adw --hidden-import gi.repository.Gdk \
   "$ROOT/bomber_launcher.py" >/dev/null
 
+# PyInstaller's gi hook only copies the namespaces it detects while analysing
+# imports. Gtk is loaded through require_version(), so copy the full typelib
+# set explicitly; otherwise the AppImage dies with
+# "Namespace Gtk not available for version 4.0".
+GI_DST="$BUILD/dist/BomberLauncher/_internal/gi_typelibs"
+mkdir -p "$GI_DST"
+for dir in /usr/lib64/girepository-1.0 \
+           /usr/lib/x86_64-linux-gnu/girepository-1.0 \
+           /usr/lib/girepository-1.0; do
+  [ -f "$dir/Gtk-4.0.typelib" ] || continue
+  find "$dir" -maxdepth 1 -name '*.typelib' -exec cp -f {} "$GI_DST/" \;
+  break
+done
+
 mkdir -p "$APPDIR/usr/share/bomber-launcher"
 cp -a "$BUILD/dist/BomberLauncher/." "$APPDIR/usr/share/bomber-launcher/"
 cp "$HERE/bomber-launcher.desktop" "$APPDIR/"
