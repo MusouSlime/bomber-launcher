@@ -94,9 +94,11 @@ The plugin adds:
   by default (`SoftResetKeyEnabled = true`). `SoftResetSave` is off by default:
   saving a story battle can write a stock-0 save that will not reload.
 - **Practice Stage Selector** — press **F9** in the title, world map or a
-  battle to open a world/stage/difficulty picker. It jumps through
-  `StageSetup` into the selected story battle and suppresses story saves
-  while practice mode is active, so your real save is untouched.
+  battle to open a world/stage/difficulty picker. Use **arrow keys / D-pad**
+  to move and change values, **Enter / A** to start, **B / Esc** to close, or
+  click with the mouse. It jumps through `StageSetup` into the selected story
+  battle and suppresses story saves while practice mode is active, so your real
+  save is untouched.
 - **Motion Blur / Depth of Field / Bloom** — independent switches.
 
 These are exposed in the launcher and stored in

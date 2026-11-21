@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.3.0")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.3.1")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -147,6 +147,7 @@ namespace BomberQoL
             harmony.PatchAll(typeof(InputAdapterSkipPatch));
             harmony.PatchAll(typeof(PracticeSavePatch));
             harmony.PatchAll(typeof(PracticeSaveAllPatch));
+            harmony.PatchAll(typeof(PracticeInputPatch));
 
             Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
             MethodInfo logoExec = logoType == null ? null :
@@ -757,6 +758,7 @@ namespace BomberQoL
 
     public class PracticeMenu : MonoBehaviour
     {
+        internal static bool Visible;
         private static readonly string[] Difficulties =
             { "easy", "normal", "hard", "super" };
         private static readonly string[] DiffLabels =
@@ -767,17 +769,96 @@ namespace BomberQoL
         private int _world = 1;
         private int _stage = 1;
         private int _difficulty = 1;
+        private int _row;
+        private bool _leftHeld;
+        private bool _rightHeld;
+        private bool _upHeld;
+        private bool _downHeld;
 
         private void Update()
         {
-            if (Plugin.PracticeMenuKey == KeyCode.None) return;
-            if (!Input.GetKeyDown(Plugin.PracticeMenuKey)) return;
-            SetVisible(!_visible);
+            if (Plugin.PracticeMenuKey != KeyCode.None &&
+                Input.GetKeyDown(Plugin.PracticeMenuKey))
+            {
+                SetVisible(!_visible);
+                return;
+            }
+            if (!_visible) return;
+            HandleNavigation();
+        }
+
+        private void LateUpdate()
+        {
+            if (!_visible) return;
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+        }
+
+        private static bool PadButtonDown(string name)
+        {
+            InputAdapter adapter =
+                SingletonBaseWithGameObject<InputAdapter>.getInstance();
+            if (adapter == null) return false;
+            try { return adapter.GetButtonDown(name + "_1P"); }
+            catch { return false; }
+        }
+
+        private static float PadAxis(string name)
+        {
+            InputAdapter adapter =
+                SingletonBaseWithGameObject<InputAdapter>.getInstance();
+            if (adapter == null) return 0f;
+            try { return adapter.GetAxis(name + "_1P"); }
+            catch { return 0f; }
+        }
+
+        private void HandleNavigation()
+        {
+            float ax = PadAxis("CROSS_HORIZONTAL");
+            float ay = PadAxis("CROSS_VERTICAL");
+            bool left = Input.GetKeyDown(KeyCode.LeftArrow) ||
+                (ax < -0.5f && !_leftHeld);
+            bool right = Input.GetKeyDown(KeyCode.RightArrow) ||
+                (ax > 0.5f && !_rightHeld);
+            bool up = Input.GetKeyDown(KeyCode.UpArrow) ||
+                (ay > 0.5f && !_upHeld);
+            bool down = Input.GetKeyDown(KeyCode.DownArrow) ||
+                (ay < -0.5f && !_downHeld);
+            _leftHeld = ax < -0.5f;
+            _rightHeld = ax > 0.5f;
+            _upHeld = ay > 0.5f;
+            _downHeld = ay < -0.5f;
+
+            if (left || right)
+            {
+                int delta = left ? -1 : 1;
+                if (_row == 0)
+                    _world = Mathf.Clamp(_world + delta, 1, 7);
+                else if (_row == 1)
+                    _stage = Mathf.Clamp(_stage + delta, 1, 10);
+                else if (_row == 2)
+                    _difficulty = Mathf.Clamp(_difficulty + delta, 0,
+                        DiffLabels.Length - 1);
+            }
+            if (up) _row = (_row + 3) % 4;
+            if (down) _row = (_row + 1) % 4;
+
+            bool accept = Input.GetKeyDown(KeyCode.Return) ||
+                Input.GetKeyDown(KeyCode.KeypadEnter) ||
+                PadButtonDown("A");
+            bool cancel = Input.GetKeyDown(KeyCode.Escape) ||
+                PadButtonDown("B");
+            if (cancel) { SetVisible(false); return; }
+            if (accept &&
+                Practice.Start(_world, _stage, Difficulties[_difficulty]))
+                SetVisible(false);
         }
 
         private void SetVisible(bool visible)
         {
             _visible = visible;
+            Visible = visible;
+            _row = 0;
             Plugin.Log.LogInfo("Practice menu " +
                 (visible ? "opened" : "closed"));
             if (visible)
@@ -798,6 +879,8 @@ namespace BomberQoL
         {
             if (!_visible) return;
             GUI.depth = -1000;
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
             const int w = 570;
             const int h = 390;
             Rect r = new Rect((Screen.width - w) / 2,
@@ -805,7 +888,7 @@ namespace BomberQoL
             GUI.Box(r, "Practice Stage");
             GUILayout.BeginArea(new Rect(r.x + 16, r.y + 30, w - 32, h - 46));
 
-            GUILayout.Label("World");
+            GUILayout.Label((_row == 0 ? "> " : "  ") + "World");
             GUILayout.BeginHorizontal();
             for (int i = 1; i <= 7; i++)
             {
@@ -816,7 +899,7 @@ namespace BomberQoL
             GUILayout.EndHorizontal();
 
             GUILayout.Space(6);
-            GUILayout.Label("Stage");
+            GUILayout.Label((_row == 1 ? "> " : "  ") + "Stage");
             GUILayout.BeginHorizontal();
             for (int i = 1; i <= 10; i++)
             {
@@ -827,7 +910,7 @@ namespace BomberQoL
             GUILayout.EndHorizontal();
 
             GUILayout.Space(6);
-            GUILayout.Label("Difficulty");
+            GUILayout.Label((_row == 2 ? "> " : "  ") + "Difficulty");
             GUILayout.BeginHorizontal();
             for (int i = 0; i < DiffLabels.Length; i++)
             {
@@ -840,6 +923,9 @@ namespace BomberQoL
             GUILayout.Space(10);
             GUILayout.Label("World " + _world + ", stage " + _stage + "  —  " +
                 DiffLabels[_difficulty] + "  (story saves disabled)");
+            GUILayout.Label(_row == 3
+                ? "> Enter / A: start practice    B / Esc: close"
+                : "  Enter / A: start practice    B / Esc: close");
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Start Practice", GUILayout.Height(34)))
@@ -852,6 +938,17 @@ namespace BomberQoL
             GUILayout.EndHorizontal();
 
             GUILayout.EndArea();
+        }
+    }
+
+    [HarmonyPatch(typeof(InputAdapter), "getEvent")]
+    internal static class PracticeInputPatch
+    {
+        private static bool Prefix(ref bool __result)
+        {
+            if (!PracticeMenu.Visible) return true;
+            __result = false;
+            return false;
         }
     }
 

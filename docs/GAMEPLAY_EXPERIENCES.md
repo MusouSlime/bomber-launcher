@@ -79,6 +79,12 @@ Plugin 0.3.0 adds an in-game **F9** overlay for practicing any story stage.
 Choose world 1–7, stage 1–10 and Easy/Normal/Hard/Master, then **Start
 Practice**.
 
+- **F9** opens/closes the picker.
+- Arrow keys or D-pad move between World, Stage and Difficulty and change the
+  selected value.
+- **Enter / A** starts practice; **B / Esc** closes.
+- Mouse clicks also work; the game's own menu input is blocked while the
+  picker is open.
 - Looks up the `StoryFlowDataTable` entry for the requested stage.
 - Sets `StoryManager` to the flow just before that battle.
 - Sets `MoveSceneParam.storyParam` to the target stage and loads `StageSetup`,
