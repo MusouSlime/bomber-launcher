@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.2.3")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.2.4")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -171,6 +171,7 @@ namespace BomberQoL
             var watcher = new GameObject("BomberQoLSkipper");
             UnityEngine.Object.DontDestroyOnLoad(watcher);
             watcher.AddComponent<SkipWatcher>();
+            StartCoroutine(LogJoysticksSoon());
 
             SceneManager.sceneLoaded += OnSceneLoaded;
             Log.LogInfo("Bomber QoL loaded (skip key: " + SkipKey +
@@ -192,6 +193,15 @@ namespace BomberQoL
             ApplyAllPostFx();
             ApplyResultTweaks();
             EnableMasterButton();
+        }
+
+        private IEnumerator LogJoysticksSoon()
+        {
+            yield return new WaitForSeconds(2f);
+            string[] names = Input.GetJoystickNames();
+            Log.LogInfo("Joysticks visible to Unity: " +
+                (names == null || names.Length == 0
+                    ? "(none)" : string.Join(", ", names)));
         }
 
         private IEnumerator EnableMasterSoon()
@@ -457,31 +467,75 @@ namespace BomberQoL
             return Input.GetKeyDown(SoftResetKey);
         }
 
+        private static bool RawPadButtonHeld(int button)
+        {
+            if (button < 0 || button > 19) return false;
+            if (Input.GetKey((KeyCode)(330 + button))) return true;
+            for (int joy = 1; joy <= 8; joy++)
+            {
+                if (Input.GetKey(
+                    (KeyCode)(350 + (joy - 1) * 20 + button)))
+                    return true;
+            }
+            return false;
+        }
+
         internal static bool SoftResetDebugHeld()
         {
-            if (SoftResetButtons == null) return false;
-            for (int i = 0; i < SoftResetButtons.Length; i++)
+            for (int b = 0; b < 20; b++)
             {
-                if (PadButtonHeld(SoftResetButtons[i])) return true;
+                if (RawPadButtonHeld(b)) return true;
+            }
+            InputAdapter adapter =
+                SingletonBaseWithGameObject<InputAdapter>.getInstance();
+            if (adapter == null) return false;
+            string[] names = { "A", "B", "X", "Y", "L", "R", "START", "SELECT" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                for (int p = 1; p <= 8; p++)
+                {
+                    try
+                    {
+                        if (adapter.GetButton(names[i] + "_" + p + "P"))
+                            return true;
+                    }
+                    catch { }
+                }
             }
             return false;
         }
 
         internal static void LogSoftResetPadState()
         {
-            string state = "";
-            if (SoftResetButtons != null)
+            string raw = "";
+            for (int b = 0; b < 20; b++)
             {
-                for (int i = 0; i < SoftResetButtons.Length; i++)
-                {
-                    state += SoftResetButtons[i] + "=" +
-                        (PadButtonHeld(SoftResetButtons[i]) ? "1" : "0") + " ";
-                }
+                if (RawPadButtonHeld(b)) raw += b + " ";
             }
+            string adapt = "";
             InputAdapter adapter =
                 SingletonBaseWithGameObject<InputAdapter>.getInstance();
-            Log.LogInfo("Soft reset pad state: " + state +
-                "(InputAdapter " + (adapter != null ? "ready" : "missing") + ")");
+            if (adapter != null)
+            {
+                string[] names = { "A", "B", "X", "Y", "L", "R", "START", "SELECT" };
+                for (int i = 0; i < names.Length; i++)
+                {
+                    for (int p = 1; p <= 8; p++)
+                    {
+                        try
+                        {
+                            if (adapter.GetButton(names[i] + "_" + p + "P"))
+                            {
+                                adapt += names[i] + ":" + p + " ";
+                                break;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            Log.LogInfo("Soft reset debug: raw=[" + raw.Trim() +
+                "] adapter=[" + adapt.Trim() + "]");
         }
 
         internal static void DoSoftReset(string source)
