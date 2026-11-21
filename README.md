@@ -17,7 +17,7 @@ artwork extracted from the game itself.
 | **Skip Boot Intro** | Replaces the two ~4-minute opening MP4s with a 1-second clip |
 | **Master Difficulty** | BepInEx plugin: activates the hidden Master option in the difficulty menu |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
-| **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to save and return to title |
+| **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to return to title |
 | **Motion Blur / DoF / Bloom** | BepInEx plugin: per-effect post-processing switches |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
@@ -87,10 +87,11 @@ The plugin adds:
   `UI_ANY injected via …` (native logo/cutscene skip), `Skipping movie …`,
   `Skipping movie scene …`, or `no movie scene found`.
 - **Soft Reset** — hold **LB + RB + Start** (L1 + R1 + Options) for 0.75 s to
-  save and return to the title screen without quitting. Config:
+  return to the title screen without quitting. Config:
   `SoftResetEnabled` (default true), `SoftResetPadCombo = 4,5,7`,
   `SoftResetPadHold = 0.75`. The keyboard shortcut **Ctrl+F10** is also active
-  by default (`SoftResetKeyEnabled = true`).
+  by default (`SoftResetKeyEnabled = true`). `SoftResetSave` is off by default:
+  saving a story battle can write a stock-0 save that will not reload.
 - **Motion Blur / Depth of Field / Bloom** — independent switches.
 
 These are exposed in the launcher and stored in

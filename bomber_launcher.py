@@ -426,7 +426,7 @@ class Mods:
                 "SoftResetKeyEnabled": "true",
                 "SoftResetKey": "F10",
                 "SoftResetRequireCtrl": "true",
-                "SoftResetSave": "true",
+                "SoftResetSave": "false",
             },
             "Results": {"FastResults": "false", "ResultSpeed": "0.5"},
             "Graphics": {

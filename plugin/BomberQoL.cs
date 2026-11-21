@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.2.2")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.2.3")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -79,8 +79,8 @@ namespace BomberQoL
                 "Unity KeyCode for the optional keyboard soft reset (F10, R, ...).");
             SoftResetRequireCtrl = Config.Bind("Gameplay", "SoftResetRequireCtrl", true,
                 "Require Ctrl to be held with the optional keyboard soft-reset key.");
-            SoftResetSave = Config.Bind("Gameplay", "SoftResetSave", true,
-                "Save all data before soft resetting.");
+            SoftResetSave = Config.Bind("Gameplay", "SoftResetSave", false,
+                "Save all data before soft resetting. Off by default; saving a story battle can write an invalid stock-0 save.");
             SoftResetDebug = Config.Bind("Gameplay", "SoftResetDebug", false,
                 "Log controller button states while the soft-reset combo is held (diagnostics).");
             FastResults = Config.Bind("Results", "FastResults", false,
@@ -486,10 +486,20 @@ namespace BomberQoL
 
         internal static void DoSoftReset(string source)
         {
-            if (SoftResetSave.Value)
+            bool save = SoftResetSave.Value;
+            if (save)
+            {
+                StoryManager story = SingletonBase<StoryManager>.getInstance();
+                if (story != null && story.playerStockNum == 0)
+                {
+                    save = false;
+                    Log.LogWarning("Soft reset: skipping save because stock is 0");
+                }
+            }
+            if (save)
                 SceneBase.ResetSaveExecute = true;
             Log.LogInfo("Soft reset via " + source +
-                " (save: " + SoftResetSave.Value + ")");
+                " (save: " + save + ")");
             try
             {
                 ResetUtility.resetStart();

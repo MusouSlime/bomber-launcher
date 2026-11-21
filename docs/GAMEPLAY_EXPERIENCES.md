@@ -85,7 +85,8 @@ combo:
 - `SoftResetPadCombo = 4,5,7` — button indices: `0=A/Cross, 1=B/Circle,
   2=X/Square, 3=Y/Triangle, 4=LB/L1, 5=RB/R1, 6=Back/Share, 7=Start/Options`
 - `SoftResetPadHold = 0.75` seconds (0.2–3.0)
-- `SoftResetSave = true` saves before reloading
+- `SoftResetSave = false` by default. Saving a story battle can write stock 0
+  and leave the save unloadable; leave this off unless you are at the world map.
 - Keyboard shortcut active by default: `SoftResetKeyEnabled = true`,
   `SoftResetKey = F10`, `SoftResetRequireCtrl = true` → `Ctrl+F10`
 
