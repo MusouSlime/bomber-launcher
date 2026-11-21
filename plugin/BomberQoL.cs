@@ -778,6 +778,8 @@ namespace BomberQoL
         private void SetVisible(bool visible)
         {
             _visible = visible;
+            Plugin.Log.LogInfo("Practice menu " +
+                (visible ? "opened" : "closed"));
             if (visible)
             {
                 _prevCursorVisible = Cursor.visible;
