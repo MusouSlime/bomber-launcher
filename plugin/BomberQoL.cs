@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.2.4")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.2.5")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -550,8 +550,10 @@ namespace BomberQoL
                     Log.LogWarning("Soft reset: skipping save because stock is 0");
                 }
             }
-            if (save)
-                SceneBase.ResetSaveExecute = true;
+            // ResetScene.Start() saves when this flag is true. Force it both
+            // ways: a stale true from the current scene was still saving the
+            // stock-0 battle state even when SoftResetSave was false.
+            SceneBase.ResetSaveExecute = save;
             Log.LogInfo("Soft reset via " + source +
                 " (save: " + save + ")");
             try
