@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.2.1")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.2.2")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -687,6 +687,7 @@ namespace BomberQoL
         private float _lastSoftReset;
         private float _softResetHeld;
         private float _lastPadLog;
+        private bool _softResetLatched;
         private bool _masterForced;
 
         private void Update()
@@ -705,21 +706,26 @@ namespace BomberQoL
                 }
                 if (Plugin.SoftResetComboHeld())
                 {
-                    _softResetHeld += Time.unscaledDeltaTime;
-                    if (_softResetHeld >= hold &&
-                        Time.unscaledTime - _lastSoftReset > 3f)
+                    if (!_softResetLatched)
                     {
-                        _lastSoftReset = Time.unscaledTime;
-                        _softResetHeld = 0f;
-                        Plugin.DoSoftReset("pad combo");
-                        return;
+                        _softResetHeld += Time.unscaledDeltaTime;
+                        if (_softResetHeld >= hold &&
+                            Time.unscaledTime - _lastSoftReset > 3f)
+                        {
+                            _lastSoftReset = Time.unscaledTime;
+                            _softResetHeld = 0f;
+                            _softResetLatched = true;
+                            Plugin.DoSoftReset("pad combo");
+                            return;
+                        }
                     }
                 }
                 else
                 {
                     _softResetHeld = 0f;
+                    _softResetLatched = false;
                 }
-                if (Plugin.SoftResetKeyPressed() &&
+                if (!_softResetLatched && Plugin.SoftResetKeyPressed() &&
                     Time.unscaledTime - _lastSoftReset > 3f)
                 {
                     _lastSoftReset = Time.unscaledTime;
