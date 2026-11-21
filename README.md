@@ -17,6 +17,7 @@ artwork extracted from the game itself.
 | **Skip Boot Intro** | Replaces the two ~4-minute opening MP4s with a 1-second clip |
 | **Master Difficulty** | BepInEx plugin: activates the hidden Master option in the difficulty menu |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
+| **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to save and return to title |
 | **Motion Blur / DoF / Bloom** | BepInEx plugin: per-effect post-processing switches |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
@@ -85,9 +86,14 @@ The plugin adds:
   `AutoSkipLogos` (default true). If a skip does nothing, `BepInEx/LogOutput.log` records what happened:
   `UI_ANY injected via …` (native logo/cutscene skip), `Skipping movie …`,
   `Skipping movie scene …`, or `no movie scene found`.
+- **Soft Reset** — hold **LB + RB + Start** (L1 + R1 + Options) for 0.75 s to
+  save and return to the title screen without quitting. Config:
+  `SoftResetEnabled` (default true), `SoftResetPadCombo = 4,5,7`,
+  `SoftResetPadHold = 0.75`. An optional keyboard fallback is
+  `SoftResetKeyEnabled = true` → `Ctrl+F10`.
 - **Motion Blur / Depth of Field / Bloom** — independent switches.
 
-Both are exposed in the launcher and stored in
+These are exposed in the launcher and stored in
 `BepInEx/config/bomber.qol.cfg`; changes apply on the next launch. Plugin
 source is in `plugin/` (`./plugin/build.sh`).
 

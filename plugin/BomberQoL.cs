@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.1.9")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.2.0")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -27,6 +27,13 @@ namespace BomberQoL
         internal static ConfigEntry<bool> AutoSkipLogos;
         internal static ConfigEntry<float> AutoSkipMovies;
         internal static ConfigEntry<bool> UnlockMaster;
+        internal static ConfigEntry<bool> SoftResetEnabled;
+        internal static ConfigEntry<string> SoftResetPadCombo;
+        internal static ConfigEntry<float> SoftResetPadHold;
+        internal static ConfigEntry<bool> SoftResetKeyEnabled;
+        internal static ConfigEntry<string> SoftResetKeyName;
+        internal static ConfigEntry<bool> SoftResetRequireCtrl;
+        internal static ConfigEntry<bool> SoftResetSave;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -35,6 +42,8 @@ namespace BomberQoL
         internal static ConfigEntry<bool> NoVignette;
         internal static ConfigEntry<bool> NoGrain;
         internal static KeyCode SkipKey = KeyCode.Space;
+        internal static KeyCode SoftResetKey = KeyCode.F10;
+        internal static int[] SoftResetButtons = { 4, 5, 7 };
         internal static bool ForceMasterEnv;
 
         private void Awake()
@@ -57,6 +66,20 @@ namespace BomberQoL
                 "Automatically skip every movie after this many seconds (0 = off).");
             UnlockMaster = Config.Bind("Gameplay", "UnlockMaster", false,
                 "Add the hidden Master difficulty button to the difficulty menu.");
+            SoftResetEnabled = Config.Bind("Gameplay", "SoftResetEnabled", true,
+                "Enable the soft reset (save and return to title without quitting).");
+            SoftResetPadCombo = Config.Bind("Gameplay", "SoftResetPadCombo", "4,5,7",
+                "Controller buttons to hold: 0=A/Cross, 1=B/Circle, 2=X/Square, 3=Y/Triangle, 4=LB/L1, 5=RB/R1, 6=Back/Share, 7=Start/Options. Default LB+RB+Start.");
+            SoftResetPadHold = Config.Bind("Gameplay", "SoftResetPadHold", 0.75f,
+                "Seconds the controller combo must be held (0.2 - 3.0).");
+            SoftResetKeyEnabled = Config.Bind("Gameplay", "SoftResetKeyEnabled", false,
+                "Also enable a keyboard soft-reset key (Ctrl+F10 by default).");
+            SoftResetKeyName = Config.Bind("Gameplay", "SoftResetKey", "F10",
+                "Unity KeyCode for the optional keyboard soft reset (F10, R, ...).");
+            SoftResetRequireCtrl = Config.Bind("Gameplay", "SoftResetRequireCtrl", true,
+                "Require Ctrl to be held with the optional keyboard soft-reset key.");
+            SoftResetSave = Config.Bind("Gameplay", "SoftResetSave", true,
+                "Save all data before soft resetting.");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -81,6 +104,24 @@ namespace BomberQoL
             {
                 SkipKey = KeyCode.Space;
                 Log.LogWarning("Unknown SkipKey, falling back to Space.");
+            }
+
+            try
+            {
+                SoftResetKey = (KeyCode)Enum.Parse(
+                    typeof(KeyCode), SoftResetKeyName.Value, true);
+            }
+            catch
+            {
+                SoftResetKey = KeyCode.F10;
+                Log.LogWarning("Unknown SoftResetKey, falling back to F10.");
+            }
+
+            SoftResetButtons = ParseSoftResetButtons(SoftResetPadCombo.Value);
+            if (SoftResetButtons.Length == 0)
+            {
+                SoftResetButtons = new[] { 4, 5, 7 };
+                Log.LogWarning("Invalid SoftResetPadCombo; using 4,5,7 (LB+RB+Start).");
             }
 
             var harmony = new Harmony(GUID);
@@ -313,6 +354,74 @@ namespace BomberQoL
                             " (" + changed + " fields)");
         }
 
+        private static int[] ParseSoftResetButtons(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return new int[0];
+            string[] parts = text.Split(new[] { ',', '+', ' ' },
+                StringSplitOptions.RemoveEmptyEntries);
+            var result = new List<int>();
+            for (int i = 0; i < parts.Length; i++)
+            {
+                int button;
+                if (!int.TryParse(parts[i].Trim(), out button)) continue;
+                if (button < 0 || button > 19) continue;
+                if (!result.Contains(button)) result.Add(button);
+            }
+            return result.ToArray();
+        }
+
+        private static bool PadButtonHeld(int button)
+        {
+            if (button < 0 || button > 19) return false;
+            if (Input.GetKey((KeyCode)(330 + button))) return true;
+            for (int joy = 1; joy <= 8; joy++)
+            {
+                if (Input.GetKey(
+                    (KeyCode)(350 + (joy - 1) * 20 + button)))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool SoftResetBlocked()
+        {
+            string scene = SceneManager.GetActiveScene().name;
+            return scene == "Reset" || scene == "Entry";
+        }
+
+        internal static bool SoftResetComboHeld()
+        {
+            if (!SoftResetEnabled.Value || SoftResetBlocked()) return false;
+            if (SoftResetButtons == null || SoftResetButtons.Length == 0)
+                return false;
+            for (int i = 0; i < SoftResetButtons.Length; i++)
+            {
+                if (!PadButtonHeld(SoftResetButtons[i])) return false;
+            }
+            return true;
+        }
+
+        internal static bool SoftResetKeyPressed()
+        {
+            if (!SoftResetEnabled.Value || !SoftResetKeyEnabled.Value ||
+                SoftResetBlocked())
+                return false;
+            if (SoftResetRequireCtrl.Value &&
+                !Input.GetKey(KeyCode.LeftControl) &&
+                !Input.GetKey(KeyCode.RightControl))
+                return false;
+            return Input.GetKeyDown(SoftResetKey);
+        }
+
+        internal static void DoSoftReset(string source)
+        {
+            if (SoftResetSave.Value)
+                SceneBase.ResetSaveExecute = true;
+            Log.LogInfo("Soft reset via " + source +
+                " (save: " + SoftResetSave.Value + ")");
+            ResetUtility.resetStart();
+        }
+
         internal static bool SkipPressed(out string source)
         {
             if (Input.GetKeyDown(SkipKey))
@@ -489,10 +598,41 @@ namespace BomberQoL
         private float _lastPress;
         private float _lastAutoScan;
         private float _lastForce;
+        private float _lastSoftReset;
+        private float _softResetHeld;
         private bool _masterForced;
 
         private void Update()
         {
+            if (Plugin.SoftResetEnabled.Value)
+            {
+                float hold = Plugin.SoftResetPadHold.Value;
+                if (hold < 0.2f) hold = 0.2f;
+                if (hold > 3f) hold = 3f;
+                if (Plugin.SoftResetComboHeld())
+                {
+                    _softResetHeld += Time.unscaledDeltaTime;
+                    if (_softResetHeld >= hold &&
+                        Time.unscaledTime - _lastSoftReset > 3f)
+                    {
+                        _lastSoftReset = Time.unscaledTime;
+                        _softResetHeld = 0f;
+                        Plugin.DoSoftReset("pad combo");
+                        return;
+                    }
+                }
+                else
+                {
+                    _softResetHeld = 0f;
+                }
+                if (Plugin.SoftResetKeyPressed() &&
+                    Time.unscaledTime - _lastSoftReset > 3f)
+                {
+                    _lastSoftReset = Time.unscaledTime;
+                    Plugin.DoSoftReset("keyboard");
+                    return;
+                }
+            }
             if (Plugin.ForceMasterEnv && !_masterForced &&
                 Time.unscaledTime - _lastForce > 1f)
             {

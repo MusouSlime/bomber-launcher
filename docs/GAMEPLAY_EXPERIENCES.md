@@ -73,6 +73,26 @@ calls `StoryManager.setCurrentDifficulty(findDifficulty("super"))` and logs
 environment variable in a shortcut/batch that calls `steam -applaunch 702700`,
 or use the launcher toggle.
 
+## Soft reset
+
+The retail game has a `Reset` scene and `ResetUtility.resetStart()` which saves
+all data, resets every singleton and reloads `Entry` — a full in-process soft
+reset to title. It is not exposed in the UI. The plugin binds it to a controller
+combo:
+
+- **Hold LB + RB + Start (L1 + R1 + Options) for 0.75 s**
+- `SoftResetEnabled` (default `true`)
+- `SoftResetPadCombo = 4,5,7` — button indices: `0=A/Cross, 1=B/Circle,
+  2=X/Square, 3=Y/Triangle, 4=LB/L1, 5=RB/R1, 6=Back/Share, 7=Start/Options`
+- `SoftResetPadHold = 0.75` seconds (0.2–3.0)
+- `SoftResetSave = true` saves before reloading
+- Optional keyboard fallback: `SoftResetKeyEnabled = true`, `SoftResetKey = F10`,
+  `SoftResetRequireCtrl = true` → `Ctrl+F10`
+
+The game also has two narrower resets already in the UI: **Retry / Return to
+World Map / Main Menu** in the battle pause menu, and **Restart Story** on the
+save-select screen (starts story over while keeping system unlocks and gems).
+
 ## 2. Hard modes — easy/medium
 
 The selector only names a difficulty; the difficulty is expressed elsewhere:

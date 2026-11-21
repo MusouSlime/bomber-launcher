@@ -50,6 +50,7 @@ public class MainForm : Form
     private readonly CheckBox _logos = new();
     private readonly CheckBox _autoSkip = new();
     private readonly CheckBox _master = new();
+    private readonly CheckBox _softReset = new();
     private readonly CheckBox _fastResults = new();
     private readonly CheckBox _motionBlur = new();
     private readonly CheckBox _dof = new();
@@ -168,6 +169,9 @@ public class MainForm : Form
         Separator(basic);
         AddRow(basic, "Master Difficulty",
             "Adds the hidden Master option to the difficulty menu", _master);
+        Separator(basic);
+        AddRow(basic, "Soft Reset Combo",
+            "Hold LB + RB + Start for 0.75s to save and return to title", _softReset);
 
         AddSection("ENVIRONMENT");
         var env = AddCard();
@@ -219,6 +223,7 @@ public class MainForm : Form
         _logos.CheckedChanged += (_, _) => SavePlugin("Movies", "AutoSkipLogos", _logos.Checked);
         _autoSkip.CheckedChanged += (_, _) => SavePluginValue("Movies", "AutoSkipMovies", _autoSkip.Checked ? "5" : "0");
         _master.CheckedChanged += (_, _) => SavePlugin("Gameplay", "UnlockMaster", _master.Checked);
+        _softReset.CheckedChanged += (_, _) => SavePlugin("Gameplay", "SoftResetEnabled", _softReset.Checked);
         _fastResults.CheckedChanged += (_, _) => SavePlugin("Results", "FastResults", _fastResults.Checked);
 
         Shown += (_, _) => RefreshState();
@@ -446,6 +451,8 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Results", "FastResults", "false") == "true";
                     _master.Checked =
                         Core.GetPluginOption(_game, "Gameplay", "UnlockMaster", "false") == "true";
+                    _softReset.Checked =
+                        Core.GetPluginOption(_game, "Gameplay", "SoftResetEnabled", "true") == "true";
                     if (int.TryParse(Core.GetPluginOption(_game, "Movies", "SkipJoystickButton", "0"), out int pad))
                     {
                         int idx = Array.FindIndex(Pads, p => p.Value == pad);

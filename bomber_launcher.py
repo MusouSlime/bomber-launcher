@@ -418,7 +418,16 @@ class Mods:
             "Movies": {"SkipEnabled": "true", "SkipKey": "Space",
                        "SkipJoystickButton": "0", "AutoSkipLogos": "true",
                        "AutoSkipMovies": "0"},
-            "Gameplay": {"UnlockMaster": "false"},
+            "Gameplay": {
+                "UnlockMaster": "false",
+                "SoftResetEnabled": "true",
+                "SoftResetPadCombo": "4,5,7",
+                "SoftResetPadHold": "0.75",
+                "SoftResetKeyEnabled": "false",
+                "SoftResetKey": "F10",
+                "SoftResetRequireCtrl": "true",
+                "SoftResetSave": "true",
+            },
             "Results": {"FastResults": "false", "ResultSpeed": "0.5"},
             "Graphics": {
                 "DisableMotionBlur": "true",
@@ -659,6 +668,14 @@ class BomberWindow(Adw.ApplicationWindow):
             "avatar_yellow.png", "Master Difficulty",
             "Adds the hidden Master option to the difficulty menu",
             self.master_sw))
+        basic.append(self._separator())
+
+        self.softreset_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.softreset_sw.connect("notify::active", self.on_soft_reset)
+        basic.append(self._row(
+            "avatar_pink.png", "Soft Reset Combo",
+            "Hold LB + RB + Start for 0.75s to save and return to title",
+            self.softreset_sw))
         page.append(basic)
 
         # ----- environment / post processing
@@ -957,6 +974,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Results", {}).get("FastResults", "false").lower() == "true")
                     self.master_sw.set_active(
                         cfg.get("Gameplay", {}).get("UnlockMaster", "false").lower() == "true")
+                    self.softreset_sw.set_active(
+                        cfg.get("Gameplay", {}).get("SoftResetEnabled", "true").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -1060,6 +1079,9 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_master(self, row, _pspec):
         self._plugin_write("Gameplay", "UnlockMaster", row.get_active())
+
+    def on_soft_reset(self, row, _pspec):
+        self._plugin_write("Gameplay", "SoftResetEnabled", row.get_active())
 
     def on_pad_button(self, row, _pspec):
         if self._loading or not self.mods or not self.mods.plugin_installed():
