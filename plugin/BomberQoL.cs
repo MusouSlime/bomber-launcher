@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.2.5")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.3.0")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -35,6 +35,7 @@ namespace BomberQoL
         internal static ConfigEntry<bool> SoftResetRequireCtrl;
         internal static ConfigEntry<bool> SoftResetSave;
         internal static ConfigEntry<bool> SoftResetDebug;
+        internal static ConfigEntry<string> PracticeMenuKeyName;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -44,6 +45,7 @@ namespace BomberQoL
         internal static ConfigEntry<bool> NoGrain;
         internal static KeyCode SkipKey = KeyCode.Space;
         internal static KeyCode SoftResetKey = KeyCode.F10;
+        internal static KeyCode PracticeMenuKey = KeyCode.F9;
         internal static int[] SoftResetButtons = { 4, 5, 7 };
         internal static bool ForceMasterEnv;
 
@@ -83,6 +85,8 @@ namespace BomberQoL
                 "Save all data before soft resetting. Off by default; saving a story battle can write an invalid stock-0 save.");
             SoftResetDebug = Config.Bind("Gameplay", "SoftResetDebug", false,
                 "Log controller button states while the soft-reset combo is held (diagnostics).");
+            PracticeMenuKeyName = Config.Bind("Practice", "PracticeMenuKey", "F9",
+                "Key used to open the in-game practice stage selector.");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -120,6 +124,17 @@ namespace BomberQoL
                 Log.LogWarning("Unknown SoftResetKey, falling back to F10.");
             }
 
+            try
+            {
+                PracticeMenuKey = (KeyCode)Enum.Parse(
+                    typeof(KeyCode), PracticeMenuKeyName.Value, true);
+            }
+            catch
+            {
+                PracticeMenuKey = KeyCode.F9;
+                Log.LogWarning("Unknown PracticeMenuKey, falling back to F9.");
+            }
+
             SoftResetButtons = ParseSoftResetButtons(SoftResetPadCombo.Value);
             if (SoftResetButtons.Length == 0)
             {
@@ -130,6 +145,8 @@ namespace BomberQoL
             var harmony = new Harmony(GUID);
             harmony.PatchAll(typeof(PostFxPatch));
             harmony.PatchAll(typeof(InputAdapterSkipPatch));
+            harmony.PatchAll(typeof(PracticeSavePatch));
+            harmony.PatchAll(typeof(PracticeSaveAllPatch));
 
             Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
             MethodInfo logoExec = logoType == null ? null :
@@ -171,6 +188,9 @@ namespace BomberQoL
             var watcher = new GameObject("BomberQoLSkipper");
             UnityEngine.Object.DontDestroyOnLoad(watcher);
             watcher.AddComponent<SkipWatcher>();
+            var practiceMenu = new GameObject("BomberQoLPractice");
+            UnityEngine.Object.DontDestroyOnLoad(practiceMenu);
+            practiceMenu.AddComponent<PracticeMenu>();
             StartCoroutine(LogJoysticksSoon());
 
             SceneManager.sceneLoaded += OnSceneLoaded;
@@ -190,6 +210,7 @@ namespace BomberQoL
 
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            Practice.OnSceneLoaded(scene);
             ApplyAllPostFx();
             ApplyResultTweaks();
             EnableMasterButton();
@@ -658,6 +679,200 @@ namespace BomberQoL
                     return true;
                 }
             }
+            return false;
+        }
+    }
+
+    internal static class Practice
+    {
+        internal static bool Active;
+
+        internal static void OnSceneLoaded(Scene scene)
+        {
+            if (scene.name == "Title" || scene.name == "MainMenu")
+                Active = false;
+        }
+
+        internal static bool Start(int world, int stage, string difficulty)
+        {
+            StoryManager story = SingletonBase<StoryManager>.getInstance();
+            GameSceneManager gs =
+                SingletonBaseWithGameObject<GameSceneManager>.getInstance();
+            if (story == null || gs == null)
+            {
+                Plugin.Log.LogWarning("Practice: managers not ready");
+                return false;
+            }
+
+            StoryFlowDataTable table = story.getStoryFlow(world);
+            if (table == null)
+            {
+                Plugin.Log.LogWarning("Practice: no flow table for world " + world);
+                return false;
+            }
+
+            StoryFlowDataTable.StoryFlowData target = null;
+            for (int i = 0; i < table.storyFlowDataCount; i++)
+            {
+                StoryFlowDataTable.StoryFlowData f = table.getStoryFlowData(i);
+                if (f == null) continue;
+                if ((int)f.eventType != 2) continue;
+                if (f.stageId != stage) continue;
+                target = f;
+                break;
+            }
+            if (target == null)
+            {
+                Plugin.Log.LogWarning("Practice: no battle flow for world " +
+                    world + " stage " + stage);
+                return false;
+            }
+
+            DifficultyDataTable.DifficultyData diff =
+                story.findDifficulty(difficulty);
+            if (diff != null) story.setCurrentDifficulty(diff);
+            story.initPlayerStockNum((uint)world);
+            story.setWorldId(world, target.storyFlowId - 1);
+
+            MoveSceneParam.StoryParam sp = gs.param.storyParam;
+            sp.set(target);
+            gs.param.storyParam = sp;
+
+            SaveDataManager sd =
+                SingletonBaseWithGameObject<SaveDataManager>.getInstance();
+            if (sd != null && sd.storyData != null)
+            {
+                sd.storyData.stock = story.playerStockNum;
+                if (diff != null) sd.storyData.difficulty = (int)diff.id;
+                sd.storyData.setStoryFlowId(world, target.storyFlowId);
+            }
+
+            Active = true;
+            Plugin.Log.LogInfo("Practice: world " + world + " stage " + stage +
+                " (" + difficulty + "), story saves suppressed");
+            gs.moveScene("StageSetup");
+            return true;
+        }
+    }
+
+    public class PracticeMenu : MonoBehaviour
+    {
+        private static readonly string[] Difficulties =
+            { "easy", "normal", "hard", "super" };
+        private static readonly string[] DiffLabels =
+            { "Easy", "Normal", "Hard", "Master" };
+        private bool _visible;
+        private bool _prevCursorVisible;
+        private CursorLockMode _prevLockMode;
+        private int _world = 1;
+        private int _stage = 1;
+        private int _difficulty = 1;
+
+        private void Update()
+        {
+            if (Plugin.PracticeMenuKey == KeyCode.None) return;
+            if (!Input.GetKeyDown(Plugin.PracticeMenuKey)) return;
+            SetVisible(!_visible);
+        }
+
+        private void SetVisible(bool visible)
+        {
+            _visible = visible;
+            if (visible)
+            {
+                _prevCursorVisible = Cursor.visible;
+                _prevLockMode = Cursor.lockState;
+                Cursor.visible = true;
+                Cursor.lockState = CursorLockMode.None;
+            }
+            else
+            {
+                Cursor.visible = _prevCursorVisible;
+                Cursor.lockState = _prevLockMode;
+            }
+        }
+
+        private void OnGUI()
+        {
+            if (!_visible) return;
+            GUI.depth = -1000;
+            const int w = 570;
+            const int h = 390;
+            Rect r = new Rect((Screen.width - w) / 2,
+                (Screen.height - h) / 2, w, h);
+            GUI.Box(r, "Practice Stage");
+            GUILayout.BeginArea(new Rect(r.x + 16, r.y + 30, w - 32, h - 46));
+
+            GUILayout.Label("World");
+            GUILayout.BeginHorizontal();
+            for (int i = 1; i <= 7; i++)
+            {
+                if (GUILayout.Button(i.ToString(),
+                    GUILayout.Width(56), GUILayout.Height(28)))
+                    _world = i;
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
+            GUILayout.Label("Stage");
+            GUILayout.BeginHorizontal();
+            for (int i = 1; i <= 10; i++)
+            {
+                if (GUILayout.Button(i.ToString(),
+                    GUILayout.Width(44), GUILayout.Height(28)))
+                    _stage = i;
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
+            GUILayout.Label("Difficulty");
+            GUILayout.BeginHorizontal();
+            for (int i = 0; i < DiffLabels.Length; i++)
+            {
+                if (GUILayout.Button(DiffLabels[i],
+                    GUILayout.Width(92), GUILayout.Height(28)))
+                    _difficulty = i;
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(10);
+            GUILayout.Label("World " + _world + ", stage " + _stage + "  —  " +
+                DiffLabels[_difficulty] + "  (story saves disabled)");
+            GUILayout.FlexibleSpace();
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Start Practice", GUILayout.Height(34)))
+            {
+                if (Practice.Start(_world, _stage, Difficulties[_difficulty]))
+                    SetVisible(false);
+            }
+            if (GUILayout.Button("Close", GUILayout.Height(34)))
+                SetVisible(false);
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndArea();
+        }
+    }
+
+    [HarmonyPatch(typeof(SaveDataManager), "startStorySave")]
+    internal static class PracticeSavePatch
+    {
+        private static bool Prefix(ref bool __result)
+        {
+            if (!Practice.Active) return true;
+            __result = false;
+            Plugin.Log.LogInfo("Practice: suppressed story save");
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(SaveDataManager), "startSaveAll")]
+    internal static class PracticeSaveAllPatch
+    {
+        private static bool Prefix(ref bool __result)
+        {
+            if (!Practice.Active) return true;
+            __result = false;
+            Plugin.Log.LogInfo("Practice: suppressed full save");
             return false;
         }
     }

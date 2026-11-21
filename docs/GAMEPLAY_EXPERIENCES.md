@@ -73,6 +73,22 @@ calls `StoryManager.setCurrentDifficulty(findDifficulty("super"))` and logs
 environment variable in a shortcut/batch that calls `steam -applaunch 702700`,
 or use the launcher toggle.
 
+## Practice stage select
+
+Plugin 0.3.0 adds an in-game **F9** overlay for practicing any story stage.
+Choose world 1–7, stage 1–10 and Easy/Normal/Hard/Master, then **Start
+Practice**.
+
+- Looks up the `StoryFlowDataTable` entry for the requested stage.
+- Sets `StoryManager` to the flow just before that battle.
+- Sets `MoveSceneParam.storyParam` to the target stage and loads `StageSetup`,
+  so character selection still works normally.
+- Sets the difficulty and player stock before the setup scene.
+- `Practice.Active` suppresses `SaveDataManager.startStorySave` and
+  `startSaveAll`, so practice does not overwrite the real story save.
+
+`[Practice] PracticeMenuKey = F9` changes the overlay key.
+
 ## Soft reset
 
 The retail game has a `Reset` scene and `ResetUtility.resetStart()` which saves
