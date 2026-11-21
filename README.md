@@ -89,8 +89,8 @@ The plugin adds:
 - **Soft Reset** — hold **LB + RB + Start** (L1 + R1 + Options) for 0.75 s to
   save and return to the title screen without quitting. Config:
   `SoftResetEnabled` (default true), `SoftResetPadCombo = 4,5,7`,
-  `SoftResetPadHold = 0.75`. An optional keyboard fallback is
-  `SoftResetKeyEnabled = true` → `Ctrl+F10`.
+  `SoftResetPadHold = 0.75`. The keyboard shortcut **Ctrl+F10** is also active
+  by default (`SoftResetKeyEnabled = true`).
 - **Motion Blur / Depth of Field / Bloom** — independent switches.
 
 These are exposed in the launcher and stored in

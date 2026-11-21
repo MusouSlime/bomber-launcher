@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.2.0")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.2.1")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -34,6 +34,7 @@ namespace BomberQoL
         internal static ConfigEntry<string> SoftResetKeyName;
         internal static ConfigEntry<bool> SoftResetRequireCtrl;
         internal static ConfigEntry<bool> SoftResetSave;
+        internal static ConfigEntry<bool> SoftResetDebug;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -72,7 +73,7 @@ namespace BomberQoL
                 "Controller buttons to hold: 0=A/Cross, 1=B/Circle, 2=X/Square, 3=Y/Triangle, 4=LB/L1, 5=RB/R1, 6=Back/Share, 7=Start/Options. Default LB+RB+Start.");
             SoftResetPadHold = Config.Bind("Gameplay", "SoftResetPadHold", 0.75f,
                 "Seconds the controller combo must be held (0.2 - 3.0).");
-            SoftResetKeyEnabled = Config.Bind("Gameplay", "SoftResetKeyEnabled", false,
+            SoftResetKeyEnabled = Config.Bind("Gameplay", "SoftResetKeyEnabled", true,
                 "Also enable a keyboard soft-reset key (Ctrl+F10 by default).");
             SoftResetKeyName = Config.Bind("Gameplay", "SoftResetKey", "F10",
                 "Unity KeyCode for the optional keyboard soft reset (F10, R, ...).");
@@ -80,6 +81,8 @@ namespace BomberQoL
                 "Require Ctrl to be held with the optional keyboard soft-reset key.");
             SoftResetSave = Config.Bind("Gameplay", "SoftResetSave", true,
                 "Save all data before soft resetting.");
+            SoftResetDebug = Config.Bind("Gameplay", "SoftResetDebug", false,
+                "Log controller button states while the soft-reset combo is held (diagnostics).");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -172,6 +175,9 @@ namespace BomberQoL
             SceneManager.sceneLoaded += OnSceneLoaded;
             Log.LogInfo("Bomber QoL loaded (skip key: " + SkipKey +
                         ", pad button: " + SkipJoystickButton.Value + ")");
+            Log.LogInfo("Soft reset: pad " + SoftResetPadCombo.Value +
+                        " hold " + SoftResetPadHold.Value + "s; keyboard " +
+                        (SoftResetKeyEnabled.Value ? "Ctrl+" + SoftResetKey : "off"));
             StartCoroutine(EnableMasterSoon());
         }
 
@@ -370,9 +376,47 @@ namespace BomberQoL
             return result.ToArray();
         }
 
+        private static string PadButtonName(int button)
+        {
+            switch (button)
+            {
+                case 0: return "A";
+                case 1: return "B";
+                case 2: return "X";
+                case 3: return "Y";
+                case 4: return "L";
+                case 5: return "R";
+                case 6: return "SELECT";
+                case 7: return "START";
+                default: return null;
+            }
+        }
+
         private static bool PadButtonHeld(int button)
         {
             if (button < 0 || button > 19) return false;
+
+            // Use the game's InputAdapter so Steam Input / remapped pads work.
+            string name = PadButtonName(button);
+            if (name != null)
+            {
+                InputAdapter adapter =
+                    SingletonBaseWithGameObject<InputAdapter>.getInstance();
+                if (adapter != null)
+                {
+                    for (int p = 1; p <= 8; p++)
+                    {
+                        try
+                        {
+                            if (adapter.GetButton(name + "_" + p + "P"))
+                                return true;
+                        }
+                        catch { }
+                    }
+                }
+            }
+
+            // Raw Unity fallback for buttons not exposed by InputAdapter.
             if (Input.GetKey((KeyCode)(330 + button))) return true;
             for (int joy = 1; joy <= 8; joy++)
             {
@@ -413,13 +457,55 @@ namespace BomberQoL
             return Input.GetKeyDown(SoftResetKey);
         }
 
+        internal static bool SoftResetDebugHeld()
+        {
+            if (SoftResetButtons == null) return false;
+            for (int i = 0; i < SoftResetButtons.Length; i++)
+            {
+                if (PadButtonHeld(SoftResetButtons[i])) return true;
+            }
+            return false;
+        }
+
+        internal static void LogSoftResetPadState()
+        {
+            string state = "";
+            if (SoftResetButtons != null)
+            {
+                for (int i = 0; i < SoftResetButtons.Length; i++)
+                {
+                    state += SoftResetButtons[i] + "=" +
+                        (PadButtonHeld(SoftResetButtons[i]) ? "1" : "0") + " ";
+                }
+            }
+            InputAdapter adapter =
+                SingletonBaseWithGameObject<InputAdapter>.getInstance();
+            Log.LogInfo("Soft reset pad state: " + state +
+                "(InputAdapter " + (adapter != null ? "ready" : "missing") + ")");
+        }
+
         internal static void DoSoftReset(string source)
         {
             if (SoftResetSave.Value)
                 SceneBase.ResetSaveExecute = true;
             Log.LogInfo("Soft reset via " + source +
                 " (save: " + SoftResetSave.Value + ")");
-            ResetUtility.resetStart();
+            try
+            {
+                ResetUtility.resetStart();
+            }
+            catch (Exception e)
+            {
+                Log.LogWarning("Reset scene failed: " + e.Message);
+                try
+                {
+                    SceneManager.LoadScene("Entry");
+                }
+                catch (Exception e2)
+                {
+                    Log.LogWarning("Entry fallback failed: " + e2.Message);
+                }
+            }
         }
 
         internal static bool SkipPressed(out string source)
@@ -600,6 +686,7 @@ namespace BomberQoL
         private float _lastForce;
         private float _lastSoftReset;
         private float _softResetHeld;
+        private float _lastPadLog;
         private bool _masterForced;
 
         private void Update()
@@ -609,6 +696,13 @@ namespace BomberQoL
                 float hold = Plugin.SoftResetPadHold.Value;
                 if (hold < 0.2f) hold = 0.2f;
                 if (hold > 3f) hold = 3f;
+                if (Plugin.SoftResetDebug.Value &&
+                    Plugin.SoftResetDebugHeld() &&
+                    Time.unscaledTime - _lastPadLog > 1f)
+                {
+                    _lastPadLog = Time.unscaledTime;
+                    Plugin.LogSoftResetPadState();
+                }
                 if (Plugin.SoftResetComboHeld())
                 {
                     _softResetHeld += Time.unscaledDeltaTime;

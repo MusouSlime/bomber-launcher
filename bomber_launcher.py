@@ -423,7 +423,7 @@ class Mods:
                 "SoftResetEnabled": "true",
                 "SoftResetPadCombo": "4,5,7",
                 "SoftResetPadHold": "0.75",
-                "SoftResetKeyEnabled": "false",
+                "SoftResetKeyEnabled": "true",
                 "SoftResetKey": "F10",
                 "SoftResetRequireCtrl": "true",
                 "SoftResetSave": "true",

@@ -86,8 +86,8 @@ combo:
   2=X/Square, 3=Y/Triangle, 4=LB/L1, 5=RB/R1, 6=Back/Share, 7=Start/Options`
 - `SoftResetPadHold = 0.75` seconds (0.2–3.0)
 - `SoftResetSave = true` saves before reloading
-- Optional keyboard fallback: `SoftResetKeyEnabled = true`, `SoftResetKey = F10`,
-  `SoftResetRequireCtrl = true` → `Ctrl+F10`
+- Keyboard shortcut active by default: `SoftResetKeyEnabled = true`,
+  `SoftResetKey = F10`, `SoftResetRequireCtrl = true` → `Ctrl+F10`
 
 The game also has two narrower resets already in the UI: **Retry / Return to
 World Map / Main Menu** in the battle pause menu, and **Restart Story** on the
