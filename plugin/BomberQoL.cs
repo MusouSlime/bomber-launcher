@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.3.3")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.3.4")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -91,8 +91,8 @@ namespace BomberQoL
                 "Log controller button states while the soft-reset combo is held (diagnostics).");
             PracticeMenuKeyName = Config.Bind("Practice", "PracticeMenuKey", "F9",
                 "Key used to open the in-game practice stage selector.");
-            PracticeMenuPadCombo = Config.Bind("Practice", "PracticeMenuPadCombo", "4,5,6",
-                "Controller combo for the practice selector: 4=L1/LB, 5=R1/RB, 6=Select/Back. Default L1+R1+Select.");
+            PracticeMenuPadCombo = Config.Bind("Practice", "PracticeMenuPadCombo", "4,5,2",
+                "Controller combo for the practice selector: 0=A, 1=B, 2=X, 3=Y, 4=L1, 5=R1, 6=Select, 7=Start. Default L1+R1+X; Select is not exposed by this game.");
             PracticeMenuPadHold = Config.Bind("Practice", "PracticeMenuPadHold", 0.6f,
                 "Seconds the practice-selector combo must be held (0.2 - 3.0).");
             PracticeMenuDebug = Config.Bind("Practice", "PracticeMenuDebug", false,
@@ -155,8 +155,8 @@ namespace BomberQoL
             PracticeMenuPadButtons = ParseSoftResetButtons(PracticeMenuPadCombo.Value);
             if (PracticeMenuPadButtons.Length == 0)
             {
-                PracticeMenuPadButtons = new[] { 4, 5, 6 };
-                Log.LogWarning("Invalid PracticeMenuPadCombo; using 4,5,6 (L1+R1+Select).");
+                PracticeMenuPadButtons = new[] { 4, 5, 2 };
+                Log.LogWarning("Invalid PracticeMenuPadCombo; using 4,5,2 (L1+R1+X).");
             }
             string combo = "";
             for (int i = 0; i < PracticeMenuPadButtons.Length; i++)
@@ -165,7 +165,7 @@ namespace BomberQoL
                 combo += PracticeMenuPadButtons[i];
             }
             Log.LogInfo("Practice combo: " + combo +
-                " hold " + PracticeMenuPadHold.Value + "s");
+                " hold " + PracticeMenuPadHold.Value + "s (buttons 4=L1,5=R1,2=X)");
 
             var harmony = new Harmony(GUID);
             harmony.PatchAll(typeof(PostFxPatch));

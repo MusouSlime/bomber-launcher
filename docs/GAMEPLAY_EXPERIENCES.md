@@ -79,7 +79,7 @@ Plugin 0.3.0 adds an in-game **F9** overlay for practicing any story stage.
 Choose world 1–7, stage 1–10 and Easy/Normal/Hard/Master, then **Start
 Practice**.
 
-- **F9** or **L1 + R1 + Select** (hold 0.6 s) opens/closes the picker.
+- **F9** or **L1 + R1 + X** (hold 0.6 s) opens/closes the picker.
 - Arrow keys or D-pad move between World, Stage and Difficulty and change the
   selected value.
 - **Enter / A** starts practice; **B / Esc** closes.
@@ -94,8 +94,9 @@ Practice**.
   `startSaveAll`, so practice does not overwrite the real story save.
 
 `[Practice] PracticeMenuKey = F9` changes the keyboard key;
-`PracticeMenuPadCombo = 4,5,6` and `PracticeMenuPadHold = 0.6` control the
-controller combo (4=L1, 5=R1, 6=Select).
+`PracticeMenuPadCombo = 4,5,2` and `PracticeMenuPadHold = 0.6` control the
+controller combo (4=L1, 5=R1, 2=X). Select is not exposed by the game, so it
+cannot be used here.
 
 ## Soft reset
 
