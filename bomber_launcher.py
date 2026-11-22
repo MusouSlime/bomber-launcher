@@ -704,13 +704,22 @@ class BomberWindow(Adw.ApplicationWindow):
         # ----- audio
         page.append(self._section("audio"))
         audio = self._card()
+        self._bgm_chooser = None
+        self._sfx_chooser = None
         self.bgm_btn = Gtk.Button(label="Choose…")
         self.bgm_btn.set_valign(Gtk.Align.CENTER)
         self.bgm_btn.connect("clicked", self.on_bgm_folder)
+        self.bgm_clear = Gtk.Button(label="Clear")
+        self.bgm_clear.add_css_class("flat")
+        self.bgm_clear.set_valign(Gtk.Align.CENTER)
+        self.bgm_clear.connect("clicked", self.on_bgm_clear)
+        bgm_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        bgm_box.append(self.bgm_btn)
+        bgm_box.append(self.bgm_clear)
         audio.append(self._row(
             "avatar_white.png", "Custom BGM Folder",
             "Folder of .ogg/.wav/.mp3 tracks; empty keeps the original BGM",
-            self.bgm_btn))
+            bgm_box))
         audio.append(self._separator())
 
         self.bgm_shuffle_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
@@ -724,10 +733,17 @@ class BomberWindow(Adw.ApplicationWindow):
         self.sfx_btn = Gtk.Button(label="Choose…")
         self.sfx_btn.set_valign(Gtk.Align.CENTER)
         self.sfx_btn.connect("clicked", self.on_sfx_folder)
+        self.sfx_clear = Gtk.Button(label="Clear")
+        self.sfx_clear.add_css_class("flat")
+        self.sfx_clear.set_valign(Gtk.Align.CENTER)
+        self.sfx_clear.connect("clicked", self.on_sfx_clear)
+        sfx_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        sfx_box.append(self.sfx_btn)
+        sfx_box.append(self.sfx_clear)
         audio.append(self._row(
             "avatar_pink.png", "Custom SFX Folder",
             "Files named <label>.ogg or <label>_N.ogg; empty keeps original SFX",
-            self.sfx_btn))
+            sfx_box))
         audio.append(self._separator())
 
         self.sfx_shuffle_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
@@ -1080,10 +1096,7 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Gameplay", {}).get("UnlockMaster", "false").lower() == "true")
                     self.softreset_sw.set_active(
                         cfg.get("Gameplay", {}).get("SoftResetEnabled", "true").lower() == "true")
-                    bgm = cfg.get("Audio", {}).get("CustomBgmFolder", "").strip()
-                    self.bgm_btn.set_tooltip_text(bgm or "No custom BGM folder")
-                    sfx = cfg.get("Audio", {}).get("CustomSfxFolder", "").strip()
-                    self.sfx_btn.set_tooltip_text(sfx or "No custom SFX folder")
+                    self._update_audio_labels()
                     self.bgm_shuffle_sw.set_active(
                         cfg.get("Audio", {}).get("CustomBgmShuffle", "true").lower() == "true")
                     self.sfx_shuffle_sw.set_active(
@@ -1165,18 +1178,59 @@ class BomberWindow(Adw.ApplicationWindow):
         self.cfg["borderless"] = row.get_active()
         save_config(self.cfg)
 
+    def _audio_folder(self, key):
+        if not self.mods:
+            return ""
+        try:
+            return (self.mods.plugin_config().get("Audio", {})
+                    .get(key, "") or "").strip()
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _set_folder_button(btn, clear, path):
+        if path:
+            name = Path(path).name or path
+            btn.set_label(name[:28] + ("…" if len(name) > 28 else ""))
+            btn.set_tooltip_text(path)
+            clear.set_sensitive(True)
+        else:
+            btn.set_label("Choose…")
+            btn.set_tooltip_text("No folder selected")
+            clear.set_sensitive(False)
+
+    def _update_audio_labels(self):
+        self._set_folder_button(
+            self.bgm_btn, self.bgm_clear,
+            self._audio_folder("CustomBgmFolder"))
+        self._set_folder_button(
+            self.sfx_btn, self.sfx_clear,
+            self._audio_folder("CustomSfxFolder"))
+
+    def _open_folder_chooser(self, title, current, callback):
+        chooser = Gtk.FileChooserNative(
+            title=title, transient_for=self,
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+            accept_label="Choose", cancel_label="Cancel")
+        if current and Path(current).is_dir():
+            try:
+                chooser.set_current_folder(Gio.File.new_for_path(current))
+            except Exception:
+                pass
+        chooser.connect("response", callback)
+        chooser.show()
+        return chooser
+
     def on_bgm_folder(self, _btn):
         if not self.mods or not self.mods.plugin_installed():
             self.toast("BomberQoL plugin not installed")
             return
-        chooser = Gtk.FileChooserNative(
-            title="Custom BGM folder", transient_for=self,
-            action=Gtk.FileChooserAction.SELECT_FOLDER,
-            accept_label="Choose", cancel_label="Cancel")
-        chooser.connect("response", self._bgm_folder_response)
-        chooser.show()
+        self._bgm_chooser = self._open_folder_chooser(
+            "Custom BGM folder", self._audio_folder("CustomBgmFolder"),
+            self._bgm_folder_response)
 
     def _bgm_folder_response(self, chooser, response):
+        self._bgm_chooser = None
         if response == Gtk.ResponseType.ACCEPT:
             f = chooser.get_file()
             path = f.get_path() if f else None
@@ -1184,24 +1238,33 @@ class BomberWindow(Adw.ApplicationWindow):
                 try:
                     self.mods.set_plugin_value(
                         "Audio", "CustomBgmFolder", path)
-                    self.bgm_btn.set_tooltip_text(path)
+                    self._update_audio_labels()
                     self.toast(f"Custom BGM folder: {path}")
                 except Exception as e:
                     self.toast(str(e))
         chooser.destroy()
 
+    def on_bgm_clear(self, _btn):
+        if not self.mods or not self.mods.plugin_installed():
+            self.toast("BomberQoL plugin not installed")
+            return
+        try:
+            self.mods.set_plugin_value("Audio", "CustomBgmFolder", "")
+            self._update_audio_labels()
+            self.toast("Custom BGM folder cleared")
+        except Exception as e:
+            self.toast(str(e))
+
     def on_sfx_folder(self, _btn):
         if not self.mods or not self.mods.plugin_installed():
             self.toast("BomberQoL plugin not installed")
             return
-        chooser = Gtk.FileChooserNative(
-            title="Custom SFX folder", transient_for=self,
-            action=Gtk.FileChooserAction.SELECT_FOLDER,
-            accept_label="Choose", cancel_label="Cancel")
-        chooser.connect("response", self._sfx_folder_response)
-        chooser.show()
+        self._sfx_chooser = self._open_folder_chooser(
+            "Custom SFX folder", self._audio_folder("CustomSfxFolder"),
+            self._sfx_folder_response)
 
     def _sfx_folder_response(self, chooser, response):
+        self._sfx_chooser = None
         if response == Gtk.ResponseType.ACCEPT:
             f = chooser.get_file()
             path = f.get_path() if f else None
@@ -1209,11 +1272,22 @@ class BomberWindow(Adw.ApplicationWindow):
                 try:
                     self.mods.set_plugin_value(
                         "Audio", "CustomSfxFolder", path)
-                    self.sfx_btn.set_tooltip_text(path)
+                    self._update_audio_labels()
                     self.toast(f"Custom SFX folder: {path}")
                 except Exception as e:
                     self.toast(str(e))
         chooser.destroy()
+
+    def on_sfx_clear(self, _btn):
+        if not self.mods or not self.mods.plugin_installed():
+            self.toast("BomberQoL plugin not installed")
+            return
+        try:
+            self.mods.set_plugin_value("Audio", "CustomSfxFolder", "")
+            self._update_audio_labels()
+            self.toast("Custom SFX folder cleared")
+        except Exception as e:
+            self.toast(str(e))
 
     def on_random_chars(self, row, _pspec):
         self._plugin_write("Randomizer", "RandomStoryCharacters", row.get_active())

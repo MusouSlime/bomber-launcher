@@ -272,9 +272,10 @@ Seed = 0
 SkipCharacterSelect = true
 RandomPickups = true
 RandomPickupCount = 10
-RandomPickupPool = Expanded
+RandomPickupPool = Difficulty
 HidePickupIcons = true
 PickupToast = true
+ResetStatsPerStage = true
 ```
 
 - **RandomStoryCharacters** — a prefix on `StageSetupUI.init` picks random
@@ -299,15 +300,55 @@ PickupToast = true
 - **Random pickups** — `RandomPickups` moves map-fixed powerups (except keys and
   crystals) into random breakable blocks and sets `RandomPickupCount` random
   items per stage. `RandomPickupPool` controls the weighted pool:
-  `Vanilla`, `Expanded` (all positive items), or `Chaos` (adds rare negative
-  items). `HidePickupIcons` replaces the world icon with a question mark until
-  it is collected, and `PickupToast` shows the collected item's localized name
-  above P1. All of this runs through the real `ItemController`/`Player.addItem`
-  path, so achievements and counters still come from actual pickups.
+  `Vanilla`, `Expanded` (all positive items), `Chaos` (fixed rare negatives),
+  or `Difficulty` (default). `Difficulty` maps the run difficulty to negative
+  item odds: Beginner 0%, Veteran 25%, Expert 50%, Master 50%. On Master,
+  `[Gameplay] MasterStatReset` also resets starting stats. `HidePickupIcons`
+  replaces the world model with a small neutral blank pickup until it is
+  collected, and `PickupToast` shows the collected item's localized name above
+  P1. All of this runs through the real `ItemController`/`Player.addItem` path,
+  so achievements and counters still come from actual pickups.
+- **Stats per stage** — `ResetStatsPerStage` re-applies the selected stats preset
+  at the start of every stage. `Random` re-rolls, while Save keeps the current
+  stats. `MasterStatReset` forces a default reset on Master.
+- **Practice tab** — the F9 menu starts on Beginner and has Practice/Randomizer
+  tabs. Practice selects world and stage directly, always resets to default
+  stats, keeps the normal character-select screen (it never randomizes
+  characters), and can **Repeat stage when cleared**. `[Practice] RepeatStage`
+  stores the toggle.
+- **F9 toggles** — the Randomizer tab toggles random pickups, blank icons,
+  pickup-name popups, difficulty-based odds, random characters, random move
+  sets, character-select skip, per-stage stat reset, Master stat reset, and gem
+  continue skip. Toggles write the matching BepInEx config values. Character
+  randomization is opt-in through the **Random characters** toggle; Practice
+  never uses it.
 
 Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random move sets,
 practice stage jumps and no real-save writes.
+
+## Story game over
+
+```ini
+[Gameplay]
+SkipGemContinue = true
+MasterStatReset = true
+```
+
+When all player lives are gone, the story battle normally opens the gem
+continue/retry dialog. With `SkipGemContinue`, the dialog is skipped and the
+scene interrupts to `MainMenu` instead. The death text and jingle still play.
+Set it to `false` to keep the normal gem retry flow.
+
+## Launcher audio folders
+
+The **Custom BGM Folder** and **Custom SFX Folder** rows show the selected
+folder name, keep the full path in the tooltip, and include a **Clear** button.
+The folder chooser opens at the current folder. Linux/GTK keeps a strong
+reference to the native chooser so it cannot be garbage-collected before the
+response arrives. The plugin retries audio decoding without a forced stream
+type, which helps with some MP3/VBR files; `.ogg` and `.wav` remain the most
+reliable formats.
 
 ## Bot AI tuning
 

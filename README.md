@@ -107,17 +107,26 @@ The plugin adds:
   matched by label (`BGM_sys_title_01.ogg`, `snd_bgm_btl_stg_01.wav`, …);
   `CustomBgmShuffle` randomizes unmatched tracks. SFX files are matched by
   sound label (`SE_btl_cmn_08.ogg`, or variants `SE_btl_cmn_08_1.ogg`);
-  `CustomSfxShuffle` randomizes variants. Config lives under `[Audio]`.
+  `CustomSfxShuffle` randomizes variants. The folder rows show the selected
+  folder name and include a **Clear** action. Config lives under `[Audio]`.
 - **Randomizer** — **Random Story Characters** rerolls the character select at
   every `StageSetup`; **Random Move Sets** shuffles the normal/special skill
   fields on every character status entry once per launch. A fixed seed lives in
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
-  into battle when random characters or a random run is active. The F9 practice
-  picker is a full **Random Run**: 10 random non-boss stages, then a random
-  undefeated boss; repeat until all 13 boss battles are beaten, with world 7's
-  final boss last. During a run, fixed powerups are moved into random breakable
-  blocks, the normal pickup pool is expanded, item icons show `?` until
-  collected, and the collected item's name pops up above the player.
+  into battle when random characters or a random run is active. The F9 menu has
+  **Practice** and **Randomizer** tabs, starts on **Beginner**, and exposes the
+  run settings as toggles. Practice has world/stage select, always starts with
+  default stats, keeps the normal character-select screen, and has an optional
+  **Repeat stage when cleared** switch. Randomizer is a full **Random Run**:
+  10 random non-boss stages, then a random undefeated boss; repeat until all 13
+  boss battles are beaten, with world 7's final boss last. During a run, fixed
+  powerups are moved into random breakable blocks, pickup odds follow the
+  difficulty (Beginner all positive, Veteran 25% negative, Expert 50/50, Master
+  50/50 plus a stat reset), hidden pickups use a neutral blank icon, and the
+  collected item's name pops up above the player. Character randomization only
+  happens when **Random characters** is enabled in the Randomizer tab.
+- **Game-over continue** — story game over skips the gem continue/retry dialog
+  and returns to the main menu. Config: `[Gameplay] SkipGemContinue`.
 - **Smarter Bots** — raises local-battle NPC search range to at least 10 tiles
   and caps tactical-target re-evaluation at 0.25 s. This is a real AI parameter
   change, not a stat or achievement shortcut.

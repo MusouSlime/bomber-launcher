@@ -20,10 +20,11 @@ namespace BomberQoL
     {
         Vanilla,
         Expanded,
-        Chaos
+        Chaos,
+        Difficulty
     }
 
-    [BepInPlugin(GUID, "Bomber QoL", "0.6.5")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.6")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -72,6 +73,10 @@ namespace BomberQoL
         internal static ConfigEntry<bool> SkipCharacterSelect;
         internal static ConfigEntry<bool> UnlockRoomAchievements;
         internal static ConfigEntry<bool> SmarterBots;
+        internal static ConfigEntry<bool> SkipGemContinue;
+        internal static ConfigEntry<bool> MasterStatReset;
+        internal static ConfigEntry<bool> ResetStatsPerStage;
+        internal static ConfigEntry<bool> PracticeRepeatStage;
         internal static ConfigEntry<bool> RandomPickups;
         internal static ConfigEntry<int> RandomPickupCount;
         internal static ConfigEntry<PickupPoolMode> RandomPickupPool;
@@ -182,14 +187,22 @@ namespace BomberQoL
                 "One-shot: call TrophyManager.FuncCreateRoom 100x on the next launch to unlock Room Creator/Master/Champ.");
             SmarterBots = Config.Bind("Bots", "SmarterBots", false,
                 "Increase NPC search range and target re-evaluation speed for local battle bots.");
+            SkipGemContinue = Config.Bind("Gameplay", "SkipGemContinue", true,
+                "On story game over, skip the gem continue dialog and return to the main menu.");
+            MasterStatReset = Config.Bind("Gameplay", "MasterStatReset", true,
+                "On Master difficulty, reset the run to default starting stats.");
+            ResetStatsPerStage = Config.Bind("Randomizer", "ResetStatsPerStage", true,
+                "Apply the selected stats preset again at the start of every stage.");
+            PracticeRepeatStage = Config.Bind("Practice", "RepeatStage", false,
+                "In practice mode, restart the same stage after it is cleared.");
             RandomPickups = Config.Bind("Randomizer", "RandomPickups", true,
                 "During a Random Run, move fixed map pickups into random breakable blocks and add extra random pickups.");
             RandomPickupCount = Config.Bind("Randomizer", "RandomPickupCount", 10,
                 "Random Run pickups hidden in blocks per stage (0 = keep the map's vanilla count).");
-            RandomPickupPool = Config.Bind("Randomizer", "RandomPickupPool", PickupPoolMode.Expanded,
-                "Random Run pickup pool: Vanilla, Expanded (all positive items), or Chaos (adds rare negative items).");
+            RandomPickupPool = Config.Bind("Randomizer", "RandomPickupPool", PickupPoolMode.Difficulty,
+                "Random Run pickup pool: Vanilla, Expanded, Chaos, or Difficulty (Beginner all positive, Veteran mixed, Expert 50/50, Master 50/50 + stat reset).");
             HidePickupIcons = Config.Bind("Randomizer", "HidePickupIcons", true,
-                "During a Random Run, show a question mark instead of the pickup's real icon until it is collected.");
+                "During a Random Run, show a blank pickup instead of the real item icon until it is collected.");
             PickupToast = Config.Bind("Randomizer", "PickupToast", true,
                 "During a Random Run, show the collected pickup's name above the player.");
             FastResults = Config.Bind("Results", "FastResults", false,
@@ -285,6 +298,8 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PickupMapPatch));
             harmony.PatchAll(typeof(PickupIconPatch));
             harmony.PatchAll(typeof(PickupToastPatch));
+            harmony.PatchAll(typeof(GemContinuePatch));
+            harmony.PatchAll(typeof(PracticeStatsPatch));
 
             Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
             MethodInfo logoExec = logoType == null ? null :
@@ -1070,11 +1085,18 @@ namespace BomberQoL
                     _ids.Remove(id);
                     yield break;
                 }
-                clip = www.GetAudioClip(false, true, AudioTypeFor(file));
+                clip = www.GetAudioClip(false, false, AudioTypeFor(file));
+                if (clip == null)
+                    clip = www.GetAudioClip(false, true, AudioTypeFor(file));
+                if (clip == null)
+                    clip = www.GetAudioClip(false, false);
+                if (clip == null)
+                    clip = www.GetAudioClip(false, true);
                 www.Dispose();
                 if (clip == null)
                 {
-                    Plugin.Log.LogWarning("Custom SFX decode failed: " + file);
+                    Plugin.Log.LogWarning("Custom SFX decode failed: " + file +
+                        " (try .ogg or .wav if this is an .mp3)");
                     _ids.Remove(id);
                     yield break;
                 }
@@ -1344,12 +1366,19 @@ namespace BomberQoL
                 Fallback();
                 yield break;
             }
-            AudioClip clip = www.GetAudioClip(false, true,
+            AudioClip clip = www.GetAudioClip(false, false,
                 AudioTypeFor(file));
+            if (clip == null)
+                clip = www.GetAudioClip(false, true, AudioTypeFor(file));
+            if (clip == null)
+                clip = www.GetAudioClip(false, false);
+            if (clip == null)
+                clip = www.GetAudioClip(false, true);
             www.Dispose();
             if (clip == null)
             {
-                Plugin.Log.LogWarning("Custom BGM decode failed: " + file);
+                Plugin.Log.LogWarning("Custom BGM decode failed: " + file +
+                    " (try .ogg or .wav if this is an .mp3)");
                 _loading = null;
                 Fallback();
                 yield break;
@@ -1529,8 +1558,10 @@ namespace BomberQoL
 
         internal static void RandomizeCharacters()
         {
-            if (!Plugin.RandomStoryCharacters.Value && !RandomRun.Active)
-                return;
+            if (!Plugin.RandomStoryCharacters.Value) return;
+            // Practice uses the normal character-select flow. Only a Random
+            // Run or normal story mode may randomize characters.
+            if (Practice.Active && !RandomRun.Active) return;
             SaveDataManager sd =
                 SingletonBaseWithGameObject<SaveDataManager>.getInstance();
             CharacterDataManager cd =
@@ -1637,10 +1668,15 @@ namespace BomberQoL
 
         private static Font _font;
         private static bool _fontTried;
+        private static Sprite _blankSprite;
 
         internal static bool Active
         {
-            get { return RandomRun.Active && Plugin.RandomPickups.Value; }
+            get
+            {
+                return (RandomRun.Active || Practice.Active) &&
+                    Plugin.RandomPickups.Value;
+            }
         }
 
         internal static Font UiFont
@@ -1686,12 +1722,45 @@ namespace BomberQoL
             catch { return null; }
         }
 
-        internal static string QuestionMark
+        private static Sprite BlankSprite
         {
             get
             {
-                string s = LocaleText(LocaleDef.COMMON.ITEM_QUESTIONMARK);
-                return string.IsNullOrEmpty(s) ? "?" : s;
+                if (_blankSprite != null) return _blankSprite;
+                const int size = 64;
+                Texture2D tex = new Texture2D(size, size,
+                    TextureFormat.ARGB32, false);
+                tex.filterMode = FilterMode.Bilinear;
+                tex.wrapMode = TextureWrapMode.Clamp;
+                Color edge = new Color(1f, 0.82f, 0.35f, 1f);
+                Color center = new Color(1f, 0.98f, 0.88f, 1f);
+                float radius = size * 0.46f;
+                float mid = (size - 1) * 0.5f;
+                for (int y = 0; y < size; y++)
+                {
+                    for (int x = 0; x < size; x++)
+                    {
+                        float dx = x - mid;
+                        float dy = y - mid;
+                        float d = Mathf.Sqrt(dx * dx + dy * dy);
+                        float a = Mathf.Clamp01((radius - d) / 3f);
+                        Color col = new Color(0f, 0f, 0f, 0f);
+                        if (a > 0f)
+                        {
+                            float t = Mathf.Clamp01(
+                                (radius - d) / (radius * 0.45f));
+                            col = Color.Lerp(edge, center, t);
+                            col.a = a;
+                        }
+                        tex.SetPixel(x, y, col);
+                    }
+                }
+                tex.Apply();
+                _blankSprite = Sprite.Create(tex,
+                    new Rect(0f, 0f, size, size),
+                    new Vector2(0.5f, 0.5f), size);
+                _blankSprite.name = "BomberQoL_BlankPickup";
+                return _blankSprite;
             }
         }
 
@@ -1757,7 +1826,32 @@ namespace BomberQoL
             }
         }
 
-        private static uint Weight(PickupPoolMode pool, int type)
+        private static uint PositiveWeight(int type)
+        {
+            if (type == 1 || type == 4 || type == 6) return 12;
+            if (type == 8 || type == 9 || type == 10) return 6;
+            if (type == 3 || type == 12 || type == 14) return 3;
+            return 0;
+        }
+
+        private static uint DifficultyWeight(int type, float negativeChance)
+        {
+            uint positive = PositiveWeight(type);
+            if (positive > 0) return positive;
+            if (negativeChance <= 0f) return 0;
+            // Positive weight total is 3*12 + 3*6 + 3*3 = 63.
+            uint negativeTotal = (uint)Mathf.Round(63f * negativeChance /
+                Mathf.Max(0.01f, 1f - negativeChance));
+            if (negativeTotal <= 0) return 0;
+            uint down = (uint)Mathf.Round(negativeTotal / 3.5f);
+            if (down < 1) down = 1;
+            if (type == 2 || type == 5 || type == 7) return down;
+            if (type == 13) return (uint)Mathf.Max(1, (int)down / 2);
+            return 0;
+        }
+
+        private static uint Weight(PickupPoolMode pool, int type,
+            float negativeChance)
         {
             if (pool == PickupPoolMode.Chaos)
             {
@@ -1768,14 +1862,15 @@ namespace BomberQoL
                 if (type == 13) return 1;
                 return 0;
             }
-            if (type == 1 || type == 4 || type == 6) return 12;
-            if (type == 8 || type == 9 || type == 10) return 6;
-            if (type == 3 || type == 12 || type == 14) return 3;
+            if (pool == PickupPoolMode.Expanded)
+                return PositiveWeight(type);
+            if (pool == PickupPoolMode.Difficulty)
+                return DifficultyWeight(type, negativeChance);
             return 0;
         }
 
         private static void ExpandPool(AbstractBattleSceneBase scene,
-            ItemController.ItemInfoTable infos)
+            ItemController.ItemInfoTable infos, float negativeChance)
         {
             ResourceManager rm =
                 SingletonBaseWithGameObject<ResourceManager>.getInstance();
@@ -1800,9 +1895,29 @@ namespace BomberQoL
                     info = new ItemController.ItemInfo(item.itemType,
                         item.isPositive, prefab, 0);
                 }
-                info.appearanceRatioWeight = Weight(pool, type);
+                info.appearanceRatioWeight =
+                    Weight(pool, type, negativeChance);
                 infos[type] = info;
             }
+        }
+
+        private static string CurrentDifficulty()
+        {
+            StoryManager story = SingletonBase<StoryManager>.getInstance();
+            if (story == null) return "normal";
+            DifficultyDataTable.DifficultyData diff = story.curDifficultyData;
+            if (diff == null || string.IsNullOrEmpty(diff.difficultyName))
+                return "normal";
+            return diff.difficultyName.ToLowerInvariant();
+        }
+
+        private static float NegativeChance(string difficulty)
+        {
+            if (difficulty == "easy") return 0f;
+            if (difficulty == "normal") return 0.25f;
+            if (difficulty == "hard") return 0.5f;
+            if (difficulty == "super") return 0.5f;
+            return 0.25f;
         }
 
         internal static void OnMapLoaded(AbstractBattleSceneBase scene)
@@ -1810,11 +1925,13 @@ namespace BomberQoL
             if (!Active || scene == null) return;
             RuntimeMapData map = MapDataField.GetValue(scene) as RuntimeMapData;
             if (map == null) return;
+            string difficulty = CurrentDifficulty();
+            float negativeChance = NegativeChance(difficulty);
             ItemController.ItemInfoTable infos =
                 ItemInfosField.GetValue(scene) as ItemController.ItemInfoTable;
             if (infos != null &&
                 Plugin.RandomPickupPool.Value != PickupPoolMode.Vanilla)
-                ExpandPool(scene, infos);
+                ExpandPool(scene, infos, negativeChance);
 
             int cleared = 0;
             RuntimeMapData.BlockData[] blocks = map.blocks;
@@ -1841,7 +1958,9 @@ namespace BomberQoL
             Plugin.Log.LogInfo("Randomizer: pickups " + count +
                 " in random blocks" +
                 (cleared > 0 ? ", replaced " + cleared + " fixed" : "") +
-                ", pool " + Plugin.RandomPickupPool.Value);
+                ", pool " + Plugin.RandomPickupPool.Value +
+                ", difficulty " + difficulty +
+                ", negative chance " + negativeChance.ToString("P0"));
         }
 
         internal static void OnItemModelActive(Item.Model model)
@@ -1855,8 +1974,8 @@ namespace BomberQoL
 
         private static void InstallMark(GameObject modelGo)
         {
-            Font font = UiFont;
-            if (font == null) return;
+            Sprite sprite = BlankSprite;
+            if (sprite == null) return;
             Transform existing = modelGo.transform.Find(MarkName);
             if (existing == null)
             {
@@ -1864,17 +1983,11 @@ namespace BomberQoL
                 mark.transform.SetParent(modelGo.transform, false);
                 mark.transform.localPosition = new Vector3(0f, 0.55f, 0f);
                 mark.transform.localRotation = Quaternion.identity;
-                TextMesh tm = mark.AddComponent<TextMesh>();
-                tm.text = QuestionMark;
-                tm.font = font;
-                tm.fontSize = 64;
-                tm.characterSize = 0.32f;
-                tm.anchor = TextAnchor.MiddleCenter;
-                tm.alignment = TextAlignment.Center;
-                tm.color = new Color(1f, 0.94f, 0.45f, 1f);
-                MeshRenderer mr = mark.GetComponent<MeshRenderer>();
-                if (mr != null && tm.font != null)
-                    mr.sharedMaterial = tm.font.material;
+                mark.transform.localScale = Vector3.one * 0.42f;
+                SpriteRenderer sr = mark.AddComponent<SpriteRenderer>();
+                sr.sprite = sprite;
+                sr.color = Color.white;
+                sr.sortingOrder = 20;
                 mark.AddComponent<PickupBillboard>();
                 existing = mark.transform;
             }
@@ -1974,7 +2087,9 @@ namespace BomberQoL
         private static void Postfix(StageSetupUI __instance)
         {
             if (!Plugin.SkipCharacterSelect.Value) return;
-            if (!Plugin.RandomStoryCharacters.Value && !RandomRun.Active)
+            // Practice keeps the normal character-select screen.
+            if (Practice.Active && !RandomRun.Active) return;
+            if (!RandomRun.Active && !Plugin.RandomStoryCharacters.Value)
                 return;
             __instance.StartCoroutine(AutoStart(__instance));
         }
@@ -2131,6 +2246,9 @@ namespace BomberQoL
                 return;
             }
             story.setWorldId(pick.world, flowId - 1);
+            Practice.CurrentWorld = pick.world;
+            Practice.CurrentStage = pick.stage;
+            Practice.CurrentFlowId = flowId;
             Plugin.Log.LogInfo("Random run: normal " + _cleared +
                 "/10 -> world " + pick.world + " stage " + pick.stage);
         }
@@ -2162,6 +2280,9 @@ namespace BomberQoL
                 return;
             }
             story.setWorldId(pick.world, flowId - 1);
+            Practice.CurrentWorld = pick.world;
+            Practice.CurrentStage = pick.stage;
+            Practice.CurrentFlowId = flowId;
             Plugin.Log.LogInfo("Random run: boss " +
                 (BossesDefeated.Count + 1) + "/" + _bossTotal +
                 " -> world " + pick.world + " stage " + pick.stage);
@@ -2207,16 +2328,22 @@ namespace BomberQoL
         private static void Prefix(GameSceneManager gsMgr, StoryManager strMgr,
             bool incStoryFlow)
         {
-            if (!RandomRun.Active || !incStoryFlow) return;
+            if (!incStoryFlow) return;
             if (gsMgr == null || strMgr == null) return;
             string scene = gsMgr.mainSceneName;
             if (scene != "StoryBattle" &&
                 gsMgr.prevSceneName != "StoryBattle")
             {
-                Plugin.Log.LogInfo("Random run: not advancing from scene '" +
-                    scene + "' (prev '" + gsMgr.prevSceneName + "')");
+                if (RandomRun.Active || Practice.Active)
+                    Plugin.Log.LogInfo("Practice: not advancing from scene '" +
+                        scene + "' (prev '" + gsMgr.prevSceneName + "')");
                 return;
             }
+            if (Practice.Active && Practice.RepeatStage)
+            {
+                if (Practice.RepeatCurrentStage()) return;
+            }
+            if (!RandomRun.Active) return;
             Plugin.Log.LogInfo("Random run: advancing after battle (" +
                 scene + ")");
             RandomRun.SelectNext(strMgr);
@@ -2252,24 +2379,70 @@ namespace BomberQoL
         }
     }
 
+    [HarmonyPatch(typeof(StoryBattleUI), "openContinueDialog")]
+    internal static class GemContinuePatch
+    {
+        private static readonly FieldInfo SceneField =
+            AccessTools.Field(typeof(StoryBattleUI), "_scene");
+
+        private static bool Prefix(StoryBattleUI __instance)
+        {
+            if (!Plugin.SkipGemContinue.Value) return true;
+            StoryBattleScene scene =
+                SceneField.GetValue(__instance) as StoryBattleScene;
+            if (scene == null) return true;
+            if (scene.interrupt("MainMenu", false))
+            {
+                Plugin.Log.LogInfo(
+                    "Story: game over -> MainMenu (gem continue skipped)");
+                return false;
+            }
+            return true;
+        }
+    }
+
     internal static class Practice
     {
         internal static bool Active;
+        internal static bool RepeatStage;
+        internal static int RunStatsMode = 4;
+        internal static string RunDifficulty = "easy";
+        internal static int CurrentWorld = 1;
+        internal static int CurrentStage = 1;
+        internal static int CurrentFlowId = 1;
+
+        private static int _lastStatsKey = int.MinValue;
+        private static bool _statsApplied;
 
         internal static void OnSceneLoaded(Scene scene)
         {
             if (scene.name == "Title" || scene.name == "MainMenu")
+            {
                 Active = false;
+                RepeatStage = false;
+            }
         }
 
         private static readonly int[] StatIndices = { 1, 4, 6, 8, 9, 10, 11, 12, 14 };
         private static readonly int[] MaxStats = { 5, 5, 4, 1, 1, 1, 1, 1, 1 };
 
-        private static void ApplyStats(SaveDataManager sd, int mode)
+        private static void ApplyStats(SaveDataManager.StoryData storyData,
+            int mode, string difficulty)
         {
-            if (sd == null || sd.storyData == null || mode == 0) return;
-            sd.storyData.resetStoryPlayParams();
-            if (mode == 1) return;
+            if (storyData == null) return;
+            if (difficulty == "super" && Plugin.MasterStatReset.Value)
+            {
+                storyData.resetStoryPlayParams();
+                Plugin.Log.LogInfo("Practice stats reset for Master");
+                return;
+            }
+            if (mode == 0) return;
+            storyData.resetStoryPlayParams();
+            if (mode == 1)
+            {
+                Plugin.Log.LogInfo("Practice stats mode: default");
+                return;
+            }
 
             int[] values;
             if (mode == 2)
@@ -2301,9 +2474,9 @@ namespace BomberQoL
                 };
             }
 
-            for (int c = 0; c < sd.storyData.characterDatas.Length; c++)
+            for (int c = 0; c < storyData.characterDatas.Length; c++)
             {
-                byte[] items = sd.storyData.characterDatas[c].items;
+                byte[] items = storyData.characterDatas[c].items;
                 if (items == null) continue;
                 for (int i = 0; i < StatIndices.Length; i++)
                 {
@@ -2319,23 +2492,68 @@ namespace BomberQoL
                 (mode == 2 ? "max" : mode == 4 ? "random" : "custom"));
         }
 
+        internal static void ApplyRunStats(SaveDataManager.StoryData storyData)
+        {
+            if (storyData == null) return;
+            if (!RandomRun.Active && !Active) return;
+            bool perStage = Plugin.ResetStatsPerStage.Value ||
+                !RandomRun.Active;
+            int key = CurrentWorld * 1000 + CurrentStage;
+            if (perStage && key != _lastStatsKey)
+            {
+                _lastStatsKey = key;
+                _statsApplied = false;
+            }
+            if (_statsApplied) return;
+            _statsApplied = true;
+            ApplyStats(storyData, RunStatsMode, RunDifficulty);
+        }
+
         internal static bool StartRandomRun(string difficulty, int statsMode)
         {
             RandomRun.Begin();
+            RunDifficulty = difficulty;
+            RunStatsMode = statsMode;
+            RepeatStage = false;
+            _lastStatsKey = int.MinValue;
+            _statsApplied = false;
             for (int attempt = 0; attempt < 30; attempt++)
             {
                 int world;
                 int stage;
                 if (!RandomRun.FirstNormal(out world, out stage)) break;
-                if (Start(world, stage, difficulty, statsMode))
+                if (Start(world, stage, difficulty))
                     return true;
             }
             RandomRun.Cancel();
             return false;
         }
 
-        internal static bool Start(int world, int stage, string difficulty,
-            int statsMode)
+        internal static bool StartPractice(int world, int stage,
+            string difficulty, bool repeat)
+        {
+            RandomRun.Cancel();
+            RunDifficulty = difficulty;
+            RunStatsMode = 1; // practice always starts from default stats
+            RepeatStage = repeat;
+            _lastStatsKey = int.MinValue;
+            _statsApplied = false;
+            return Start(world, stage, difficulty);
+        }
+
+        internal static bool RepeatCurrentStage()
+        {
+            if (!Active || !RepeatStage) return false;
+            StoryManager story = SingletonBase<StoryManager>.getInstance();
+            if (story == null) return false;
+            story.setWorldId(CurrentWorld, CurrentFlowId - 1);
+            _statsApplied = false;
+            Plugin.Log.LogInfo("Practice: repeating world " + CurrentWorld +
+                " stage " + CurrentStage);
+            return true;
+        }
+
+        internal static bool Start(int world, int stage, string difficulty)
         {
             StoryManager story = SingletonBase<StoryManager>.getInstance();
             GameSceneManager gs =
@@ -2387,29 +2605,49 @@ namespace BomberQoL
                 sd.storyData.stock = story.playerStockNum;
                 if (diff != null) sd.storyData.difficulty = (int)diff.id;
                 sd.storyData.setStoryFlowId(world, target.storyFlowId);
-                ApplyStats(sd, statsMode);
             }
 
+            CurrentWorld = world;
+            CurrentStage = stage;
+            CurrentFlowId = target.storyFlowId;
+            RunDifficulty = difficulty;
             Active = true;
             Plugin.Log.LogInfo("Practice: world " + world + " stage " + stage +
-                " (" + difficulty + "), story saves suppressed");
+                " (" + difficulty + "), story saves suppressed" +
+                (RepeatStage ? ", repeat on" : ""));
             gs.moveScene("StageSetup");
             return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(StoryManager), "setFromSaveDataToBattleParams")]
+    internal static class PracticeStatsPatch
+    {
+        private static void Prefix(SaveDataManager.StoryData __0)
+        {
+            Practice.ApplyRunStats(__0);
         }
     }
 
     public class PracticeMenu : MonoBehaviour
     {
         internal static bool Visible;
+
         private static readonly string[] Difficulties =
             { "easy", "normal", "hard", "super" };
         private static readonly string[] DiffLabels =
-            { "Easy", "Normal", "Hard", "Master" };
+            { "Beginner", "Veteran", "Expert", "Master" };
+        private static readonly string[] StatLabels =
+            { "Save", "Default", "Max", "Custom", "Random" };
+
         private bool _visible;
         private bool _prevCursorVisible;
         private CursorLockMode _prevLockMode;
-        private int _difficulty = 1;
-        private int _stats;
+        private int _tab;
+        private int _difficulty;
+        private int _stats = 4;
+        private int _world = 1;
+        private int _stage = 1;
         private int _row;
         private bool _leftHeld;
         private bool _rightHeld;
@@ -2418,6 +2656,23 @@ namespace BomberQoL
         private float _comboHeld;
         private float _lastPadLog;
         private bool _comboLatched;
+
+        private static int MaxStage(int world)
+        {
+            return world == 6 ? 2 : 10;
+        }
+
+        private int RowCount
+        {
+            get { return _tab == 0 ? 5 : 13; }
+        }
+
+        private void ClampStage()
+        {
+            int max = MaxStage(_world);
+            if (_stage > max) _stage = max;
+            if (_stage < 1) _stage = 1;
+        }
 
         private void Update()
         {
@@ -2458,6 +2713,17 @@ namespace BomberQoL
             }
 
             if (!_visible) return;
+
+            if (Input.GetKeyDown(KeyCode.Q) || PadButtonDown("L"))
+            {
+                _tab = 0;
+                _row = 0;
+            }
+            if (Input.GetKeyDown(KeyCode.E) || PadButtonDown("R"))
+            {
+                _tab = 1;
+                _row = 0;
+            }
             HandleNavigation();
         }
 
@@ -2486,10 +2752,95 @@ namespace BomberQoL
             catch { return 0f; }
         }
 
+        private static void Toggle(ConfigEntry<bool> entry)
+        {
+            entry.Value = !entry.Value;
+            if (entry == Plugin.RandomMoveSets && entry.Value)
+                Randomizer.ApplyMoveSets();
+        }
+
+        private static void ToggleDifficultyOdds()
+        {
+            Plugin.RandomPickupPool.Value =
+                Plugin.RandomPickupPool.Value == PickupPoolMode.Difficulty
+                    ? PickupPoolMode.Expanded
+                    : PickupPoolMode.Difficulty;
+        }
+
+        private void ChangeRowValue(int delta)
+        {
+            if (_tab == 0)
+            {
+                switch (_row)
+                {
+                    case 0:
+                        _difficulty = Mathf.Clamp(_difficulty + delta, 0,
+                            DiffLabels.Length - 1);
+                        break;
+                    case 1:
+                        _world = Mathf.Clamp(_world + delta, 1, 7);
+                        ClampStage();
+                        break;
+                    case 2:
+                        _stage = Mathf.Clamp(_stage + delta, 1,
+                            MaxStage(_world));
+                        break;
+                    case 3:
+                        Toggle(Plugin.PracticeRepeatStage);
+                        break;
+                }
+                return;
+            }
+
+            switch (_row)
+            {
+                case 0:
+                    _difficulty = Mathf.Clamp(_difficulty + delta, 0,
+                        DiffLabels.Length - 1);
+                    break;
+                case 1:
+                    _stats = Mathf.Clamp(_stats + delta, 0,
+                        StatLabels.Length - 1);
+                    break;
+                case 2: Toggle(Plugin.RandomPickups); break;
+                case 3: Toggle(Plugin.HidePickupIcons); break;
+                case 4: Toggle(Plugin.PickupToast); break;
+                case 5: ToggleDifficultyOdds(); break;
+                case 6: Toggle(Plugin.RandomStoryCharacters); break;
+                case 7: Toggle(Plugin.RandomMoveSets); break;
+                case 8: Toggle(Plugin.SkipCharacterSelect); break;
+                case 9: Toggle(Plugin.ResetStatsPerStage); break;
+                case 10: Toggle(Plugin.MasterStatReset); break;
+                case 11: Toggle(Plugin.SkipGemContinue); break;
+            }
+        }
+
+        private void ActivateRow()
+        {
+            if (_tab == 0 && _row == 4)
+            {
+                StartPractice();
+                return;
+            }
+            if (_tab == 1 && _row == 12)
+            {
+                StartRun();
+                return;
+            }
+            ChangeRowValue(1);
+        }
+
         private void HandleNavigation()
         {
-            float ax = PadAxis("CROSS_HORIZONTAL");
-            float ay = PadAxis("CROSS_VERTICAL");
+            float dx = PadAxis("CROSS_HORIZONTAL");
+            float dy = PadAxis("CROSS_VERTICAL");
+            float sx = PadAxis("HORIZONTAL");
+            float sy = PadAxis("VERTICAL");
+            if (Mathf.Abs(sx) < 0.35f) sx = 0f;
+            if (Mathf.Abs(sy) < 0.35f) sy = 0f;
+            float ax = Mathf.Abs(sx) > Mathf.Abs(dx) ? sx : dx;
+            float ay = Mathf.Abs(sy) > Mathf.Abs(dy) ? sy : dy;
+
             bool left = Input.GetKeyDown(KeyCode.LeftArrow) ||
                 (ax < -0.5f && !_leftHeld);
             bool right = Input.GetKeyDown(KeyCode.RightArrow) ||
@@ -2503,17 +2854,9 @@ namespace BomberQoL
             _upHeld = ay > 0.5f;
             _downHeld = ay < -0.5f;
 
-            if (left || right)
-            {
-                int delta = left ? -1 : 1;
-                if (_row == 0)
-                    _difficulty = Mathf.Clamp(_difficulty + delta, 0,
-                        DiffLabels.Length - 1);
-                else if (_row == 1)
-                    _stats = Mathf.Clamp(_stats + delta, 0, 4);
-            }
-            if (up) _row = (_row + 2) % 3;
-            if (down) _row = (_row + 1) % 3;
+            if (left || right) ChangeRowValue(left ? -1 : 1);
+            if (up) _row = (_row + RowCount - 1) % RowCount;
+            if (down) _row = (_row + 1) % RowCount;
 
             bool accept = Input.GetKeyDown(KeyCode.Return) ||
                 Input.GetKeyDown(KeyCode.KeypadEnter) ||
@@ -2521,12 +2864,22 @@ namespace BomberQoL
             bool cancel = Input.GetKeyDown(KeyCode.Escape) ||
                 PadButtonDown("B");
             if (cancel) { SetVisible(false); return; }
-            if (accept)
-            {
-                bool ok = Practice.StartRandomRun(
-                    Difficulties[_difficulty], _stats);
-                if (ok) SetVisible(false);
-            }
+            if (accept) ActivateRow();
+        }
+
+        private void StartPractice()
+        {
+            if (Practice.StartPractice(_world, _stage,
+                Difficulties[_difficulty],
+                Plugin.PracticeRepeatStage.Value))
+                SetVisible(false);
+        }
+
+        private void StartRun()
+        {
+            if (Practice.StartRandomRun(
+                Difficulties[_difficulty], _stats))
+                SetVisible(false);
         }
 
         private void SetVisible(bool visible)
@@ -2550,67 +2903,199 @@ namespace BomberQoL
             }
         }
 
+        private void DrawDifficulty()
+        {
+            GUILayout.Label((_row == 0 ? "> " : "  ") + "Difficulty");
+            GUILayout.BeginHorizontal();
+            for (int i = 0; i < DiffLabels.Length; i++)
+            {
+                if (GUILayout.Button(DiffLabels[i],
+                    GUILayout.Width(100), GUILayout.Height(26)))
+                    _difficulty = i;
+            }
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawStats()
+        {
+            GUILayout.Label((_row == 1 ? "> " : "  ") + "Stats");
+            GUILayout.BeginHorizontal();
+            for (int i = 0; i < StatLabels.Length; i++)
+            {
+                if (GUILayout.Button(StatLabels[i],
+                    GUILayout.Width(90), GUILayout.Height(26)))
+                    _stats = i;
+            }
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawToggle(int row, ConfigEntry<bool> entry, string label)
+        {
+            bool value = GUILayout.Toggle(entry.Value,
+                (_row == row ? "> " : "  ") + label);
+            if (value == entry.Value) return;
+            entry.Value = value;
+            if (entry == Plugin.RandomMoveSets && value)
+                Randomizer.ApplyMoveSets();
+        }
+
+        private void DrawDifficultyOddsToggle(int row)
+        {
+            bool on = Plugin.RandomPickupPool.Value == PickupPoolMode.Difficulty;
+            bool value = GUILayout.Toggle(on,
+                (_row == row ? "> " : "  ") +
+                "Difficulty-based odds");
+            if (value == on) return;
+            Plugin.RandomPickupPool.Value = value
+                ? PickupPoolMode.Difficulty
+                : PickupPoolMode.Expanded;
+        }
+
+        private void DrawPractice()
+        {
+            DrawDifficulty();
+
+            GUILayout.Label((_row == 1 ? "> " : "  ") + "World");
+            GUILayout.BeginHorizontal();
+            for (int i = 1; i <= 7; i++)
+            {
+                if (GUILayout.Button(i.ToString(),
+                    GUILayout.Width(56), GUILayout.Height(26)))
+                {
+                    _world = i;
+                    ClampStage();
+                }
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Label((_row == 2 ? "> " : "  ") + "Stage");
+            GUILayout.BeginHorizontal();
+            for (int i = 1; i <= MaxStage(_world); i++)
+            {
+                if (GUILayout.Button(i.ToString(),
+                    GUILayout.Width(48), GUILayout.Height(26)))
+                    _stage = i;
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(8);
+            bool repeat = GUILayout.Toggle(Plugin.PracticeRepeatStage.Value,
+                (_row == 3 ? "> " : "  ") +
+                "Repeat this stage when cleared");
+            if (repeat != Plugin.PracticeRepeatStage.Value)
+                Plugin.PracticeRepeatStage.Value = repeat;
+
+            GUILayout.Space(10);
+            GUILayout.Label("Practice always starts with default stats.");
+            GUILayout.Label("Beginner all positive.  Expert 50/50.  " +
+                "Master: 50/50 + stat reset.");
+            GUILayout.Label("Story saves suppressed.  Practice starts one stage.");
+            if (GUILayout.Button("Start Practice", GUILayout.Height(36)))
+                StartPractice();
+            GUILayout.Label(_row == 4
+                ? "> Enter / A: start    B / Esc: close"
+                : "  Enter / A: start    B / Esc: close");
+        }
+
+        private void DrawRandomizer()
+        {
+            DrawDifficulty();
+            DrawStats();
+
+            GUILayout.Space(8);
+            GUILayout.BeginHorizontal();
+            GUILayout.BeginVertical(GUILayout.Width(350));
+            DrawToggle(2, Plugin.RandomPickups, "Random pickups");
+            DrawToggle(3, Plugin.HidePickupIcons, "Blank pickup icons");
+            DrawToggle(4, Plugin.PickupToast, "Pickup name popup");
+            DrawDifficultyOddsToggle(5);
+            DrawToggle(6, Plugin.RandomStoryCharacters, "Random characters");
+            DrawToggle(7, Plugin.RandomMoveSets, "Random move sets");
+            GUILayout.EndVertical();
+            GUILayout.BeginVertical(GUILayout.Width(350));
+            DrawToggle(8, Plugin.SkipCharacterSelect, "Skip character select");
+            DrawToggle(9, Plugin.ResetStatsPerStage, "Reset stats per stage");
+            DrawToggle(10, Plugin.MasterStatReset, "Master stat reset");
+            DrawToggle(11, Plugin.SkipGemContinue, "Skip gem continue");
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(10);
+            GUILayout.Label("10 random stages + undefeated bosses.  " +
+                "Finish all bosses; world 7 last.");
+            GUILayout.Label("Beginner all positive.  Veteran 25%.  " +
+                "Expert: 50/50.  Master: 50/50 + reset.");
+            if (GUILayout.Button("Start Random Run", GUILayout.Height(36)))
+                StartRun();
+            GUILayout.Label(_row == 12
+                ? "> Enter / A: start    B / Esc: close"
+                : "  Enter / A: start    B / Esc: close");
+        }
+
         private void OnGUI()
         {
             if (!_visible) return;
             GUI.depth = -1000;
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
-            const int w = 570;
-            const int h = 358;
+            int w = Mathf.Min(780, Screen.width - 20);
+            int h = Mathf.Min(600, Screen.height - 20);
             Rect r = new Rect((Screen.width - w) / 2,
                 (Screen.height - h) / 2, w, h);
-            GUI.Box(r, "Random Run");
-            GUILayout.BeginArea(new Rect(r.x + 16, r.y + 30, w - 32, h - 46));
+            Color old = GUI.color;
+            GUI.color = new Color(0.045f, 0.065f, 0.105f, 1f);
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = new Color(0.55f, 0.62f, 0.78f, 1f);
+            GUI.DrawTexture(new Rect(r.x, r.y, r.width, 1),
+                Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(r.x, r.yMax - 1, r.width, 1),
+                Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(r.x, r.y, 1, r.height),
+                Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(r.xMax - 1, r.y, 1, r.height),
+                Texture2D.whiteTexture);
+            GUI.color = old;
 
-            GUILayout.Label((_row == 0 ? "> " : "  ") + "Difficulty");
+            GUIStyle title = new GUIStyle(GUI.skin.label);
+            title.alignment = TextAnchor.MiddleCenter;
+            title.fontStyle = FontStyle.Bold;
+            title.normal.textColor = new Color(1f, 0.88f, 0.55f);
+            GUI.Label(new Rect(r.x, r.y + 4, r.width, 20),
+                "Bomber QoL — Practice / Random Run", title);
+
+            Color oldLabel = GUI.skin.label.normal.textColor;
+            Color oldToggle = GUI.skin.toggle.normal.textColor;
+            GUI.skin.label.normal.textColor = Color.white;
+            GUI.skin.toggle.normal.textColor = Color.white;
+            GUILayout.BeginArea(new Rect(r.x + 16, r.y + 28,
+                w - 32, h - 44));
+
             GUILayout.BeginHorizontal();
-            for (int i = 0; i < DiffLabels.Length; i++)
+            if (GUILayout.Button(_tab == 0 ? "[ Practice ]" : "Practice",
+                GUILayout.Height(30)))
             {
-                if (GUILayout.Button(DiffLabels[i],
-                    GUILayout.Width(92), GUILayout.Height(28)))
-                    _difficulty = i;
+                _tab = 0;
+                _row = 0;
             }
+            if (GUILayout.Button(_tab == 1 ? "[ Randomizer ]" : "Randomizer",
+                GUILayout.Height(30)))
+            {
+                _tab = 1;
+                _row = 0;
+            }
+            GUILayout.FlexibleSpace();
+            GUILayout.Label("L1/R1 or Q/E: tab");
             GUILayout.EndHorizontal();
 
             GUILayout.Space(6);
-            GUILayout.Label((_row == 1 ? "> " : "  ") + "Stats");
-            GUILayout.BeginHorizontal();
-            string[] statLabels =
-                { "Save", "Default", "Max", "Custom", "Random" };
-            for (int i = 0; i < statLabels.Length; i++)
-            {
-                if (GUILayout.Button(statLabels[i],
-                    GUILayout.Width(92), GUILayout.Height(28)))
-                    _stats = i;
-            }
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(10);
-            GUILayout.Label("10 random stages -> random boss. Repeat until all " +
-                "7 bosses are defeated; world 7 is last.");
-            GUILayout.Label("Pickups: " + (Plugin.RandomPickups.Value
-                ? Plugin.RandomPickupCount.Value +
-                    " random blocks, ? icons, name popup"
-                : "vanilla"));
-            GUILayout.Label(DiffLabels[_difficulty] + "  —  stats " +
-                statLabels[_stats] + "  (story saves disabled)");
-            GUILayout.Label(_row == 2
-                ? "> Enter / A: start run    B / Esc: close"
-                : "  Enter / A: start run    B / Esc: close");
-            GUILayout.FlexibleSpace();
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Start Random Run", GUILayout.Height(34)))
-            {
-                if (Practice.StartRandomRun(
-                    Difficulties[_difficulty], _stats))
-                    SetVisible(false);
-            }
-            if (GUILayout.Button("Close", GUILayout.Height(34)))
-                SetVisible(false);
-            GUILayout.EndHorizontal();
+            if (_tab == 0)
+                DrawPractice();
+            else
+                DrawRandomizer();
 
             GUILayout.EndArea();
+            GUI.skin.label.normal.textColor = oldLabel;
+            GUI.skin.toggle.normal.textColor = oldToggle;
         }
     }
 

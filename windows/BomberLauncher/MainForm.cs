@@ -60,6 +60,10 @@ public class MainForm : Form
     private readonly ComboBox _aspectCombo = new();
     private readonly CheckBox _shuffleBgm = new();
     private readonly CheckBox _shuffleSfx = new();
+    private LinkLabel _bgmChoose = null!;
+    private LinkLabel _bgmClearLink = null!;
+    private LinkLabel _sfxChoose = null!;
+    private LinkLabel _sfxClearLink = null!;
     private readonly CheckBox _randomChars = new();
     private readonly CheckBox _randomMoves = new();
     private readonly CheckBox _skipChars = new();
@@ -175,16 +179,18 @@ public class MainForm : Form
             "Window shape; the game fits inside the desktop with bars",
             _aspectCombo);
         Separator(basic);
-        AddButtonRow(basic, "Custom BGM Folder",
+        (_bgmChoose, _bgmClearLink) = AddAudioFolderRow(basic,
+            "Custom BGM Folder",
             "Folder of .ogg/.wav/.mp3 tracks; empty keeps original BGM",
-            "Choose", ChooseBgmFolder);
+            ChooseBgmFolder, ClearBgmFolder);
         Separator(basic);
         AddRow(basic, "Shuffle BGM",
             "Randomize custom BGM instead of sequential order", _shuffleBgm);
         Separator(basic);
-        AddButtonRow(basic, "Custom SFX Folder",
+        (_sfxChoose, _sfxClearLink) = AddAudioFolderRow(basic,
+            "Custom SFX Folder",
             "Files named <label>.ogg or <label>_N.ogg; empty keeps original SFX",
-            "Choose", ChooseSfxFolder);
+            ChooseSfxFolder, ClearSfxFolder);
         Separator(basic);
         AddRow(basic, "Shuffle SFX",
             "Randomize among variants with the same sound label", _shuffleSfx);
@@ -409,6 +415,40 @@ public class MainForm : Form
         AddRow(card, title, subtitle, link);
     }
 
+    private (LinkLabel choose, LinkLabel clear) AddAudioFolderRow(
+        TableLayoutPanel card, string title, string subtitle,
+        Action chooseAction, Action clearAction)
+    {
+        var choose = new LinkLabel
+        {
+            Text = "Choose…",
+            AutoSize = true,
+            LinkColor = Color.FromArgb(30, 90, 160),
+            Margin = new Padding(0),
+        };
+        var clear = new LinkLabel
+        {
+            Text = "Clear",
+            AutoSize = true,
+            LinkColor = Color.FromArgb(30, 90, 160),
+            Margin = new Padding(12, 0, 0, 0),
+        };
+        choose.LinkClicked += (_, _) => chooseAction();
+        clear.LinkClicked += (_, _) => clearAction();
+        var box = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(0),
+        };
+        box.Controls.Add(choose);
+        box.Controls.Add(clear);
+        AddRow(card, title, subtitle, box);
+        return (choose, clear);
+    }
+
     private void Separator(TableLayoutPanel card)
     {
         int row = card.RowCount++;
@@ -523,6 +563,7 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Audio", "CustomBgmShuffle", "true") == "true";
                     _shuffleSfx.Checked =
                         Core.GetPluginOption(_game, "Audio", "CustomSfxShuffle", "true") == "true";
+                    UpdateAudioFolderLinks();
                     _randomChars.Checked =
                         Core.GetPluginOption(_game, "Randomizer", "RandomStoryCharacters", "false") == "true";
                     _randomMoves.Checked =
@@ -623,27 +664,97 @@ public class MainForm : Form
     private void ChooseSfxFolder()
     {
         if (_game == null || !Core.PluginInstalled(_game)) return;
+        string current = Core.GetPluginOption(_game, "Audio",
+            "CustomSfxFolder", "").Trim();
         using var dlg = new FolderBrowserDialog
         {
             Description = "Select a folder of custom sound effects",
             UseDescriptionForTitle = true,
         };
+        if (!string.IsNullOrEmpty(current) && Directory.Exists(current))
+            dlg.SelectedPath = current;
         if (dlg.ShowDialog(this) == DialogResult.OK)
+        {
             Guard(() => Core.SetPluginValue(_game!, "Audio",
                 "CustomSfxFolder", dlg.SelectedPath));
+            RefreshState();
+        }
+    }
+
+    private void ClearSfxFolder()
+    {
+        if (_game == null || !Core.PluginInstalled(_game)) return;
+        Guard(() => Core.SetPluginValue(_game!, "Audio",
+            "CustomSfxFolder", ""));
+        RefreshState();
     }
 
     private void ChooseBgmFolder()
     {
         if (_game == null || !Core.PluginInstalled(_game)) return;
+        string current = Core.GetPluginOption(_game, "Audio",
+            "CustomBgmFolder", "").Trim();
         using var dlg = new FolderBrowserDialog
         {
             Description = "Select a folder of .ogg/.wav/.mp3 BGM tracks",
             UseDescriptionForTitle = true,
         };
+        if (!string.IsNullOrEmpty(current) && Directory.Exists(current))
+            dlg.SelectedPath = current;
         if (dlg.ShowDialog(this) == DialogResult.OK)
+        {
             Guard(() => Core.SetPluginValue(_game!, "Audio",
                 "CustomBgmFolder", dlg.SelectedPath));
+            RefreshState();
+        }
+    }
+
+    private void ClearBgmFolder()
+    {
+        if (_game == null || !Core.PluginInstalled(_game)) return;
+        Guard(() => Core.SetPluginValue(_game!, "Audio",
+            "CustomBgmFolder", ""));
+        RefreshState();
+    }
+
+    private void UpdateAudioFolderLinks()
+    {
+        bool ready = _game != null && Core.PluginInstalled(_game);
+        if (!ready)
+        {
+            SetFolderLink(_bgmChoose, _bgmClearLink, "");
+            SetFolderLink(_sfxChoose, _sfxClearLink, "");
+            _bgmChoose.Enabled = false;
+            _sfxChoose.Enabled = false;
+            return;
+        }
+        _bgmChoose.Enabled = true;
+        _sfxChoose.Enabled = true;
+        SetFolderLink(_bgmChoose, _bgmClearLink,
+            Core.GetPluginOption(_game!, "Audio", "CustomBgmFolder", "").Trim());
+        SetFolderLink(_sfxChoose, _sfxClearLink,
+            Core.GetPluginOption(_game!, "Audio", "CustomSfxFolder", "").Trim());
+    }
+
+    private static void SetFolderLink(LinkLabel choose, LinkLabel clear,
+                                      string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            choose.Text = "Choose…";
+            clear.Enabled = false;
+        }
+        else
+        {
+            string name = Path.GetFileName(
+                path.TrimEnd(Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar));
+            if (string.IsNullOrEmpty(name)) name = path;
+            choose.Text = name.Length > 28 ? name[..28] + "…" : name;
+            clear.Enabled = true;
+        }
+        choose.LinkArea = new LinkArea(0, choose.Text.Length);
+        choose.Tag = path;
     }
 
     private void SavePlugin(string section, string key, bool value)
