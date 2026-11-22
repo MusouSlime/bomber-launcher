@@ -62,6 +62,7 @@ public class MainForm : Form
     private readonly CheckBox _shuffleSfx = new();
     private readonly CheckBox _randomChars = new();
     private readonly CheckBox _randomMoves = new();
+    private readonly CheckBox _skipChars = new();
     private readonly CheckBox _dual = new();
     private readonly CheckBox _intro = new();
     private readonly CheckBox _skipMovies = new();
@@ -193,6 +194,9 @@ public class MainForm : Form
         AddRow(basic, "Random Move Sets",
             "Shuffle normal/special skills for every status", _randomMoves);
         Separator(basic);
+        AddRow(basic, "Skip Character Select",
+            "Jump into battle when random characters/random run is active", _skipChars);
+        Separator(basic);
         AddRow(basic, "Japanese Voices",
             "JP voice acting with the selected text language", _dual);
         Separator(basic);
@@ -275,6 +279,7 @@ public class MainForm : Form
         _shuffleSfx.CheckedChanged += (_, _) => SavePlugin("Audio", "CustomSfxShuffle", _shuffleSfx.Checked);
         _randomChars.CheckedChanged += (_, _) => SavePlugin("Randomizer", "RandomStoryCharacters", _randomChars.Checked);
         _randomMoves.CheckedChanged += (_, _) => SavePlugin("Randomizer", "RandomMoveSets", _randomMoves.Checked);
+        _skipChars.CheckedChanged += (_, _) => SavePlugin("Randomizer", "SkipCharacterSelect", _skipChars.Checked);
         _fastResults.CheckedChanged += (_, _) => SavePlugin("Results", "FastResults", _fastResults.Checked);
 
         Shown += (_, _) => RefreshState();
@@ -513,6 +518,8 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Randomizer", "RandomStoryCharacters", "false") == "true";
                     _randomMoves.Checked =
                         Core.GetPluginOption(_game, "Randomizer", "RandomMoveSets", "false") == "true";
+                    _skipChars.Checked =
+                        Core.GetPluginOption(_game, "Randomizer", "SkipCharacterSelect", "true") == "true";
                     if (int.TryParse(Core.GetPluginOption(_game, "Movies", "SkipJoystickButton", "0"), out int pad))
                     {
                         int idx = Array.FindIndex(Pads, p => p.Value == pad);

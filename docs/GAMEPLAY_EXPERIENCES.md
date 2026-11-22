@@ -262,13 +262,14 @@ The folder picker is in **Audio → Custom BGM Folder** in both launchers.
 
 ## Randomizer / roguelike base
 
-Plugin 0.5.0 adds two independent switches under `[Randomizer]`:
+Plugin 0.5.3 adds two independent switches under `[Randomizer]`:
 
 ```ini
 [Randomizer]
 RandomStoryCharacters = false
 RandomMoveSets = false
 Seed = 0
+SkipCharacterSelect = true
 ```
 
 - **RandomStoryCharacters** — a prefix on `StageSetupUI.init` picks random
@@ -281,6 +282,15 @@ Seed = 0
   original paths, so visuals may not match the rolled ability.
 - **Seed** — a non-zero value makes both rolls reproducible; 0 uses
   `Environment.TickCount`.
+- **SkipCharacterSelect** — when random characters (or a random run) are
+  active, `StageSetupUI` auto-calls `moveNextScene(1)` after 0.25 s instead of
+  showing character select. Set false to keep the screen.
+- **Random 10 + Boss** — in the F9 practice picker, select `Run: 10 + Boss`.
+  It starts at a random non-boss stage, then after each battle sets the next
+  story flow to another random non-boss stage. After 10 stages it selects a
+  random stage 10 boss. `StoryUtility.initToNext` is only overridden when the
+  previous scene is `StoryBattle`, so StageSetup/WorldMap transitions still
+  behave normally.
 
 Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random move sets,

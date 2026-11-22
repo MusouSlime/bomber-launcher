@@ -754,6 +754,13 @@ class BomberWindow(Adw.ApplicationWindow):
             "avatar_pink.png", "Random Move Sets",
             "Shuffle normal/special skills for every character status",
             self.rand_moves_sw))
+        rnd.append(self._separator())
+        self.skip_chars_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.skip_chars_sw.connect("notify::active", self.on_skip_chars)
+        rnd.append(self._row(
+            "avatar_blue.png", "Skip Character Select",
+            "Jump straight into battle when random characters or a random run is active",
+            self.skip_chars_sw))
         page.append(rnd)
 
         # ----- environment / post processing
@@ -1066,6 +1073,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Randomizer", {}).get("RandomStoryCharacters", "false").lower() == "true")
                     self.rand_moves_sw.set_active(
                         cfg.get("Randomizer", {}).get("RandomMoveSets", "false").lower() == "true")
+                    self.skip_chars_sw.set_active(
+                        cfg.get("Randomizer", {}).get("SkipCharacterSelect", "true").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -1190,6 +1199,9 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_random_moves(self, row, _pspec):
         self._plugin_write("Randomizer", "RandomMoveSets", row.get_active())
+
+    def on_skip_chars(self, row, _pspec):
+        self._plugin_write("Randomizer", "SkipCharacterSelect", row.get_active())
 
     def on_bgm_shuffle(self, row, _pspec):
         self._plugin_write("Audio", "CustomBgmShuffle", row.get_active())

@@ -16,7 +16,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.5.0")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.5.3")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -61,6 +61,7 @@ namespace BomberQoL
         internal static ConfigEntry<bool> RandomStoryCharacters;
         internal static ConfigEntry<bool> RandomMoveSets;
         internal static ConfigEntry<int> RandomizerSeed;
+        internal static ConfigEntry<bool> SkipCharacterSelect;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -159,6 +160,8 @@ namespace BomberQoL
                 "Shuffle normal/special skill assignments on the character status table.");
             RandomizerSeed = Config.Bind("Randomizer", "Seed", 0,
                 "Seed for the randomizer (0 = random each launch).");
+            SkipCharacterSelect = Config.Bind("Randomizer", "SkipCharacterSelect", true,
+                "Skip StageSetup character select when random characters or a random run is active.");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -247,6 +250,7 @@ namespace BomberQoL
             harmony.PatchAll(typeof(CustomSfxIsPlayingPatch));
             harmony.PatchAll(typeof(CustomSfxStopAllPatch));
             harmony.PatchAll(typeof(RandomCharacterPatch));
+            harmony.PatchAll(typeof(RandomRunPatch));
 
             Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
             MethodInfo logoExec = logoType == null ? null :
@@ -318,6 +322,7 @@ namespace BomberQoL
         {
             Practice.OnSceneLoaded(scene);
             Randomizer.ApplyMoveSets();
+            RandomRun.OnSceneLoaded(scene);
             ApplyAllPostFx();
             ApplyResultTweaks();
             EnableMasterButton();
@@ -1468,6 +1473,11 @@ namespace BomberQoL
         private static bool _moveSetsApplied;
         private static int _seed;
 
+        internal static int Next(int min, int max)
+        {
+            return Rng.Next(min, max);
+        }
+
         private static System.Random Rng
         {
             get
@@ -1503,6 +1513,12 @@ namespace BomberQoL
             sd.storyData.characterDatas[0].characterId.set(
                 (sbyte)idA.contentType, idA.characterId);
 
+            GameSceneManager gs =
+                SingletonBaseWithGameObject<GameSceneManager>.getInstance();
+            MoveSceneParam mp = gs == null ? default(MoveSceneParam) : gs.param;
+            if (mp.characterParams != null && mp.characterParams.Length > 0)
+                mp.characterParams[0].characterId = idA;
+
             if (sd.storyData.characterDatas.Length > 1)
             {
                 int second = count > 1 ? Rng.Next(0, count - 1) : 0;
@@ -1515,8 +1531,12 @@ namespace BomberQoL
                         CharacterDataManager.getCharacterId(b);
                     sd.storyData.characterDatas[1].characterId.set(
                         (sbyte)idB.contentType, idB.characterId);
+                    if (mp.characterParams != null &&
+                        mp.characterParams.Length > 1)
+                        mp.characterParams[1].characterId = idB;
                 }
             }
+            if (gs != null) gs.param = mp;
             Plugin.Log.LogInfo("Randomizer: story characters " +
                 a.charKey + (sd.storyData.characterDatas.Length > 1
                     ? ", rerolled P2" : ""));
@@ -1562,6 +1582,96 @@ namespace BomberQoL
         private static void Prefix()
         {
             Randomizer.RandomizeCharacters();
+        }
+
+        private static void Postfix(StageSetupUI __instance)
+        {
+            if (!Plugin.SkipCharacterSelect.Value) return;
+            if (!Plugin.RandomStoryCharacters.Value && !RandomRun.Active)
+                return;
+            __instance.StartCoroutine(AutoStart(__instance));
+        }
+
+        private static IEnumerator AutoStart(StageSetupUI ui)
+        {
+            yield return new WaitForSeconds(0.25f);
+            if (ui != null) ui.moveNextScene(1);
+        }
+    }
+
+    internal static class RandomRun
+    {
+        internal static bool Active;
+        private static int _cleared;
+
+        internal static void Begin()
+        {
+            Active = true;
+            _cleared = 0;
+            Plugin.Log.LogInfo("Random run: 10 stages + boss");
+        }
+
+        internal static void Cancel()
+        {
+            Active = false;
+            _cleared = 0;
+        }
+
+        internal static void OnSceneLoaded(Scene scene)
+        {
+            if (scene.name == "Title" || scene.name == "MainMenu")
+                Cancel();
+        }
+
+        private static bool FindBattle(StoryManager story, int world,
+            int stage, out int flowId)
+        {
+            flowId = -1;
+            StoryFlowDataTable table = story.getStoryFlow(world);
+            if (table == null) return false;
+            for (int i = 0; i < table.storyFlowDataCount; i++)
+            {
+                StoryFlowDataTable.StoryFlowData f = table.getStoryFlowData(i);
+                if (f == null || (int)f.eventType != 2) continue;
+                if (f.stageId != stage) continue;
+                flowId = f.storyFlowId;
+                return true;
+            }
+            return false;
+        }
+
+        internal static void SelectNext(StoryManager story)
+        {
+            _cleared++;
+            if (_cleared > 10) return;
+
+            bool boss = _cleared == 10;
+            int world = Randomizer.Next(1, 8);
+            int stage = boss ? 10 : Randomizer.Next(1, 10);
+            int flowId;
+            if (!FindBattle(story, world, stage, out flowId))
+            {
+                Plugin.Log.LogWarning("Random run: missing battle " +
+                    world + "-" + stage);
+                return;
+            }
+            story.setWorldId(world, flowId - 1);
+            Plugin.Log.LogInfo("Random run: stage " + _cleared + "/10" +
+                (boss ? " BOSS" : "") + " -> world " + world +
+                " stage " + stage);
+        }
+    }
+
+    [HarmonyPatch(typeof(StoryUtility), "initToNext")]
+    internal static class RandomRunPatch
+    {
+        private static void Prefix(GameSceneManager gsMgr, StoryManager strMgr,
+            bool incStoryFlow)
+        {
+            if (!RandomRun.Active || !incStoryFlow) return;
+            if (gsMgr == null || strMgr == null) return;
+            if (gsMgr.prevSceneName != "StoryBattle") return;
+            RandomRun.SelectNext(strMgr);
         }
     }
 
@@ -1615,6 +1725,20 @@ namespace BomberQoL
             }
             Plugin.Log.LogInfo("Practice stats mode: " +
                 (mode == 2 ? "max" : "custom"));
+        }
+
+        internal static bool StartRandomRun(string difficulty, int statsMode)
+        {
+            RandomRun.Begin();
+            for (int attempt = 0; attempt < 30; attempt++)
+            {
+                int world = Randomizer.Next(1, 8);
+                int stage = Randomizer.Next(1, 10);
+                if (Start(world, stage, difficulty, statsMode))
+                    return true;
+            }
+            RandomRun.Cancel();
+            return false;
         }
 
         internal static bool Start(int world, int stage, string difficulty,
@@ -1695,6 +1819,7 @@ namespace BomberQoL
         private int _stage = 1;
         private int _difficulty = 1;
         private int _stats;
+        private int _runMode;
         private int _row;
         private bool _leftHeld;
         private bool _rightHeld;
@@ -1800,9 +1925,11 @@ namespace BomberQoL
                         DiffLabels.Length - 1);
                 else if (_row == 3)
                     _stats = Mathf.Clamp(_stats + delta, 0, 3);
+                else if (_row == 4)
+                    _runMode = Mathf.Clamp(_runMode + delta, 0, 1);
             }
-            if (up) _row = (_row + 4) % 5;
-            if (down) _row = (_row + 1) % 5;
+            if (up) _row = (_row + 5) % 6;
+            if (down) _row = (_row + 1) % 6;
 
             bool accept = Input.GetKeyDown(KeyCode.Return) ||
                 Input.GetKeyDown(KeyCode.KeypadEnter) ||
@@ -1810,9 +1937,19 @@ namespace BomberQoL
             bool cancel = Input.GetKeyDown(KeyCode.Escape) ||
                 PadButtonDown("B");
             if (cancel) { SetVisible(false); return; }
-            if (accept &&
-                Practice.Start(_world, _stage, Difficulties[_difficulty], _stats))
-                SetVisible(false);
+            if (accept)
+            {
+                bool ok;
+                if (_runMode == 1)
+                    ok = Practice.StartRandomRun(Difficulties[_difficulty], _stats);
+                else
+                {
+                    RandomRun.Cancel();
+                    ok = Practice.Start(_world, _stage,
+                        Difficulties[_difficulty], _stats);
+                }
+                if (ok) SetVisible(false);
+            }
         }
 
         private void SetVisible(bool visible)
@@ -1843,7 +1980,7 @@ namespace BomberQoL
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
             const int w = 570;
-            const int h = 450;
+            const int h = 500;
             Rect r = new Rect((Screen.width - w) / 2,
                 (Screen.height - h) / 2, w, h);
             GUI.Box(r, "Practice Stage");
@@ -1893,11 +2030,25 @@ namespace BomberQoL
             }
             GUILayout.EndHorizontal();
 
+            GUILayout.Space(6);
+            GUILayout.Label((_row == 4 ? "> " : "  ") + "Run");
+            GUILayout.BeginHorizontal();
+            string[] runLabels = { "Single Stage", "10 + Boss" };
+            for (int i = 0; i < runLabels.Length; i++)
+            {
+                if (GUILayout.Button(runLabels[i],
+                    GUILayout.Width(150), GUILayout.Height(28)))
+                    _runMode = i;
+            }
+            GUILayout.EndHorizontal();
+
             GUILayout.Space(10);
             GUILayout.Label("World " + _world + ", stage " + _stage + "  —  " +
                 DiffLabels[_difficulty] + "  —  stats " +
-                statLabels[_stats] + "  (story saves disabled)");
-            GUILayout.Label(_row == 4
+                statLabels[_stats] + "  —  " +
+                (_runMode == 1 ? "random 10 + boss" : "single stage") +
+                "  (story saves disabled)");
+            GUILayout.Label(_row == 5
                 ? "> Enter / A: start practice    B / Esc: close"
                 : "  Enter / A: start practice    B / Esc: close");
             GUILayout.FlexibleSpace();

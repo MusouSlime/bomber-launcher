@@ -109,7 +109,10 @@ The plugin adds:
 - **Randomizer** — **Random Story Characters** rerolls the character select at
   every `StageSetup`; **Random Move Sets** shuffles the normal/special skill
   fields on every character status entry once per launch. A fixed seed lives in
-  `[Randomizer] Seed` (0 = random).
+  `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
+  into battle when random characters or a random run is active. The F9 practice
+  picker also has a **10 + Boss** run mode: 10 random non-boss stages followed
+  by a random boss.
 - **Practice Stage Selector** — press **F9** or hold **L1 + R1 + X** for
   0.6 s in the title, world map or a battle to open a world/stage/difficulty
   picker. Use **arrow keys / D-pad**
