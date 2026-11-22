@@ -16,12 +16,13 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.5.3")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.0")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
 
         internal static ManualLogSource Log;
+        internal static Plugin Instance;
         internal static ConfigEntry<bool> SkipEnabled;
         internal static ConfigEntry<string> SkipKeyName;
         internal static ConfigEntry<int> SkipJoystickButton;
@@ -62,6 +63,7 @@ namespace BomberQoL
         internal static ConfigEntry<bool> RandomMoveSets;
         internal static ConfigEntry<int> RandomizerSeed;
         internal static ConfigEntry<bool> SkipCharacterSelect;
+        internal static ConfigEntry<bool> UnlockRoomAchievements;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -78,6 +80,7 @@ namespace BomberQoL
 
         private void Awake()
         {
+            Instance = this;
             Log = Logger;
             ForceMasterEnv = Environment.GetEnvironmentVariable(
                 "BOMBER_FORCE_MASTER") == "1";
@@ -162,6 +165,8 @@ namespace BomberQoL
                 "Seed for the randomizer (0 = random each launch).");
             SkipCharacterSelect = Config.Bind("Randomizer", "SkipCharacterSelect", true,
                 "Skip StageSetup character select when random characters or a random run is active.");
+            UnlockRoomAchievements = Config.Bind("Achievements", "UnlockRoomAchievements", false,
+                "One-shot: call TrophyManager.FuncCreateRoom 100x on the next launch to unlock Room Creator/Master/Champ.");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -2192,11 +2197,36 @@ namespace BomberQoL
         private float _lastSoftReset;
         private float _softResetHeld;
         private float _lastPadLog;
+        private float _lastAchievementCheck;
         private bool _softResetLatched;
         private bool _masterForced;
 
         private void Update()
         {
+            if (Plugin.UnlockRoomAchievements.Value &&
+                Time.unscaledTime - _lastAchievementCheck > 3f)
+            {
+                _lastAchievementCheck = Time.unscaledTime;
+                TrophyManager tm =
+                    SingletonBaseWithGameObject<TrophyManager>.getInstance();
+                if (tm != null)
+                {
+                    try
+                    {
+                        for (int i = 0; i < 100; i++) tm.FuncCreateRoom();
+                        Plugin.UnlockRoomAchievements.Value = false;
+                        if (Plugin.Instance != null)
+                            Plugin.Instance.Config.Save();
+                        Plugin.Log.LogInfo(
+                            "Room achievements unlocked via FuncCreateRoom x100");
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogWarning(
+                            "Room achievement helper failed: " + e.Message);
+                    }
+                }
+            }
             if (Plugin.SoftResetEnabled.Value)
             {
                 float hold = Plugin.SoftResetPadHold.Value;

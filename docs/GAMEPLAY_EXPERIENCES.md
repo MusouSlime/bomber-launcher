@@ -296,6 +296,22 @@ Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random move sets,
 practice stage jumps and no real-save writes.
 
+## Dead online room achievements
+
+`Room Creator`, `Room Master` and `Room Champ` are driven by
+`TrophyManager.FuncCreateRoom`, which is only reached from the online
+`InternetReady` / `GPInternetReady` scenes. The launcher can queue a one-shot
+helper:
+
+```ini
+[Achievements]
+UnlockRoomAchievements = true
+```
+
+On the next launch the plugin calls `FuncCreateRoom` 100 times, which updates
+the same `RoomCreateCount` stat and unlocks all three achievements. This is an
+explicit shortcut for dead online content, not a real room or match.
+
 ## Display aspect ratios
 
 The launcher’s **Aspect Ratio** selector supports Native, 16:9, 16:10, 21:9

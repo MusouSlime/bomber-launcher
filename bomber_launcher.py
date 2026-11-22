@@ -763,6 +763,18 @@ class BomberWindow(Adw.ApplicationWindow):
             self.skip_chars_sw))
         page.append(rnd)
 
+        # ----- achievements
+        page.append(self._section("achievements"))
+        ach = self._card()
+        self.room_ach_btn = Gtk.Button(label="Unlock")
+        self.room_ach_btn.set_valign(Gtk.Align.CENTER)
+        self.room_ach_btn.connect("clicked", self.on_room_achievements)
+        ach.append(self._row(
+            "avatar_white.png", "Online Room Achievements",
+            "One-shot shortcut for Room Creator / Master / Champ; applies next launch",
+            self.room_ach_btn))
+        page.append(ach)
+
         # ----- environment / post processing
         page.append(self._section("environment"))
         env = self._card()
@@ -1202,6 +1214,17 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_skip_chars(self, row, _pspec):
         self._plugin_write("Randomizer", "SkipCharacterSelect", row.get_active())
+
+    def on_room_achievements(self, _btn):
+        if not self.mods or not self.mods.plugin_installed():
+            self.toast("BomberQoL plugin not installed")
+            return
+        try:
+            self.mods.set_plugin_option(
+                "Achievements", "UnlockRoomAchievements", True)
+            self.toast("Room achievements queued — launch the game once")
+        except Exception as e:
+            self.toast(str(e))
 
     def on_bgm_shuffle(self, row, _pspec):
         self._plugin_write("Audio", "CustomBgmShuffle", row.get_active())

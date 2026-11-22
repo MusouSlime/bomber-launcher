@@ -197,6 +197,10 @@ public class MainForm : Form
         AddRow(basic, "Skip Character Select",
             "Jump into battle when random characters/random run is active", _skipChars);
         Separator(basic);
+        AddButtonRow(basic, "Online Room Achievements",
+            "One-shot Room Creator/Master/Champ shortcut; next launch",
+            "Unlock", UnlockRoomAchievements);
+        Separator(basic);
         AddRow(basic, "Japanese Voices",
             "JP voice acting with the selected text language", _dual);
         Separator(basic);
@@ -597,6 +601,16 @@ public class MainForm : Form
     {
         if (_loading || _game == null || !NeedClosed()) return;
         Guard(() => Core.SetIntroSkip(_game!, _intro.Checked));
+    }
+
+    private void UnlockRoomAchievements()
+    {
+        if (_game == null || !Core.PluginInstalled(_game)) return;
+        Guard(() => Core.SetPluginOption(_game!, "Achievements",
+            "UnlockRoomAchievements", true));
+        MessageBox.Show(this,
+            "Room achievements queued. Launch the game once to apply.",
+            AppName);
     }
 
     private void ChooseSfxFolder()
