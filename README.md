@@ -21,6 +21,7 @@ artwork extracted from the game itself.
 | **Custom SFX Folder + Shuffle** | Replace or shuffle sound effects by label |
 | **Randomizer** | Random story characters and shuffled character move sets |
 | **Room Achievement Helper** | One-shot unlock for the three dead online room achievements |
+| **Smarter Bots** | Larger NPC search radius and faster target re-evaluation in local battles |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
 | **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to fully relaunch the game |
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
@@ -112,8 +113,11 @@ The plugin adds:
   fields on every character status entry once per launch. A fixed seed lives in
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
   into battle when random characters or a random run is active. The F9 practice
-  picker also has a **10 + Boss** run mode: 10 random non-boss stages followed
-  by a random boss.
+  picker is a full **Random Run**: 10 random non-boss stages, then a random
+  undefeated boss; repeat until all 7 bosses are beaten, with world 7 last.
+- **Smarter Bots** — raises local-battle NPC search range to at least 10 tiles
+  and caps tactical-target re-evaluation at 0.25 s. This is a real AI parameter
+  change, not a stat or achievement shortcut.
 - **Room Achievement Helper** — queues `TrophyManager.FuncCreateRoom` ×100 for
   the **Room Creator / Room Master / Room Champ** achievements, since online
   rooms are no longer available. This is an explicit unlock shortcut, not a

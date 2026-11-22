@@ -761,6 +761,13 @@ class BomberWindow(Adw.ApplicationWindow):
             "avatar_blue.png", "Skip Character Select",
             "Jump straight into battle when random characters or a random run is active",
             self.skip_chars_sw))
+        rnd.append(self._separator())
+        self.smart_bots_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.smart_bots_sw.connect("notify::active", self.on_smart_bots)
+        rnd.append(self._row(
+            "avatar_pink.png", "Smarter Bots",
+            "Longer NPC search range and faster target re-evaluation",
+            self.smart_bots_sw))
         page.append(rnd)
 
         # ----- achievements
@@ -1087,6 +1094,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Randomizer", {}).get("RandomMoveSets", "false").lower() == "true")
                     self.skip_chars_sw.set_active(
                         cfg.get("Randomizer", {}).get("SkipCharacterSelect", "true").lower() == "true")
+                    self.smart_bots_sw.set_active(
+                        cfg.get("Bots", {}).get("SmarterBots", "false").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -1214,6 +1223,9 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_skip_chars(self, row, _pspec):
         self._plugin_write("Randomizer", "SkipCharacterSelect", row.get_active())
+
+    def on_smart_bots(self, row, _pspec):
+        self._plugin_write("Bots", "SmarterBots", row.get_active())
 
     def on_room_achievements(self, _btn):
         if not self.mods or not self.mods.plugin_installed():

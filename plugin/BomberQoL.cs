@@ -16,7 +16,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.6.0")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.3")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -64,6 +64,7 @@ namespace BomberQoL
         internal static ConfigEntry<int> RandomizerSeed;
         internal static ConfigEntry<bool> SkipCharacterSelect;
         internal static ConfigEntry<bool> UnlockRoomAchievements;
+        internal static ConfigEntry<bool> SmarterBots;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -167,6 +168,8 @@ namespace BomberQoL
                 "Skip StageSetup character select when random characters or a random run is active.");
             UnlockRoomAchievements = Config.Bind("Achievements", "UnlockRoomAchievements", false,
                 "One-shot: call TrophyManager.FuncCreateRoom 100x on the next launch to unlock Room Creator/Master/Champ.");
+            SmarterBots = Config.Bind("Bots", "SmarterBots", false,
+                "Increase NPC search range and target re-evaluation speed for local battle bots.");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -243,6 +246,7 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PracticeSavePatch));
             harmony.PatchAll(typeof(PracticeSaveAllPatch));
             harmony.PatchAll(typeof(PracticeInputPatch));
+            harmony.PatchAll(typeof(SmarterBotsPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
             harmony.PatchAll(typeof(CustomBgmChangePatch));
             harmony.PatchAll(typeof(CustomBgmStopPatch));
@@ -1500,7 +1504,8 @@ namespace BomberQoL
 
         internal static void RandomizeCharacters()
         {
-            if (!Plugin.RandomStoryCharacters.Value) return;
+            if (!Plugin.RandomStoryCharacters.Value && !RandomRun.Active)
+                return;
             SaveDataManager sd =
                 SingletonBaseWithGameObject<SaveDataManager>.getInstance();
             CharacterDataManager cd =
@@ -1521,8 +1526,10 @@ namespace BomberQoL
             GameSceneManager gs =
                 SingletonBaseWithGameObject<GameSceneManager>.getInstance();
             MoveSceneParam mp = gs == null ? default(MoveSceneParam) : gs.param;
-            if (mp.characterParams != null && mp.characterParams.Length > 0)
-                mp.characterParams[0].characterId = idA;
+            if (mp.characterParams == null || mp.characterParams.Length < 2)
+                mp.characterParams = new MoveSceneParam.CharacterParam[2];
+            mp.characterParams[0].controlType = (BattleDef.CONTROL_TYPE)1;
+            mp.characterParams[0].characterId = idA;
 
             if (sd.storyData.characterDatas.Length > 1)
             {
@@ -1543,7 +1550,8 @@ namespace BomberQoL
             }
             if (gs != null) gs.param = mp;
             Plugin.Log.LogInfo("Randomizer: story characters " +
-                a.charKey + (sd.storyData.characterDatas.Length > 1
+                a.charKey + " (player slot initialized)" +
+                (sd.storyData.characterDatas.Length > 1
                     ? ", rerolled P2" : ""));
         }
 
@@ -1608,12 +1616,17 @@ namespace BomberQoL
     {
         internal static bool Active;
         private static int _cleared;
+        private static int _bossCount;
+        private static readonly bool[] BossDefeated = new bool[8];
 
         internal static void Begin()
         {
             Active = true;
             _cleared = 0;
-            Plugin.Log.LogInfo("Random run: 10 stages + boss");
+            _bossCount = 0;
+            for (int i = 0; i < BossDefeated.Length; i++)
+                BossDefeated[i] = false;
+            Plugin.Log.LogInfo("Random run: 10 stages per boss, all 7 bosses");
         }
 
         internal static void Cancel()
@@ -1645,25 +1658,93 @@ namespace BomberQoL
             return false;
         }
 
-        internal static void SelectNext(StoryManager story)
+        private static int FlowStage(StoryManager story, int world, int flowId)
         {
-            _cleared++;
-            if (_cleared > 10) return;
+            StoryFlowDataTable table = story.getStoryFlow(world);
+            if (table == null) return -1;
+            StoryFlowDataTable.StoryFlowData f =
+                table.getStoryFlowData(flowId);
+            return f == null ? -1 : f.stageId;
+        }
 
-            bool boss = _cleared == 10;
-            int world = Randomizer.Next(1, 8);
-            int stage = boss ? 10 : Randomizer.Next(1, 10);
-            int flowId;
-            if (!FindBattle(story, world, stage, out flowId))
+        private static void ChooseNormal(StoryManager story)
+        {
+            for (int attempt = 0; attempt < 30; attempt++)
             {
-                Plugin.Log.LogWarning("Random run: missing battle " +
-                    world + "-" + stage);
+                int world = Randomizer.Next(1, 8);
+                int stage = Randomizer.Next(1, 10);
+                int flowId;
+                if (!FindBattle(story, world, stage, out flowId)) continue;
+                story.setWorldId(world, flowId - 1);
+                Plugin.Log.LogInfo("Random run: normal " + _cleared +
+                    "/10 -> world " + world + " stage " + stage);
                 return;
             }
-            story.setWorldId(world, flowId - 1);
-            Plugin.Log.LogInfo("Random run: stage " + _cleared + "/10" +
-                (boss ? " BOSS" : "") + " -> world " + world +
-                " stage " + stage);
+            Plugin.Log.LogWarning("Random run: no normal stage found");
+        }
+
+        private static void ChooseBoss(StoryManager story)
+        {
+            var candidates = new List<int>();
+            for (int world = 1; world <= 6; world++)
+            {
+                if (!BossDefeated[world]) candidates.Add(world);
+            }
+            int chosenWorld;
+            if (candidates.Count > 0)
+                chosenWorld = candidates[Randomizer.Next(0, candidates.Count)];
+            else if (!BossDefeated[7])
+                chosenWorld = 7;
+            else
+            {
+                Active = false;
+                Plugin.Log.LogInfo("Random run: all bosses defeated");
+                return;
+            }
+            int flowId;
+            if (!FindBattle(story, chosenWorld, 10, out flowId))
+            {
+                Plugin.Log.LogWarning("Random run: boss missing for world " +
+                    chosenWorld);
+                return;
+            }
+            story.setWorldId(chosenWorld, flowId - 1);
+            Plugin.Log.LogInfo("Random run: boss " + chosenWorld +
+                " (" + (_bossCount + 1) + "/7) -> world " +
+                chosenWorld + " stage 10");
+        }
+
+        internal static void SelectNext(StoryManager story)
+        {
+            if (!Active) return;
+            int world = story.worldId;
+            int stage = FlowStage(story, world, story.storyFlowId);
+
+            if (stage == 10)
+            {
+                if (world >= 1 && world <= 7 && !BossDefeated[world])
+                {
+                    BossDefeated[world] = true;
+                    _bossCount++;
+                    Plugin.Log.LogInfo("Random run: boss defeated " + world +
+                        " (" + _bossCount + "/7)");
+                }
+                if (BossDefeated[7])
+                {
+                    Active = false;
+                    Plugin.Log.LogInfo("Random run: final boss defeated");
+                    return;
+                }
+                _cleared = 0;
+                ChooseNormal(story);
+                return;
+            }
+
+            _cleared++;
+            if (_cleared >= 10)
+                ChooseBoss(story);
+            else
+                ChooseNormal(story);
         }
     }
 
@@ -1820,11 +1901,8 @@ namespace BomberQoL
         private bool _visible;
         private bool _prevCursorVisible;
         private CursorLockMode _prevLockMode;
-        private int _world = 1;
-        private int _stage = 1;
         private int _difficulty = 1;
         private int _stats;
-        private int _runMode;
         private int _row;
         private bool _leftHeld;
         private bool _rightHeld;
@@ -1922,19 +2000,13 @@ namespace BomberQoL
             {
                 int delta = left ? -1 : 1;
                 if (_row == 0)
-                    _world = Mathf.Clamp(_world + delta, 1, 7);
-                else if (_row == 1)
-                    _stage = Mathf.Clamp(_stage + delta, 1, 10);
-                else if (_row == 2)
                     _difficulty = Mathf.Clamp(_difficulty + delta, 0,
                         DiffLabels.Length - 1);
-                else if (_row == 3)
+                else if (_row == 1)
                     _stats = Mathf.Clamp(_stats + delta, 0, 3);
-                else if (_row == 4)
-                    _runMode = Mathf.Clamp(_runMode + delta, 0, 1);
             }
-            if (up) _row = (_row + 5) % 6;
-            if (down) _row = (_row + 1) % 6;
+            if (up) _row = (_row + 2) % 3;
+            if (down) _row = (_row + 1) % 3;
 
             bool accept = Input.GetKeyDown(KeyCode.Return) ||
                 Input.GetKeyDown(KeyCode.KeypadEnter) ||
@@ -1944,15 +2016,8 @@ namespace BomberQoL
             if (cancel) { SetVisible(false); return; }
             if (accept)
             {
-                bool ok;
-                if (_runMode == 1)
-                    ok = Practice.StartRandomRun(Difficulties[_difficulty], _stats);
-                else
-                {
-                    RandomRun.Cancel();
-                    ok = Practice.Start(_world, _stage,
-                        Difficulties[_difficulty], _stats);
-                }
+                bool ok = Practice.StartRandomRun(
+                    Difficulties[_difficulty], _stats);
                 if (ok) SetVisible(false);
             }
         }
@@ -1985,35 +2050,13 @@ namespace BomberQoL
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
             const int w = 570;
-            const int h = 500;
+            const int h = 330;
             Rect r = new Rect((Screen.width - w) / 2,
                 (Screen.height - h) / 2, w, h);
-            GUI.Box(r, "Practice Stage");
+            GUI.Box(r, "Random Run");
             GUILayout.BeginArea(new Rect(r.x + 16, r.y + 30, w - 32, h - 46));
 
-            GUILayout.Label((_row == 0 ? "> " : "  ") + "World");
-            GUILayout.BeginHorizontal();
-            for (int i = 1; i <= 7; i++)
-            {
-                if (GUILayout.Button(i.ToString(),
-                    GUILayout.Width(56), GUILayout.Height(28)))
-                    _world = i;
-            }
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(6);
-            GUILayout.Label((_row == 1 ? "> " : "  ") + "Stage");
-            GUILayout.BeginHorizontal();
-            for (int i = 1; i <= 10; i++)
-            {
-                if (GUILayout.Button(i.ToString(),
-                    GUILayout.Width(44), GUILayout.Height(28)))
-                    _stage = i;
-            }
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(6);
-            GUILayout.Label((_row == 2 ? "> " : "  ") + "Difficulty");
+            GUILayout.Label((_row == 0 ? "> " : "  ") + "Difficulty");
             GUILayout.BeginHorizontal();
             for (int i = 0; i < DiffLabels.Length; i++)
             {
@@ -2024,7 +2067,7 @@ namespace BomberQoL
             GUILayout.EndHorizontal();
 
             GUILayout.Space(6);
-            GUILayout.Label((_row == 3 ? "> " : "  ") + "Stats");
+            GUILayout.Label((_row == 1 ? "> " : "  ") + "Stats");
             GUILayout.BeginHorizontal();
             string[] statLabels = { "Save", "Default", "Max", "Custom" };
             for (int i = 0; i < statLabels.Length; i++)
@@ -2035,32 +2078,20 @@ namespace BomberQoL
             }
             GUILayout.EndHorizontal();
 
-            GUILayout.Space(6);
-            GUILayout.Label((_row == 4 ? "> " : "  ") + "Run");
-            GUILayout.BeginHorizontal();
-            string[] runLabels = { "Single Stage", "10 + Boss" };
-            for (int i = 0; i < runLabels.Length; i++)
-            {
-                if (GUILayout.Button(runLabels[i],
-                    GUILayout.Width(150), GUILayout.Height(28)))
-                    _runMode = i;
-            }
-            GUILayout.EndHorizontal();
-
             GUILayout.Space(10);
-            GUILayout.Label("World " + _world + ", stage " + _stage + "  —  " +
-                DiffLabels[_difficulty] + "  —  stats " +
-                statLabels[_stats] + "  —  " +
-                (_runMode == 1 ? "random 10 + boss" : "single stage") +
-                "  (story saves disabled)");
-            GUILayout.Label(_row == 5
-                ? "> Enter / A: start practice    B / Esc: close"
-                : "  Enter / A: start practice    B / Esc: close");
+            GUILayout.Label("10 random stages -> random boss. Repeat until all " +
+                "7 bosses are defeated; world 7 is last.");
+            GUILayout.Label(DiffLabels[_difficulty] + "  —  stats " +
+                statLabels[_stats] + "  (story saves disabled)");
+            GUILayout.Label(_row == 2
+                ? "> Enter / A: start run    B / Esc: close"
+                : "  Enter / A: start run    B / Esc: close");
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Start Practice", GUILayout.Height(34)))
+            if (GUILayout.Button("Start Random Run", GUILayout.Height(34)))
             {
-                if (Practice.Start(_world, _stage, Difficulties[_difficulty], _stats))
+                if (Practice.StartRandomRun(
+                    Difficulties[_difficulty], _stats))
                     SetVisible(false);
             }
             if (GUILayout.Button("Close", GUILayout.Height(34)))
@@ -2068,6 +2099,32 @@ namespace BomberQoL
             GUILayout.EndHorizontal();
 
             GUILayout.EndArea();
+        }
+    }
+
+    [HarmonyPatch(typeof(NPCAIData), "getParam")]
+    internal static class SmarterBotsPatch
+    {
+        private static bool _logged;
+
+        private static void Postfix(ref NPCAIData.Param __result)
+        {
+            if (!Plugin.SmarterBots.Value) return;
+            if (SceneManager.GetActiveScene().name != "LocalBattle")
+                return;
+            __result.searchRange = Mathf.Max(__result.searchRange, 10);
+            NPCAIData.TacticalTargetParam target =
+                __result.tacticalTargetParam;
+            if (target.rethinkInterval <= 0f ||
+                target.rethinkInterval > 0.25f)
+                target.rethinkInterval = 0.25f;
+            __result.tacticalTargetParam = target;
+            if (!_logged)
+            {
+                _logged = true;
+                Plugin.Log.LogInfo(
+                    "Smarter Bots: search range >= 10, rethink <= 0.25s");
+            }
         }
     }
 

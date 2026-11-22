@@ -285,16 +285,32 @@ SkipCharacterSelect = true
 - **SkipCharacterSelect** — when random characters (or a random run) are
   active, `StageSetupUI` auto-calls `moveNextScene(1)` after 0.25 s instead of
   showing character select. Set false to keep the screen.
-- **Random 10 + Boss** — in the F9 practice picker, select `Run: 10 + Boss`.
-  It starts at a random non-boss stage, then after each battle sets the next
-  story flow to another random non-boss stage. After 10 stages it selects a
-  random stage 10 boss. `StoryUtility.initToNext` is only overridden when the
+- **Random Run** — the F9 picker starts a full run: 10 random non-boss stages,
+  then a random undefeated boss. Defeat all 7 bosses; worlds 1–6 are randomized
+  first, and world 7 is always the final boss. After each boss the next
+  10-stage block begins. `StoryUtility.initToNext` is only overridden when the
   previous scene is `StoryBattle`, so StageSetup/WorldMap transitions still
   behave normally.
 
 Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random move sets,
 practice stage jumps and no real-save writes.
+
+## Bot AI tuning
+
+```ini
+[Bots]
+SmarterBots = false
+```
+
+When enabled, the plugin postfixes `NPCAIData.getParam` for local-battle NPCs:
+
+- `searchRange` is raised to at least 10 tiles
+- `tacticalTargetParam.rethinkInterval` is capped at 0.25 s
+
+This uses the game’s own utility-AI parameters. It does not alter story enemy
+AI, achievement counters, or the existing Weak/Normal/Strong NPC selection.
+Combine it with Strong NPCs and 8-player bot matches for a harder solo mode.
 
 ## Dead online room achievements
 
