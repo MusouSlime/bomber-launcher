@@ -114,7 +114,8 @@ The plugin adds:
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
   into battle when random characters or a random run is active. The F9 practice
   picker is a full **Random Run**: 10 random non-boss stages, then a random
-  undefeated boss; repeat until all 7 bosses are beaten, with world 7 last.
+  undefeated boss; repeat until all 13 boss battles are beaten, with world 7's
+  final boss last.
 - **Smarter Bots** — raises local-battle NPC search range to at least 10 tiles
   and caps tactical-target re-evaluation at 0.25 s. This is a real AI parameter
   change, not a stat or achievement shortcut.

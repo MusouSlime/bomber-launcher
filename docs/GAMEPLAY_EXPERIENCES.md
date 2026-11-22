@@ -286,11 +286,11 @@ SkipCharacterSelect = true
   active, `StageSetupUI` auto-calls `moveNextScene(1)` after 0.25 s instead of
   showing character select. Set false to keep the screen.
 - **Random Run** — the F9 picker starts a full run: 10 random non-boss stages,
-  then a random undefeated boss. Defeat all 7 bosses; worlds 1–6 are randomized
-  first, and world 7 is always the final boss. After each boss the next
-  10-stage block begins. `StoryUtility.initToNext` is only overridden when the
-  previous scene is `StoryBattle`, so StageSetup/WorldMap transitions still
-  behave normally.
+  then a random undefeated boss. There are 13 boss battles in the story data:
+  worlds 1–5 stage 9 and 10, world 6 stages 1 and 2, and world 7 stage 10.
+  World 7's final boss is always last. After each boss the next 10-stage block
+  begins. `StoryUtility.initToNext` is only overridden when the previous scene
+  is `StoryBattle`, so StageSetup/WorldMap transitions still behave normally.
 
 Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random move sets,

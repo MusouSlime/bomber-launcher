@@ -16,7 +16,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.6.3")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.4")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -1616,23 +1616,82 @@ namespace BomberQoL
     {
         internal static bool Active;
         private static int _cleared;
-        private static int _bossCount;
-        private static readonly bool[] BossDefeated = new bool[8];
+        private static int _bossTotal;
+        private static readonly HashSet<int> BossesDefeated =
+            new HashSet<int>();
+
+        private struct StageRef
+        {
+            internal int world;
+            internal int stage;
+            internal StageRef(int w, int s) { world = w; stage = s; }
+        }
+
+        private static MapDataManager.StoryMapID MapId(int world, int stage)
+        {
+            MapDataManager.StoryMapID id = new MapDataManager.StoryMapID();
+            id.worldId = (byte)world;
+            id.stageId = (byte)stage;
+            return id;
+        }
+
+        private static bool IsBossStage(MapDataManager md, int world, int stage)
+        {
+            if (md == null) return stage >= 9;
+            StoryMapInfoDataTable.StoryMapInfoData info =
+                md.getStoryMapInfo(MapId(world, stage));
+            return info != null && (int)info.appearBossType != 0;
+        }
+
+        private static List<StageRef> NormalCandidates()
+        {
+            MapDataManager md = SingletonBase<MapDataManager>.getInstance();
+            var list = new List<StageRef>();
+            for (int world = 1; world <= 7; world++)
+            {
+                int maxStage = world == 6 ? 2 : 10;
+                for (int stage = 1; stage <= maxStage; stage++)
+                {
+                    if (IsBossStage(md, world, stage)) continue;
+                    list.Add(new StageRef(world, stage));
+                }
+            }
+            return list;
+        }
+
+        private static List<StageRef> BossCandidates()
+        {
+            MapDataManager md = SingletonBase<MapDataManager>.getInstance();
+            var list = new List<StageRef>();
+            for (int world = 1; world <= 7; world++)
+            {
+                int maxStage = world == 6 ? 2 : 10;
+                for (int stage = 1; stage <= maxStage; stage++)
+                {
+                    if (IsBossStage(md, world, stage))
+                        list.Add(new StageRef(world, stage));
+                }
+            }
+            return list;
+        }
+
+        private static int BossKey(StageRef s) { return s.world * 100 + s.stage; }
 
         internal static void Begin()
         {
             Active = true;
             _cleared = 0;
-            _bossCount = 0;
-            for (int i = 0; i < BossDefeated.Length; i++)
-                BossDefeated[i] = false;
-            Plugin.Log.LogInfo("Random run: 10 stages per boss, all 7 bosses");
+            BossesDefeated.Clear();
+            _bossTotal = BossCandidates().Count;
+            Plugin.Log.LogInfo("Random run: 10 stages per boss, " +
+                _bossTotal + " boss battles total");
         }
 
         internal static void Cancel()
         {
             Active = false;
             _cleared = 0;
+            BossesDefeated.Clear();
         }
 
         internal static void OnSceneLoaded(Scene scene)
@@ -1667,51 +1726,71 @@ namespace BomberQoL
             return f == null ? -1 : f.stageId;
         }
 
+        internal static bool FirstNormal(out int world, out int stage)
+        {
+            List<StageRef> candidates = NormalCandidates();
+            if (candidates.Count == 0)
+            {
+                world = 1;
+                stage = 1;
+                return false;
+            }
+            StageRef pick = candidates[Randomizer.Next(0, candidates.Count)];
+            world = pick.world;
+            stage = pick.stage;
+            return true;
+        }
+
         private static void ChooseNormal(StoryManager story)
         {
-            for (int attempt = 0; attempt < 30; attempt++)
+            List<StageRef> candidates = NormalCandidates();
+            if (candidates.Count == 0)
             {
-                int world = Randomizer.Next(1, 8);
-                int stage = Randomizer.Next(1, 10);
-                int flowId;
-                if (!FindBattle(story, world, stage, out flowId)) continue;
-                story.setWorldId(world, flowId - 1);
-                Plugin.Log.LogInfo("Random run: normal " + _cleared +
-                    "/10 -> world " + world + " stage " + stage);
+                Plugin.Log.LogWarning("Random run: no normal stages");
                 return;
             }
-            Plugin.Log.LogWarning("Random run: no normal stage found");
+            StageRef pick = candidates[Randomizer.Next(0, candidates.Count)];
+            int flowId;
+            if (!FindBattle(story, pick.world, pick.stage, out flowId))
+            {
+                Plugin.Log.LogWarning("Random run: missing battle");
+                return;
+            }
+            story.setWorldId(pick.world, flowId - 1);
+            Plugin.Log.LogInfo("Random run: normal " + _cleared +
+                "/10 -> world " + pick.world + " stage " + pick.stage);
         }
 
         private static void ChooseBoss(StoryManager story)
         {
-            var candidates = new List<int>();
-            for (int world = 1; world <= 6; world++)
+            List<StageRef> candidates = BossCandidates();
+            var open = new List<StageRef>();
+            for (int i = 0; i < candidates.Count; i++)
             {
-                if (!BossDefeated[world]) candidates.Add(world);
+                StageRef b = candidates[i];
+                if (BossesDefeated.Contains(BossKey(b))) continue;
+                // World 7 stage 10 is the final story boss; keep it last.
+                if (b.world == 7 && b.stage == 10 &&
+                    BossesDefeated.Count < _bossTotal - 1) continue;
+                open.Add(b);
             }
-            int chosenWorld;
-            if (candidates.Count > 0)
-                chosenWorld = candidates[Randomizer.Next(0, candidates.Count)];
-            else if (!BossDefeated[7])
-                chosenWorld = 7;
-            else
+            if (open.Count == 0)
             {
                 Active = false;
                 Plugin.Log.LogInfo("Random run: all bosses defeated");
                 return;
             }
+            StageRef pick = open[Randomizer.Next(0, open.Count)];
             int flowId;
-            if (!FindBattle(story, chosenWorld, 10, out flowId))
+            if (!FindBattle(story, pick.world, pick.stage, out flowId))
             {
-                Plugin.Log.LogWarning("Random run: boss missing for world " +
-                    chosenWorld);
+                Plugin.Log.LogWarning("Random run: boss missing");
                 return;
             }
-            story.setWorldId(chosenWorld, flowId - 1);
-            Plugin.Log.LogInfo("Random run: boss " + chosenWorld +
-                " (" + (_bossCount + 1) + "/7) -> world " +
-                chosenWorld + " stage 10");
+            story.setWorldId(pick.world, flowId - 1);
+            Plugin.Log.LogInfo("Random run: boss " +
+                (BossesDefeated.Count + 1) + "/" + _bossTotal +
+                " -> world " + pick.world + " stage " + pick.stage);
         }
 
         internal static void SelectNext(StoryManager story)
@@ -1719,17 +1798,17 @@ namespace BomberQoL
             if (!Active) return;
             int world = story.worldId;
             int stage = FlowStage(story, world, story.storyFlowId);
+            MapDataManager md = SingletonBase<MapDataManager>.getInstance();
+            bool boss = IsBossStage(md, world, stage);
 
-            if (stage == 10)
+            if (boss)
             {
-                if (world >= 1 && world <= 7 && !BossDefeated[world])
-                {
-                    BossDefeated[world] = true;
-                    _bossCount++;
+                StageRef s = new StageRef(world, stage);
+                if (BossesDefeated.Add(BossKey(s)))
                     Plugin.Log.LogInfo("Random run: boss defeated " + world +
-                        " (" + _bossCount + "/7)");
-                }
-                if (BossDefeated[7])
+                        "-" + stage + " (" + BossesDefeated.Count + "/" +
+                        _bossTotal + ")");
+                if (BossesDefeated.Count >= _bossTotal)
                 {
                     Active = false;
                     Plugin.Log.LogInfo("Random run: final boss defeated");
@@ -1818,8 +1897,9 @@ namespace BomberQoL
             RandomRun.Begin();
             for (int attempt = 0; attempt < 30; attempt++)
             {
-                int world = Randomizer.Next(1, 8);
-                int stage = Randomizer.Next(1, 10);
+                int world;
+                int stage;
+                if (!RandomRun.FirstNormal(out world, out stage)) break;
                 if (Start(world, stage, difficulty, statsMode))
                     return true;
             }
