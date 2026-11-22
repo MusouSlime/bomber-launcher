@@ -75,14 +75,20 @@ or use the launcher toggle.
 
 ## Practice stage select
 
-Plugin 0.3.0 adds an in-game **F9** overlay for practicing any story stage.
+Plugin 0.3.6 adds an in-game **F9** overlay for practicing any story stage.
 Choose world 1–7, stage 1–10 and Easy/Normal/Hard/Master, then **Start
 Practice**.
 
 - **F9** or **L1 + R1 + X** (hold 0.6 s) opens/closes the picker.
-- Arrow keys or D-pad move between World, Stage and Difficulty and change the
-  selected value.
+- Arrow keys or D-pad move between World, Stage, Difficulty and Stats and
+  change the selected value.
 - **Enter / A** starts practice; **B / Esc** closes.
+- **Stats** row: `Save` uses the current save's item counts, `Default` clears
+  all item bonuses, `Max` gives fire 5 / bomb 5 / speed 4 plus punch, glove,
+  kick, remote, penetration and elasticity, and `Custom` reads the
+  `StatsFire`, `StatsBomb`, `StatsSpeed`, `StatsPunch`, `StatsGlove`,
+  `StatsKick`, `StatsRemote`, `StatsPenetration`, `StatsElasticity` config
+  values.
 - Mouse clicks also work; the game's own menu input is blocked while the
   picker is open.
 - Looks up the `StoryFlowDataTable` entry for the requested stage.

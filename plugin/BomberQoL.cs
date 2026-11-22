@@ -16,7 +16,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.3.5")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.3.6")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -42,6 +42,15 @@ namespace BomberQoL
         internal static ConfigEntry<string> PracticeMenuPadCombo;
         internal static ConfigEntry<float> PracticeMenuPadHold;
         internal static ConfigEntry<bool> PracticeMenuDebug;
+        internal static ConfigEntry<int> PracticeFire;
+        internal static ConfigEntry<int> PracticeBomb;
+        internal static ConfigEntry<int> PracticeSpeed;
+        internal static ConfigEntry<int> PracticePunch;
+        internal static ConfigEntry<int> PracticeGlove;
+        internal static ConfigEntry<int> PracticeKick;
+        internal static ConfigEntry<int> PracticeRemote;
+        internal static ConfigEntry<int> PracticePenetration;
+        internal static ConfigEntry<int> PracticeElasticity;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -102,6 +111,24 @@ namespace BomberQoL
                 "Seconds the practice-selector combo must be held (0.2 - 3.0).");
             PracticeMenuDebug = Config.Bind("Practice", "PracticeMenuDebug", false,
                 "Log practice-selector button states while its combo is held (diagnostics).");
+            PracticeFire = Config.Bind("Practice", "StatsFire", 3,
+                "Custom practice fire-up count (index 1).");
+            PracticeBomb = Config.Bind("Practice", "StatsBomb", 3,
+                "Custom practice bomb-up count (index 4).");
+            PracticeSpeed = Config.Bind("Practice", "StatsSpeed", 2,
+                "Custom practice speed-up count (index 6).");
+            PracticePunch = Config.Bind("Practice", "StatsPunch", 1,
+                "Custom practice punch (index 8).");
+            PracticeGlove = Config.Bind("Practice", "StatsGlove", 1,
+                "Custom practice power glove (index 9).");
+            PracticeKick = Config.Bind("Practice", "StatsKick", 1,
+                "Custom practice kick (index 10).");
+            PracticeRemote = Config.Bind("Practice", "StatsRemote", 0,
+                "Custom practice remote (index 11).");
+            PracticePenetration = Config.Bind("Practice", "StatsPenetration", 0,
+                "Custom practice penetration (index 12).");
+            PracticeElasticity = Config.Bind("Practice", "StatsElasticity", 0,
+                "Custom practice elasticity (index 14).");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -837,7 +864,50 @@ namespace BomberQoL
                 Active = false;
         }
 
-        internal static bool Start(int world, int stage, string difficulty)
+        private static readonly int[] StatIndices = { 1, 4, 6, 8, 9, 10, 11, 12, 14 };
+        private static readonly int[] MaxStats = { 5, 5, 4, 1, 1, 1, 1, 1, 1 };
+
+        private static void ApplyStats(SaveDataManager sd, int mode)
+        {
+            if (sd == null || sd.storyData == null || mode == 0) return;
+            sd.storyData.resetStoryPlayParams();
+            if (mode == 1) return;
+
+            int[] values = mode == 2
+                ? MaxStats
+                : new[]
+                {
+                    Plugin.PracticeFire.Value,
+                    Plugin.PracticeBomb.Value,
+                    Plugin.PracticeSpeed.Value,
+                    Plugin.PracticePunch.Value,
+                    Plugin.PracticeGlove.Value,
+                    Plugin.PracticeKick.Value,
+                    Plugin.PracticeRemote.Value,
+                    Plugin.PracticePenetration.Value,
+                    Plugin.PracticeElasticity.Value
+                };
+
+            for (int c = 0; c < sd.storyData.characterDatas.Length; c++)
+            {
+                byte[] items = sd.storyData.characterDatas[c].items;
+                if (items == null) continue;
+                for (int i = 0; i < StatIndices.Length; i++)
+                {
+                    int idx = StatIndices[i];
+                    if (idx < 0 || idx >= items.Length) continue;
+                    int v = values[i];
+                    if (v < 0) v = 0;
+                    if (v > 9) v = 9;
+                    items[idx] = (byte)v;
+                }
+            }
+            Plugin.Log.LogInfo("Practice stats mode: " +
+                (mode == 2 ? "max" : "custom"));
+        }
+
+        internal static bool Start(int world, int stage, string difficulty,
+            int statsMode)
         {
             StoryManager story = SingletonBase<StoryManager>.getInstance();
             GameSceneManager gs =
@@ -889,6 +959,7 @@ namespace BomberQoL
                 sd.storyData.stock = story.playerStockNum;
                 if (diff != null) sd.storyData.difficulty = (int)diff.id;
                 sd.storyData.setStoryFlowId(world, target.storyFlowId);
+                ApplyStats(sd, statsMode);
             }
 
             Active = true;
@@ -912,6 +983,7 @@ namespace BomberQoL
         private int _world = 1;
         private int _stage = 1;
         private int _difficulty = 1;
+        private int _stats;
         private int _row;
         private bool _leftHeld;
         private bool _rightHeld;
@@ -1015,9 +1087,11 @@ namespace BomberQoL
                 else if (_row == 2)
                     _difficulty = Mathf.Clamp(_difficulty + delta, 0,
                         DiffLabels.Length - 1);
+                else if (_row == 3)
+                    _stats = Mathf.Clamp(_stats + delta, 0, 3);
             }
-            if (up) _row = (_row + 3) % 4;
-            if (down) _row = (_row + 1) % 4;
+            if (up) _row = (_row + 4) % 5;
+            if (down) _row = (_row + 1) % 5;
 
             bool accept = Input.GetKeyDown(KeyCode.Return) ||
                 Input.GetKeyDown(KeyCode.KeypadEnter) ||
@@ -1026,7 +1100,7 @@ namespace BomberQoL
                 PadButtonDown("B");
             if (cancel) { SetVisible(false); return; }
             if (accept &&
-                Practice.Start(_world, _stage, Difficulties[_difficulty]))
+                Practice.Start(_world, _stage, Difficulties[_difficulty], _stats))
                 SetVisible(false);
         }
 
@@ -1058,7 +1132,7 @@ namespace BomberQoL
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
             const int w = 570;
-            const int h = 390;
+            const int h = 450;
             Rect r = new Rect((Screen.width - w) / 2,
                 (Screen.height - h) / 2, w, h);
             GUI.Box(r, "Practice Stage");
@@ -1096,17 +1170,30 @@ namespace BomberQoL
             }
             GUILayout.EndHorizontal();
 
+            GUILayout.Space(6);
+            GUILayout.Label((_row == 3 ? "> " : "  ") + "Stats");
+            GUILayout.BeginHorizontal();
+            string[] statLabels = { "Save", "Default", "Max", "Custom" };
+            for (int i = 0; i < statLabels.Length; i++)
+            {
+                if (GUILayout.Button(statLabels[i],
+                    GUILayout.Width(92), GUILayout.Height(28)))
+                    _stats = i;
+            }
+            GUILayout.EndHorizontal();
+
             GUILayout.Space(10);
             GUILayout.Label("World " + _world + ", stage " + _stage + "  —  " +
-                DiffLabels[_difficulty] + "  (story saves disabled)");
-            GUILayout.Label(_row == 3
+                DiffLabels[_difficulty] + "  —  stats " +
+                statLabels[_stats] + "  (story saves disabled)");
+            GUILayout.Label(_row == 4
                 ? "> Enter / A: start practice    B / Esc: close"
                 : "  Enter / A: start practice    B / Esc: close");
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Start Practice", GUILayout.Height(34)))
             {
-                if (Practice.Start(_world, _stage, Difficulties[_difficulty]))
+                if (Practice.Start(_world, _stage, Difficulties[_difficulty], _stats))
                     SetVisible(false);
             }
             if (GUILayout.Button("Close", GUILayout.Height(34)))
