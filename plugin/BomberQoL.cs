@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.3.1")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.3.2")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -36,6 +36,8 @@ namespace BomberQoL
         internal static ConfigEntry<bool> SoftResetSave;
         internal static ConfigEntry<bool> SoftResetDebug;
         internal static ConfigEntry<string> PracticeMenuKeyName;
+        internal static ConfigEntry<string> PracticeMenuPadCombo;
+        internal static ConfigEntry<float> PracticeMenuPadHold;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -47,6 +49,7 @@ namespace BomberQoL
         internal static KeyCode SoftResetKey = KeyCode.F10;
         internal static KeyCode PracticeMenuKey = KeyCode.F9;
         internal static int[] SoftResetButtons = { 4, 5, 7 };
+        internal static int[] PracticeMenuPadButtons = { 4, 5, 6 };
         internal static bool ForceMasterEnv;
 
         private void Awake()
@@ -87,6 +90,10 @@ namespace BomberQoL
                 "Log controller button states while the soft-reset combo is held (diagnostics).");
             PracticeMenuKeyName = Config.Bind("Practice", "PracticeMenuKey", "F9",
                 "Key used to open the in-game practice stage selector.");
+            PracticeMenuPadCombo = Config.Bind("Practice", "PracticeMenuPadCombo", "4,5,6",
+                "Controller combo for the practice selector: 4=L1/LB, 5=R1/RB, 6=Select/Back. Default L1+R1+Select.");
+            PracticeMenuPadHold = Config.Bind("Practice", "PracticeMenuPadHold", 0.6f,
+                "Seconds the practice-selector combo must be held (0.2 - 3.0).");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -140,6 +147,13 @@ namespace BomberQoL
             {
                 SoftResetButtons = new[] { 4, 5, 7 };
                 Log.LogWarning("Invalid SoftResetPadCombo; using 4,5,7 (LB+RB+Start).");
+            }
+
+            PracticeMenuPadButtons = ParseSoftResetButtons(PracticeMenuPadCombo.Value);
+            if (PracticeMenuPadButtons.Length == 0)
+            {
+                PracticeMenuPadButtons = new[] { 4, 5, 6 };
+                Log.LogWarning("Invalid PracticeMenuPadCombo; using 4,5,6 (L1+R1+Select).");
             }
 
             var harmony = new Harmony(GUID);
@@ -424,7 +438,7 @@ namespace BomberQoL
             }
         }
 
-        private static bool PadButtonHeld(int button)
+        internal static bool PadButtonHeld(int button)
         {
             if (button < 0 || button > 19) return false;
 
@@ -463,6 +477,18 @@ namespace BomberQoL
         {
             string scene = SceneManager.GetActiveScene().name;
             return scene == "Reset" || scene == "Entry";
+        }
+
+        internal static bool PracticeComboHeld()
+        {
+            if (PracticeMenuPadButtons == null ||
+                PracticeMenuPadButtons.Length == 0)
+                return false;
+            for (int i = 0; i < PracticeMenuPadButtons.Length; i++)
+            {
+                if (!PadButtonHeld(PracticeMenuPadButtons[i])) return false;
+            }
+            return true;
         }
 
         internal static bool SoftResetComboHeld()
@@ -774,6 +800,8 @@ namespace BomberQoL
         private bool _rightHeld;
         private bool _upHeld;
         private bool _downHeld;
+        private float _comboHeld;
+        private bool _comboLatched;
 
         private void Update()
         {
@@ -783,6 +811,29 @@ namespace BomberQoL
                 SetVisible(!_visible);
                 return;
             }
+
+            if (Plugin.PracticeComboHeld())
+            {
+                if (!_comboLatched)
+                {
+                    float hold = Plugin.PracticeMenuPadHold.Value;
+                    if (hold < 0.2f) hold = 0.2f;
+                    if (hold > 3f) hold = 3f;
+                    _comboHeld += Time.unscaledDeltaTime;
+                    if (_comboHeld >= hold)
+                    {
+                        _comboHeld = 0f;
+                        _comboLatched = true;
+                        SetVisible(!_visible);
+                    }
+                }
+            }
+            else
+            {
+                _comboHeld = 0f;
+                _comboLatched = false;
+            }
+
             if (!_visible) return;
             HandleNavigation();
         }

@@ -18,7 +18,7 @@ artwork extracted from the game itself.
 | **Master Difficulty** | BepInEx plugin: activates the hidden Master option in the difficulty menu |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
 | **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to return to title |
-| **Practice Stage Selector** | BepInEx plugin: press F9, choose world/stage/difficulty, jump straight in |
+| **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+Select, then choose world/stage/difficulty |
 | **Motion Blur / DoF / Bloom** | BepInEx plugin: per-effect post-processing switches |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
@@ -93,8 +93,9 @@ The plugin adds:
   `SoftResetPadHold = 0.75`. The keyboard shortcut **Ctrl+F10** is also active
   by default (`SoftResetKeyEnabled = true`). `SoftResetSave` is off by default:
   saving a story battle can write a stock-0 save that will not reload.
-- **Practice Stage Selector** — press **F9** in the title, world map or a
-  battle to open a world/stage/difficulty picker. Use **arrow keys / D-pad**
+- **Practice Stage Selector** — press **F9** or hold **L1 + R1 + Select** for
+  0.6 s in the title, world map or a battle to open a world/stage/difficulty
+  picker. Use **arrow keys / D-pad**
   to move and change values, **Enter / A** to start, **B / Esc** to close, or
   click with the mouse. It jumps through `StageSetup` into the selected story
   battle and suppresses story saves while practice mode is active, so your real
