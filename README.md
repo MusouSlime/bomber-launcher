@@ -21,7 +21,7 @@ artwork extracted from the game itself.
 | **Custom SFX Folder + Shuffle** | Replace or shuffle sound effects by label |
 | **Randomizer** | Random story characters and shuffled character move sets |
 | **Room Achievement Helper** | One-shot unlock for the three dead online room achievements |
-| **Smarter Bots** | Larger NPC search radius and faster target re-evaluation in local battles |
+| **Multiplayer** | Smarter local-battle bots, random CPU characters, and CPU special abilities |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
 | **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to fully relaunch the game |
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
@@ -110,8 +110,9 @@ The plugin adds:
   `CustomSfxShuffle` randomizes variants. The folder rows show the selected
   folder name and include a **Clear** action. Config lives under `[Audio]`.
 - **Randomizer** — **Random Story Characters** rerolls the character select at
-  every `StageSetup`; **Random Move Sets** shuffles the normal/special skill
-  fields on every character status entry once per launch. A fixed seed lives in
+  every `StageSetup`; **Random Move Sets** shuffles the A-button special ability
+  on every character status entry once per launch; the normal B-button bomb
+  is kept intact. A fixed seed lives in
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
   into battle when random characters or a random run is active. The F9 menu has
   **Practice** and **Randomizer** tabs, starts on **Beginner**, and exposes the

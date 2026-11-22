@@ -68,6 +68,8 @@ public class MainForm : Form
     private readonly CheckBox _randomMoves = new();
     private readonly CheckBox _skipChars = new();
     private readonly CheckBox _smartBots = new();
+    private readonly CheckBox _randomCpu = new();
+    private readonly CheckBox _cpuSkills = new();
     private readonly CheckBox _dual = new();
     private readonly CheckBox _intro = new();
     private readonly CheckBox _skipMovies = new();
@@ -199,13 +201,10 @@ public class MainForm : Form
             "Random character selection at each StageSetup", _randomChars);
         Separator(basic);
         AddRow(basic, "Random Move Sets",
-            "Shuffle normal/special skills for every status", _randomMoves);
+            "Shuffle A-button special abilities; normal bomb stays intact", _randomMoves);
         Separator(basic);
         AddRow(basic, "Skip Character Select",
             "Jump into battle when random characters/random run is active", _skipChars);
-        Separator(basic);
-        AddRow(basic, "Smarter Bots",
-            "Longer NPC search range and faster target re-evaluation", _smartBots);
         Separator(basic);
         AddButtonRow(basic, "Online Room Achievements",
             "One-shot Room Creator/Master/Champ shortcut; next launch",
@@ -237,6 +236,17 @@ public class MainForm : Form
         Separator(basic);
         AddRow(basic, "Soft Reset Combo",
             "Hold LB + RB + Start for 0.75s to save and return to title", _softReset);
+
+        AddSection("MULTIPLAYER");
+        var mp = AddCard();
+        AddRow(mp, "Smarter Bots",
+            "Longer NPC search range and faster target re-evaluation", _smartBots);
+        Separator(mp);
+        AddRow(mp, "Random CPU Opponent",
+            "Randomize character selection for CPU slots in local battle", _randomCpu);
+        Separator(mp);
+        AddRow(mp, "CPU Special Abilities",
+            "Local battle CPUs use their A-button special ability when they have one", _cpuSkills);
 
         AddSection("ENVIRONMENT");
         var env = AddCard();
@@ -295,6 +305,8 @@ public class MainForm : Form
         _randomMoves.CheckedChanged += (_, _) => SavePlugin("Randomizer", "RandomMoveSets", _randomMoves.Checked);
         _skipChars.CheckedChanged += (_, _) => SavePlugin("Randomizer", "SkipCharacterSelect", _skipChars.Checked);
         _smartBots.CheckedChanged += (_, _) => SavePlugin("Bots", "SmarterBots", _smartBots.Checked);
+        _randomCpu.CheckedChanged += (_, _) => SavePlugin("Multiplayer", "RandomCpuOpponent", _randomCpu.Checked);
+        _cpuSkills.CheckedChanged += (_, _) => SavePlugin("Multiplayer", "CpuSpecialAbilities", _cpuSkills.Checked);
         _fastResults.CheckedChanged += (_, _) => SavePlugin("Results", "FastResults", _fastResults.Checked);
 
         Shown += (_, _) => RefreshState();
@@ -572,6 +584,10 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Randomizer", "SkipCharacterSelect", "true") == "true";
                     _smartBots.Checked =
                         Core.GetPluginOption(_game, "Bots", "SmarterBots", "false") == "true";
+                    _randomCpu.Checked =
+                        Core.GetPluginOption(_game, "Multiplayer", "RandomCpuOpponent", "false") == "true";
+                    _cpuSkills.Checked =
+                        Core.GetPluginOption(_game, "Multiplayer", "CpuSpecialAbilities", "true") == "true";
                     if (int.TryParse(Core.GetPluginOption(_game, "Movies", "SkipJoystickButton", "0"), out int pad))
                     {
                         int idx = Array.FindIndex(Pads, p => p.Value == pad);

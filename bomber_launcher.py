@@ -768,7 +768,7 @@ class BomberWindow(Adw.ApplicationWindow):
         self.rand_moves_sw.connect("notify::active", self.on_random_moves)
         rnd.append(self._row(
             "avatar_pink.png", "Random Move Sets",
-            "Shuffle normal/special skills for every character status",
+            "Shuffle A-button special abilities; the normal bomb stays intact",
             self.rand_moves_sw))
         rnd.append(self._separator())
         self.skip_chars_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
@@ -778,13 +778,32 @@ class BomberWindow(Adw.ApplicationWindow):
             "Jump straight into battle when random characters or a random run is active",
             self.skip_chars_sw))
         rnd.append(self._separator())
+        page.append(rnd)
+
+        # ----- multiplayer
+        page.append(self._section("multiplayer"))
+        mp = self._card()
         self.smart_bots_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.smart_bots_sw.connect("notify::active", self.on_smart_bots)
-        rnd.append(self._row(
+        mp.append(self._row(
             "avatar_pink.png", "Smarter Bots",
             "Longer NPC search range and faster target re-evaluation",
             self.smart_bots_sw))
-        page.append(rnd)
+        mp.append(self._separator())
+        self.random_cpu_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.random_cpu_sw.connect("notify::active", self.on_random_cpu)
+        mp.append(self._row(
+            "avatar_yellow.png", "Random CPU Opponent",
+            "Randomize character selection for CPU slots in local battle",
+            self.random_cpu_sw))
+        mp.append(self._separator())
+        self.cpu_skills_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.cpu_skills_sw.connect("notify::active", self.on_cpu_skills)
+        mp.append(self._row(
+            "avatar_blue.png", "CPU Special Abilities",
+            "Local battle CPUs use their A-button special ability when they have one",
+            self.cpu_skills_sw))
+        page.append(mp)
 
         # ----- achievements
         page.append(self._section("achievements"))
@@ -1109,6 +1128,10 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Randomizer", {}).get("SkipCharacterSelect", "true").lower() == "true")
                     self.smart_bots_sw.set_active(
                         cfg.get("Bots", {}).get("SmarterBots", "false").lower() == "true")
+                    self.random_cpu_sw.set_active(
+                        cfg.get("Multiplayer", {}).get("RandomCpuOpponent", "false").lower() == "true")
+                    self.cpu_skills_sw.set_active(
+                        cfg.get("Multiplayer", {}).get("CpuSpecialAbilities", "true").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -1300,6 +1323,12 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_smart_bots(self, row, _pspec):
         self._plugin_write("Bots", "SmarterBots", row.get_active())
+
+    def on_random_cpu(self, row, _pspec):
+        self._plugin_write("Multiplayer", "RandomCpuOpponent", row.get_active())
+
+    def on_cpu_skills(self, row, _pspec):
+        self._plugin_write("Multiplayer", "CpuSpecialAbilities", row.get_active())
 
     def on_room_achievements(self, _btn):
         if not self.mods or not self.mods.plugin_installed():

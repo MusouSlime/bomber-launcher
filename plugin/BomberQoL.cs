@@ -73,6 +73,8 @@ namespace BomberQoL
         internal static ConfigEntry<bool> SkipCharacterSelect;
         internal static ConfigEntry<bool> UnlockRoomAchievements;
         internal static ConfigEntry<bool> SmarterBots;
+        internal static ConfigEntry<bool> RandomCpuOpponent;
+        internal static ConfigEntry<bool> CpuSpecialAbilities;
         internal static ConfigEntry<bool> SkipGemContinue;
         internal static ConfigEntry<bool> MasterStatReset;
         internal static ConfigEntry<bool> ResetStatsPerStage;
@@ -178,7 +180,7 @@ namespace BomberQoL
             RandomStoryCharacters = Config.Bind("Randomizer", "RandomStoryCharacters", false,
                 "Randomize the story character selection at each StageSetup.");
             RandomMoveSets = Config.Bind("Randomizer", "RandomMoveSets", false,
-                "Shuffle normal/special skill assignments on the character status table.");
+                "Shuffle the A-button special ability on each character status; the normal B-button bomb stays intact.");
             RandomizerSeed = Config.Bind("Randomizer", "Seed", 0,
                 "Seed for the randomizer (0 = random each launch).");
             SkipCharacterSelect = Config.Bind("Randomizer", "SkipCharacterSelect", true,
@@ -187,6 +189,10 @@ namespace BomberQoL
                 "One-shot: call TrophyManager.FuncCreateRoom 100x on the next launch to unlock Room Creator/Master/Champ.");
             SmarterBots = Config.Bind("Bots", "SmarterBots", false,
                 "Increase NPC search range and target re-evaluation speed for local battle bots.");
+            RandomCpuOpponent = Config.Bind("Multiplayer", "RandomCpuOpponent", false,
+                "Randomize the character used by CPU slots in local battle.");
+            CpuSpecialAbilities = Config.Bind("Multiplayer", "CpuSpecialAbilities", true,
+                "Let local battle CPUs use their A-button special ability when they have one.");
             SkipGemContinue = Config.Bind("Gameplay", "SkipGemContinue", true,
                 "On story game over, skip the gem continue dialog and return to the main menu.");
             MasterStatReset = Config.Bind("Gameplay", "MasterStatReset", true,
@@ -282,6 +288,9 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PracticeSaveAllPatch));
             harmony.PatchAll(typeof(PracticeInputPatch));
             harmony.PatchAll(typeof(SmarterBotsPatch));
+            harmony.PatchAll(typeof(RandomCpuOpponentPatch));
+            harmony.PatchAll(typeof(CpuSkillDesirePatch));
+            harmony.PatchAll(typeof(CpuSkillConditionPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
             harmony.PatchAll(typeof(CustomBgmChangePatch));
             harmony.PatchAll(typeof(CustomBgmStopPatch));
@@ -371,6 +380,7 @@ namespace BomberQoL
         {
             Practice.OnSceneLoaded(scene);
             Randomizer.ApplyMoveSets();
+            Randomizer.EnsureBombNormalSkills();
             RandomRun.OnSceneLoaded(scene);
             ApplyAllPostFx();
             ApplyResultTweaks();
@@ -1615,9 +1625,10 @@ namespace BomberQoL
                     ? ", rerolled P2" : ""));
         }
 
-        internal static void ApplyMoveSets()
+        internal static void ApplyMoveSets(bool force = false)
         {
-            if (!Plugin.RandomMoveSets.Value || _moveSetsApplied) return;
+            if (!Plugin.RandomMoveSets.Value) return;
+            if (_moveSetsApplied && !force) return;
             CharacterDataManager cd =
                 SingletonBase<CharacterDataManager>.getInstance();
             if (cd == null) return;
@@ -1640,12 +1651,45 @@ namespace BomberQoL
             {
                 object data = table.getCharacterStatusData(i);
                 if (data == null) continue;
-                normal.SetValue(data, (Player.SKILL_TYPE)Rng.Next(1, 29));
+                // The normal slot is always NORMAL_BOMB in the game data.
+                // Randomizing it removed bomb placement, so only the special
+                // slot is shuffled.
+                normal.SetValue(data, Player.SKILL_TYPE.NORMAL_BOMB);
                 special.SetValue(data, (Player.SKILL_TYPE)Rng.Next(1, 29));
             }
             _moveSetsApplied = true;
             Plugin.Log.LogInfo("Randomizer: shuffled move sets for " +
-                n + " status entries");
+                n + " status entries (normal bomb kept, A-button specials shuffled)");
+        }
+
+        internal static void EnsureBombNormalSkills()
+        {
+            if (!Plugin.RandomMoveSets.Value) return;
+            CharacterDataManager cd =
+                SingletonBase<CharacterDataManager>.getInstance();
+            if (cd == null) return;
+            CharacterStatusDataTable table = cd.getCharacterStatuses();
+            if (table == null) return;
+            Type t = typeof(CharacterStatusDataTable.CharacterStatusData);
+            FieldInfo normal = t.GetField("_normalSkillType",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (normal == null) return;
+
+            int fixedCount = 0;
+            int n = table.characterStatusDataCount;
+            for (int i = 0; i < n; i++)
+            {
+                object data = table.getCharacterStatusData(i);
+                if (data == null) continue;
+                Player.SKILL_TYPE current =
+                    (Player.SKILL_TYPE)normal.GetValue(data);
+                if (current == Player.SKILL_TYPE.NORMAL_BOMB) continue;
+                normal.SetValue(data, Player.SKILL_TYPE.NORMAL_BOMB);
+                fixedCount++;
+            }
+            if (fixedCount > 0)
+                Plugin.Log.LogInfo("Randomizer: repaired " + fixedCount +
+                    " non-bomb normal skills");
         }
     }
 
@@ -2756,7 +2800,7 @@ namespace BomberQoL
         {
             entry.Value = !entry.Value;
             if (entry == Plugin.RandomMoveSets && entry.Value)
-                Randomizer.ApplyMoveSets();
+                Randomizer.ApplyMoveSets(true);
         }
 
         private static void ToggleDifficultyOdds()
@@ -3010,7 +3054,7 @@ namespace BomberQoL
             DrawToggle(4, Plugin.PickupToast, "Pickup name popup");
             DrawDifficultyOddsToggle(5);
             DrawToggle(6, Plugin.RandomStoryCharacters, "Random characters");
-            DrawToggle(7, Plugin.RandomMoveSets, "Random move sets");
+            DrawToggle(7, Plugin.RandomMoveSets, "Random A-button specials");
             GUILayout.EndVertical();
             GUILayout.BeginVertical(GUILayout.Width(350));
             DrawToggle(8, Plugin.SkipCharacterSelect, "Skip character select");
@@ -3122,6 +3166,157 @@ namespace BomberQoL
                 Plugin.Log.LogInfo(
                     "Smarter Bots: search range >= 10, rethink <= 0.25s");
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(LocalBattleScene), "mainStart")]
+    internal static class RandomCpuOpponentPatch
+    {
+        private static readonly FieldInfo AiTypesField =
+            AccessTools.Field(typeof(LocalBattleScene),
+                "CHARACTER_NPC_AI_TYPES");
+
+        private static void Prefix()
+        {
+            if (!Plugin.RandomCpuOpponent.Value) return;
+            GameSceneManager gs =
+                SingletonBaseWithGameObject<GameSceneManager>.getInstance();
+            CharacterDataManager cd =
+                SingletonBase<CharacterDataManager>.getInstance();
+            if (gs == null || cd == null) return;
+            MoveSceneParam.CharacterParam[] chars = gs.param.characterParams;
+            if (chars == null) return;
+
+            int total = cd.getTotalCharacterCount();
+            if (total <= 0) return;
+
+            int npcType = (int)gs.param.localBattleRuleParam.npcType;
+            CharacterDataManager.NPC_AI_TYPE aiType =
+                CharacterDataManager.NPC_AI_TYPE.NORMAL;
+            CharacterDataManager.NPC_AI_TYPE[] aiTypes = AiTypesField == null
+                ? null
+                : AiTypesField.GetValue(null) as
+                    CharacterDataManager.NPC_AI_TYPE[];
+            if (aiTypes != null && npcType >= 0 && npcType < aiTypes.Length)
+                aiType = aiTypes[npcType];
+
+            var pool = new List<CharacterInfoDataTable.CharacterInfoData>();
+            for (int i = 0; i < total; i++)
+            {
+                CharacterInfoDataTable.CharacterInfoData info =
+                    cd.getCharacterInfoFromSorted(i);
+                if (info == null) continue;
+                if (!cd.isUsableCharacter(info)) continue;
+                if (cd.getCharacterNpcAiInfo(info.charKey, aiType) == null)
+                    continue;
+                pool.Add(info);
+            }
+            if (pool.Count == 0) return;
+
+            var used = new HashSet<int>();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (chars[i].controlType == BattleDef.CONTROL_TYPE.COM)
+                    continue;
+                CharacterDataManager.CharacterID id = chars[i].characterId;
+                if (id.characterId == 0xFF) continue;
+                used.Add(CharacterKey(id));
+            }
+
+            int count = 0;
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (chars[i].controlType != BattleDef.CONTROL_TYPE.COM)
+                    continue;
+                CharacterInfoDataTable.CharacterInfoData pick = null;
+                for (int attempt = 0; attempt < 80; attempt++)
+                {
+                    CharacterInfoDataTable.CharacterInfoData candidate =
+                        pool[UnityEngine.Random.Range(0, pool.Count)];
+                    if (used.Contains(CharacterKey(
+                        CharacterDataManager.getCharacterId(candidate))))
+                        continue;
+                    pick = candidate;
+                    break;
+                }
+                if (pick == null) continue;
+                CharacterDataManager.CharacterID id =
+                    CharacterDataManager.getCharacterId(pick);
+                used.Add(CharacterKey(id));
+                chars[i].characterId = id;
+                chars[i].statusId = pick.normalStatusId;
+                chars[i].topKnotId =
+                    CharacterDataManager.TopKnotID.INVALID_ID;
+                count++;
+            }
+
+            if (count > 0)
+            {
+                gs.param.characterParams = chars;
+                Plugin.Log.LogInfo("Multiplayer: randomized " + count +
+                    " CPU character slots");
+            }
+        }
+
+        private static int CharacterKey(
+            CharacterDataManager.CharacterID id)
+        {
+            return ((int)id.contentType << 8) | id.characterId;
+        }
+    }
+
+    [HarmonyPatch(typeof(NPCAIData), "createDesires")]
+    internal static class CpuSkillDesirePatch
+    {
+        private static readonly FieldInfo DefaultVal =
+            AccessTools.Field(typeof(NPCDesire), "_defaultVal");
+        private static readonly FieldInfo TimeCoefficient =
+            AccessTools.Field(typeof(NPCDesire), "_timeCoefficient");
+        private static readonly FieldInfo Priority =
+            AccessTools.Field(typeof(NPCDesire), "_priority");
+        private static readonly FieldInfo StartUpdate =
+            AccessTools.Field(typeof(NPCDesire), "_startUpdateCount");
+        private static readonly FieldInfo UpdateInterval =
+            AccessTools.Field(typeof(NPCDesire), "_updateInterval");
+
+        private static void Postfix(NPC npc, NPCDesire[] __result)
+        {
+            if (!Plugin.CpuSpecialAbilities.Value) return;
+            if (SceneManager.GetActiveScene().name != "LocalBattle")
+                return;
+            if (npc == null || npc.player == null ||
+                npc.player.status == null)
+                return;
+            if (!npc.player.status.haveSpecialSkill) return;
+            if (__result == null) return;
+
+            for (int i = 0; i < __result.Length; i++)
+            {
+                NPCDesire desire = __result[i];
+                if (desire == null || desire.stateName != "useSkill")
+                    continue;
+                DefaultVal.SetValue(desire, 0.55f);
+                TimeCoefficient.SetValue(desire, 0.08f);
+                Priority.SetValue(desire, 6);
+                StartUpdate.SetValue(desire, 0);
+                UpdateInterval.SetValue(desire, 3);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(NPCProcessSpecialSkill), MethodType.Constructor,
+        typeof(INPCCondition), typeof(AbstractNPCProcess[]))]
+    internal static class CpuSkillConditionPatch
+    {
+        private static readonly FieldInfo ConditionField =
+            AccessTools.Field(typeof(AbstractNPCProcess), "_condition");
+
+        private static void Postfix(NPCProcessSpecialSkill __instance)
+        {
+            if (!Plugin.CpuSpecialAbilities.Value) return;
+            if (SceneManager.GetActiveScene().name != "LocalBattle")
+                return;
+            ConditionField.SetValue(__instance, new NPCConditionTrue());
         }
     }
 

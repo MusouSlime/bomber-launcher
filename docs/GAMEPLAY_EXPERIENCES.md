@@ -284,8 +284,9 @@ ResetStatsPerStage = true
   `setFromSaveDataToBattleParams` builds `MoveSceneParam`. P1/P2 are distinct.
 - **RandomMoveSets** — once per launch, walks
   `CharacterStatusDataTable` and assigns random `Player.SKILL_TYPE` values to
-  `_normalSkillType` and `_specialSkillType`. Skill assets/icons stay at their
-  original paths, so visuals may not match the rolled ability.
+  the A-button `_specialSkillType` slot. The normal B-button bomb slot stays
+  `NORMAL_BOMB`, so bomb placement is never lost. Skill assets/icons stay at
+  their original paths, so visuals may not match the rolled ability.
 - **Seed** — a non-zero value makes both rolls reproducible; 0 uses
   `Environment.TickCount`.
 - **SkipCharacterSelect** — when random characters (or a random run) are
@@ -350,21 +351,34 @@ response arrives. The plugin retries audio decoding without a forced stream
 type, which helps with some MP3/VBR files; `.ogg` and `.wav` remain the most
 reliable formats.
 
-## Bot AI tuning
+## Multiplayer / local battle
 
 ```ini
 [Bots]
 SmarterBots = false
+
+[Multiplayer]
+RandomCpuOpponent = false
+CpuSpecialAbilities = true
 ```
 
-When enabled, the plugin postfixes `NPCAIData.getParam` for local-battle NPCs:
+- **SmarterBots** — postfixes `NPCAIData.getParam` for local-battle NPCs:
+  `searchRange` is raised to at least 10 tiles, and
+  `tacticalTargetParam.rethinkInterval` is capped at 0.25 s. This uses the
+  game’s own utility-AI parameters; it does not alter story enemy AI,
+  achievement counters, or the Weak/Normal/Strong NPC selection.
+- **RandomCpuOpponent** — before a local battle starts, every `COM` slot gets a
+  random usable character that has NPC AI data for the selected NPC difficulty.
+  Human slots are untouched, duplicate picks are avoided, and the CPU status is
+  set to that character’s normal status. This runs in
+  `LocalBattleScene.mainStart`, before character packs are loaded.
+- **CpuSpecialAbilities** — local-battle CPUs boost the `useSkill` desire and
+  replace the special-skill process condition with an always-true condition.
+  `NPCProcessSpecialSkill` still checks `Player/IStatus.haveSpecialSkill`, so
+  only characters that actually have an A-button special ability will use one.
 
-- `searchRange` is raised to at least 10 tiles
-- `tacticalTargetParam.rethinkInterval` is capped at 0.25 s
-
-This uses the game’s own utility-AI parameters. It does not alter story enemy
-AI, achievement counters, or the existing Weak/Normal/Strong NPC selection.
-Combine it with Strong NPCs and 8-player bot matches for a harder solo mode.
+All three are local-battle only. Story enemies, online play, and achievement
+counters are not changed.
 
 ## Dead online room achievements
 
