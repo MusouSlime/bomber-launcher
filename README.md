@@ -19,6 +19,7 @@ artwork extracted from the game itself.
 | **Aspect Ratio** | Windowed borderless at Native, 16:9, 16:10, 21:9 or 4:3 |
 | **Custom BGM Folder** | Play .ogg/.wav/.mp3 files from a folder instead of the game BGM |
 | **Custom SFX Folder + Shuffle** | Replace or shuffle sound effects by label |
+| **Randomizer** | Random story characters and shuffled character move sets |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
 | **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to fully relaunch the game |
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
@@ -105,6 +106,10 @@ The plugin adds:
   `CustomBgmShuffle` randomizes unmatched tracks. SFX files are matched by
   sound label (`SE_btl_cmn_08.ogg`, or variants `SE_btl_cmn_08_1.ogg`);
   `CustomSfxShuffle` randomizes variants. Config lives under `[Audio]`.
+- **Randomizer** — **Random Story Characters** rerolls the character select at
+  every `StageSetup`; **Random Move Sets** shuffles the normal/special skill
+  fields on every character status entry once per launch. A fixed seed lives in
+  `[Randomizer] Seed` (0 = random).
 - **Practice Stage Selector** — press **F9** or hold **L1 + R1 + X** for
   0.6 s in the title, world map or a battle to open a world/stage/difficulty
   picker. Use **arrow keys / D-pad**

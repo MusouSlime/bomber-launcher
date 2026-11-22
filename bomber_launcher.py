@@ -738,6 +738,24 @@ class BomberWindow(Adw.ApplicationWindow):
             self.sfx_shuffle_sw))
         page.append(audio)
 
+        # ----- randomizer
+        page.append(self._section("randomizer"))
+        rnd = self._card()
+        self.rand_chars_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.rand_chars_sw.connect("notify::active", self.on_random_chars)
+        rnd.append(self._row(
+            "avatar_yellow.png", "Random Story Characters",
+            "Random character selection at each StageSetup",
+            self.rand_chars_sw))
+        rnd.append(self._separator())
+        self.rand_moves_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.rand_moves_sw.connect("notify::active", self.on_random_moves)
+        rnd.append(self._row(
+            "avatar_pink.png", "Random Move Sets",
+            "Shuffle normal/special skills for every character status",
+            self.rand_moves_sw))
+        page.append(rnd)
+
         # ----- environment / post processing
         page.append(self._section("environment"))
         env = self._card()
@@ -1044,6 +1062,10 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Audio", {}).get("CustomBgmShuffle", "true").lower() == "true")
                     self.sfx_shuffle_sw.set_active(
                         cfg.get("Audio", {}).get("CustomSfxShuffle", "true").lower() == "true")
+                    self.rand_chars_sw.set_active(
+                        cfg.get("Randomizer", {}).get("RandomStoryCharacters", "false").lower() == "true")
+                    self.rand_moves_sw.set_active(
+                        cfg.get("Randomizer", {}).get("RandomMoveSets", "false").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -1162,6 +1184,12 @@ class BomberWindow(Adw.ApplicationWindow):
                 except Exception as e:
                     self.toast(str(e))
         chooser.destroy()
+
+    def on_random_chars(self, row, _pspec):
+        self._plugin_write("Randomizer", "RandomStoryCharacters", row.get_active())
+
+    def on_random_moves(self, row, _pspec):
+        self._plugin_write("Randomizer", "RandomMoveSets", row.get_active())
 
     def on_bgm_shuffle(self, row, _pspec):
         self._plugin_write("Audio", "CustomBgmShuffle", row.get_active())

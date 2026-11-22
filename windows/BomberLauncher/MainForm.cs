@@ -60,6 +60,8 @@ public class MainForm : Form
     private readonly ComboBox _aspectCombo = new();
     private readonly CheckBox _shuffleBgm = new();
     private readonly CheckBox _shuffleSfx = new();
+    private readonly CheckBox _randomChars = new();
+    private readonly CheckBox _randomMoves = new();
     private readonly CheckBox _dual = new();
     private readonly CheckBox _intro = new();
     private readonly CheckBox _skipMovies = new();
@@ -185,6 +187,12 @@ public class MainForm : Form
         AddRow(basic, "Shuffle SFX",
             "Randomize among variants with the same sound label", _shuffleSfx);
         Separator(basic);
+        AddRow(basic, "Random Story Characters",
+            "Random character selection at each StageSetup", _randomChars);
+        Separator(basic);
+        AddRow(basic, "Random Move Sets",
+            "Shuffle normal/special skills for every status", _randomMoves);
+        Separator(basic);
         AddRow(basic, "Japanese Voices",
             "JP voice acting with the selected text language", _dual);
         Separator(basic);
@@ -265,6 +273,8 @@ public class MainForm : Form
         _softReset.CheckedChanged += (_, _) => SavePlugin("Gameplay", "SoftResetEnabled", _softReset.Checked);
         _shuffleBgm.CheckedChanged += (_, _) => SavePlugin("Audio", "CustomBgmShuffle", _shuffleBgm.Checked);
         _shuffleSfx.CheckedChanged += (_, _) => SavePlugin("Audio", "CustomSfxShuffle", _shuffleSfx.Checked);
+        _randomChars.CheckedChanged += (_, _) => SavePlugin("Randomizer", "RandomStoryCharacters", _randomChars.Checked);
+        _randomMoves.CheckedChanged += (_, _) => SavePlugin("Randomizer", "RandomMoveSets", _randomMoves.Checked);
         _fastResults.CheckedChanged += (_, _) => SavePlugin("Results", "FastResults", _fastResults.Checked);
 
         Shown += (_, _) => RefreshState();
@@ -499,6 +509,10 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Audio", "CustomBgmShuffle", "true") == "true";
                     _shuffleSfx.Checked =
                         Core.GetPluginOption(_game, "Audio", "CustomSfxShuffle", "true") == "true";
+                    _randomChars.Checked =
+                        Core.GetPluginOption(_game, "Randomizer", "RandomStoryCharacters", "false") == "true";
+                    _randomMoves.Checked =
+                        Core.GetPluginOption(_game, "Randomizer", "RandomMoveSets", "false") == "true";
                     if (int.TryParse(Core.GetPluginOption(_game, "Movies", "SkipJoystickButton", "0"), out int pad))
                     {
                         int idx = Array.FindIndex(Pads, p => p.Value == pad);

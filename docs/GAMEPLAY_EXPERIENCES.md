@@ -260,6 +260,32 @@ persistent `AudioSource`:
 
 The folder picker is in **Audio → Custom BGM Folder** in both launchers.
 
+## Randomizer / roguelike base
+
+Plugin 0.5.0 adds two independent switches under `[Randomizer]`:
+
+```ini
+[Randomizer]
+RandomStoryCharacters = false
+RandomMoveSets = false
+Seed = 0
+```
+
+- **RandomStoryCharacters** — a prefix on `StageSetupUI.init` picks random
+  entries from `CharacterDataManager.getCharacterInfoFromSorted()` and writes
+  their `CharacterID` into `StoryData.characterDatas` before
+  `setFromSaveDataToBattleParams` builds `MoveSceneParam`. P1/P2 are distinct.
+- **RandomMoveSets** — once per launch, walks
+  `CharacterStatusDataTable` and assigns random `Player.SKILL_TYPE` values to
+  `_normalSkillType` and `_specialSkillType`. Skill assets/icons stay at their
+  original paths, so visuals may not match the rolled ability.
+- **Seed** — a non-zero value makes both rolls reproducible; 0 uses
+  `Environment.TickCount`.
+
+Both are exposed as launcher toggles. Practice saves remain suppressed, so this
+is a safe base for a roguelike run: random characters, random move sets,
+practice stage jumps and no real-save writes.
+
 ## Display aspect ratios
 
 The launcher’s **Aspect Ratio** selector supports Native, 16:9, 16:10, 21:9

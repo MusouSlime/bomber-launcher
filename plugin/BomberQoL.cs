@@ -16,7 +16,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.4.0")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.5.0")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -58,6 +58,9 @@ namespace BomberQoL
         internal static ConfigEntry<string> CustomSfxFolder;
         internal static ConfigEntry<bool> CustomSfxShuffle;
         internal static ConfigEntry<float> CustomSfxVolume;
+        internal static ConfigEntry<bool> RandomStoryCharacters;
+        internal static ConfigEntry<bool> RandomMoveSets;
+        internal static ConfigEntry<int> RandomizerSeed;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -150,6 +153,12 @@ namespace BomberQoL
                 "Randomize among custom SFX variants for the same sound label.");
             CustomSfxVolume = Config.Bind("Audio", "CustomSfxVolume", 0.8f,
                 "Volume for custom sound effects (0.0 - 1.0).");
+            RandomStoryCharacters = Config.Bind("Randomizer", "RandomStoryCharacters", false,
+                "Randomize the story character selection at each StageSetup.");
+            RandomMoveSets = Config.Bind("Randomizer", "RandomMoveSets", false,
+                "Shuffle normal/special skill assignments on the character status table.");
+            RandomizerSeed = Config.Bind("Randomizer", "Seed", 0,
+                "Seed for the randomizer (0 = random each launch).");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -237,6 +246,7 @@ namespace BomberQoL
             harmony.PatchAll(typeof(CustomSfxStopPatch));
             harmony.PatchAll(typeof(CustomSfxIsPlayingPatch));
             harmony.PatchAll(typeof(CustomSfxStopAllPatch));
+            harmony.PatchAll(typeof(RandomCharacterPatch));
 
             Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
             MethodInfo logoExec = logoType == null ? null :
@@ -307,6 +317,7 @@ namespace BomberQoL
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             Practice.OnSceneLoaded(scene);
+            Randomizer.ApplyMoveSets();
             ApplyAllPostFx();
             ApplyResultTweaks();
             EnableMasterButton();
@@ -1448,6 +1459,109 @@ namespace BomberQoL
                 return true;
             CustomBgmPlayer.Stop();
             return false;
+        }
+    }
+
+    internal static class Randomizer
+    {
+        private static System.Random _rng;
+        private static bool _moveSetsApplied;
+        private static int _seed;
+
+        private static System.Random Rng
+        {
+            get
+            {
+                if (_rng == null)
+                {
+                    _seed = Plugin.RandomizerSeed.Value;
+                    if (_seed == 0) _seed = Environment.TickCount;
+                    _rng = new System.Random(_seed);
+                    Plugin.Log.LogInfo("Randomizer seed: " + _seed);
+                }
+                return _rng;
+            }
+        }
+
+        internal static void RandomizeCharacters()
+        {
+            if (!Plugin.RandomStoryCharacters.Value) return;
+            SaveDataManager sd =
+                SingletonBaseWithGameObject<SaveDataManager>.getInstance();
+            CharacterDataManager cd =
+                SingletonBase<CharacterDataManager>.getInstance();
+            if (sd == null || sd.storyData == null || cd == null) return;
+
+            int count = cd.getTotalCharacterCount();
+            if (count <= 0) return;
+            int first = Rng.Next(0, count);
+            CharacterInfoDataTable.CharacterInfoData a =
+                cd.getCharacterInfoFromSorted(first);
+            if (a == null) return;
+            CharacterDataManager.CharacterID idA =
+                CharacterDataManager.getCharacterId(a);
+            sd.storyData.characterDatas[0].characterId.set(
+                (sbyte)idA.contentType, idA.characterId);
+
+            if (sd.storyData.characterDatas.Length > 1)
+            {
+                int second = count > 1 ? Rng.Next(0, count - 1) : 0;
+                if (second >= first) second++;
+                CharacterInfoDataTable.CharacterInfoData b =
+                    cd.getCharacterInfoFromSorted(second);
+                if (b != null)
+                {
+                    CharacterDataManager.CharacterID idB =
+                        CharacterDataManager.getCharacterId(b);
+                    sd.storyData.characterDatas[1].characterId.set(
+                        (sbyte)idB.contentType, idB.characterId);
+                }
+            }
+            Plugin.Log.LogInfo("Randomizer: story characters " +
+                a.charKey + (sd.storyData.characterDatas.Length > 1
+                    ? ", rerolled P2" : ""));
+        }
+
+        internal static void ApplyMoveSets()
+        {
+            if (!Plugin.RandomMoveSets.Value || _moveSetsApplied) return;
+            CharacterDataManager cd =
+                SingletonBase<CharacterDataManager>.getInstance();
+            if (cd == null) return;
+            CharacterStatusDataTable table = cd.getCharacterStatuses();
+            if (table == null) return;
+            Type t = typeof(CharacterStatusDataTable.CharacterStatusData);
+            FieldInfo normal = t.GetField("_normalSkillType",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo special = t.GetField("_specialSkillType",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (normal == null || special == null)
+            {
+                Plugin.Log.LogWarning("Randomizer: skill fields not found");
+                _moveSetsApplied = true;
+                return;
+            }
+
+            int n = table.characterStatusDataCount;
+            for (int i = 0; i < n; i++)
+            {
+                object data = table.getCharacterStatusData(i);
+                if (data == null) continue;
+                normal.SetValue(data, (Player.SKILL_TYPE)Rng.Next(1, 29));
+                special.SetValue(data, (Player.SKILL_TYPE)Rng.Next(1, 29));
+            }
+            _moveSetsApplied = true;
+            Plugin.Log.LogInfo("Randomizer: shuffled move sets for " +
+                n + " status entries");
+        }
+    }
+
+    [HarmonyPatch(typeof(StageSetupUI), "init")]
+    internal static class RandomCharacterPatch
+    {
+        private static void Prefix()
+        {
+            Randomizer.RandomizeCharacters();
         }
     }
 
