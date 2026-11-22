@@ -270,6 +270,11 @@ RandomStoryCharacters = false
 RandomMoveSets = false
 Seed = 0
 SkipCharacterSelect = true
+RandomPickups = true
+RandomPickupCount = 10
+RandomPickupPool = Expanded
+HidePickupIcons = true
+PickupToast = true
 ```
 
 - **RandomStoryCharacters** — a prefix on `StageSetupUI.init` picks random
@@ -289,8 +294,16 @@ SkipCharacterSelect = true
   then a random undefeated boss. There are 13 boss battles in the story data:
   worlds 1–5 stage 9 and 10, world 6 stages 1 and 2, and world 7 stage 10.
   World 7's final boss is always last. After each boss the next 10-stage block
-  begins. `StoryUtility.initToNext` is only overridden when the previous scene
-  is `StoryBattle`, so StageSetup/WorldMap transitions still behave normally.
+  begins. `StoryUtility.initToNext` is overridden only while the active scene is
+  `StoryBattle`, so StageSetup/WorldMap transitions still behave normally.
+- **Random pickups** — `RandomPickups` moves map-fixed powerups (except keys and
+  crystals) into random breakable blocks and sets `RandomPickupCount` random
+  items per stage. `RandomPickupPool` controls the weighted pool:
+  `Vanilla`, `Expanded` (all positive items), or `Chaos` (adds rare negative
+  items). `HidePickupIcons` replaces the world icon with a question mark until
+  it is collected, and `PickupToast` shows the collected item's localized name
+  above P1. All of this runs through the real `ItemController`/`Player.addItem`
+  path, so achievements and counters still come from actual pickups.
 
 Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random move sets,

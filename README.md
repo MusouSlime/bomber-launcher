@@ -115,7 +115,9 @@ The plugin adds:
   into battle when random characters or a random run is active. The F9 practice
   picker is a full **Random Run**: 10 random non-boss stages, then a random
   undefeated boss; repeat until all 13 boss battles are beaten, with world 7's
-  final boss last.
+  final boss last. During a run, fixed powerups are moved into random breakable
+  blocks, the normal pickup pool is expanded, item icons show `?` until
+  collected, and the collected item's name pops up above the player.
 - **Smarter Bots** — raises local-battle NPC search range to at least 10 tiles
   and caps tactical-target re-evaluation at 0.25 s. This is a real AI parameter
   change, not a stat or achievement shortcut.

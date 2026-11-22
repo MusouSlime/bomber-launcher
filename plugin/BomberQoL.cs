@@ -16,7 +16,14 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.6.4")]
+    internal enum PickupPoolMode
+    {
+        Vanilla,
+        Expanded,
+        Chaos
+    }
+
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.5")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -65,6 +72,11 @@ namespace BomberQoL
         internal static ConfigEntry<bool> SkipCharacterSelect;
         internal static ConfigEntry<bool> UnlockRoomAchievements;
         internal static ConfigEntry<bool> SmarterBots;
+        internal static ConfigEntry<bool> RandomPickups;
+        internal static ConfigEntry<int> RandomPickupCount;
+        internal static ConfigEntry<PickupPoolMode> RandomPickupPool;
+        internal static ConfigEntry<bool> HidePickupIcons;
+        internal static ConfigEntry<bool> PickupToast;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -170,6 +182,16 @@ namespace BomberQoL
                 "One-shot: call TrophyManager.FuncCreateRoom 100x on the next launch to unlock Room Creator/Master/Champ.");
             SmarterBots = Config.Bind("Bots", "SmarterBots", false,
                 "Increase NPC search range and target re-evaluation speed for local battle bots.");
+            RandomPickups = Config.Bind("Randomizer", "RandomPickups", true,
+                "During a Random Run, move fixed map pickups into random breakable blocks and add extra random pickups.");
+            RandomPickupCount = Config.Bind("Randomizer", "RandomPickupCount", 10,
+                "Random Run pickups hidden in blocks per stage (0 = keep the map's vanilla count).");
+            RandomPickupPool = Config.Bind("Randomizer", "RandomPickupPool", PickupPoolMode.Expanded,
+                "Random Run pickup pool: Vanilla, Expanded (all positive items), or Chaos (adds rare negative items).");
+            HidePickupIcons = Config.Bind("Randomizer", "HidePickupIcons", true,
+                "During a Random Run, show a question mark instead of the pickup's real icon until it is collected.");
+            PickupToast = Config.Bind("Randomizer", "PickupToast", true,
+                "During a Random Run, show the collected pickup's name above the player.");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -260,6 +282,9 @@ namespace BomberQoL
             harmony.PatchAll(typeof(CustomSfxStopAllPatch));
             harmony.PatchAll(typeof(RandomCharacterPatch));
             harmony.PatchAll(typeof(RandomRunPatch));
+            harmony.PatchAll(typeof(PickupMapPatch));
+            harmony.PatchAll(typeof(PickupIconPatch));
+            harmony.PatchAll(typeof(PickupToastPatch));
 
             Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
             MethodInfo logoExec = logoType == null ? null :
@@ -1530,6 +1555,7 @@ namespace BomberQoL
                 mp.characterParams = new MoveSceneParam.CharacterParam[2];
             mp.characterParams[0].controlType = (BattleDef.CONTROL_TYPE)1;
             mp.characterParams[0].characterId = idA;
+            mp.characterParams[0].statusId = a.normalStatusId;
 
             if (sd.storyData.characterDatas.Length > 1)
             {
@@ -1545,7 +1571,10 @@ namespace BomberQoL
                         (sbyte)idB.contentType, idB.characterId);
                     if (mp.characterParams != null &&
                         mp.characterParams.Length > 1)
+                    {
                         mp.characterParams[1].characterId = idB;
+                        mp.characterParams[1].statusId = b.normalStatusId;
+                    }
                 }
             }
             if (gs != null) gs.param = mp;
@@ -1586,6 +1615,351 @@ namespace BomberQoL
             _moveSetsApplied = true;
             Plugin.Log.LogInfo("Randomizer: shuffled move sets for " +
                 n + " status entries");
+        }
+    }
+
+    internal static class Pickups
+    {
+        private const string MarkName = "BomberQoL_ItemMark";
+
+        private static readonly FieldInfo MapDataField =
+            AccessTools.Field(typeof(AbstractBattleSceneBase), "_mapData");
+        private static readonly FieldInfo ItemInfosField =
+            AccessTools.Field(typeof(AbstractBattleSceneBase), "_itemInfos");
+        private static readonly FieldInfo ComBattleHdlField =
+            AccessTools.Field(typeof(AbstractBattleSceneBase), "_comBattleResHdl");
+        private static readonly FieldInfo RandomItemMinField =
+            AccessTools.Field(typeof(RuntimeMapData), "_randomItemMin");
+        private static readonly FieldInfo RandomItemMaxField =
+            AccessTools.Field(typeof(RuntimeMapData), "_randomItemMax");
+        private static readonly FieldInfo ModelGoField =
+            AccessTools.Field(typeof(Item.Model), "_go");
+
+        private static Font _font;
+        private static bool _fontTried;
+
+        internal static bool Active
+        {
+            get { return RandomRun.Active && Plugin.RandomPickups.Value; }
+        }
+
+        internal static Font UiFont
+        {
+            get
+            {
+                if (_font != null || _fontTried) return _font;
+                _fontTried = true;
+                try
+                {
+                    LocaleManager lm = SingletonBase<LocaleManager>.getInstance();
+                    if (lm != null) _font = lm.font;
+                }
+                catch { }
+                if (_font == null)
+                {
+                    try { _font = Resources.GetBuiltinResource<Font>("Arial.ttf"); }
+                    catch { }
+                }
+                if (_font == null)
+                {
+                    try { _font = Font.CreateDynamicFontFromOSFont("Arial", 64); }
+                    catch { }
+                }
+                if (_font == null)
+                    Plugin.Log.LogWarning("Pickups: no font available for labels");
+                return _font;
+            }
+        }
+
+        private static string LocaleText(LocaleDef.COMMON id)
+        {
+            try
+            {
+                LocaleManager lm = SingletonBase<LocaleManager>.getInstance();
+                if (lm == null) return null;
+                LocaleDataTable tbl = lm.tbl;
+                if (tbl == null) return null;
+                LocaleDataTable.LocaleData d =
+                    LocaleDataTableExtension.getLocaleData(tbl, id);
+                return d == null ? null : d.val;
+            }
+            catch { return null; }
+        }
+
+        internal static string QuestionMark
+        {
+            get
+            {
+                string s = LocaleText(LocaleDef.COMMON.ITEM_QUESTIONMARK);
+                return string.IsNullOrEmpty(s) ? "?" : s;
+            }
+        }
+
+        internal static string ItemName(ItemTypedef.TYPE type)
+        {
+            LocaleDef.COMMON id = LocaleDef.COMMON.ITEM_QUESTIONMARK;
+            bool localized = true;
+            switch (type)
+            {
+                case ItemTypedef.TYPE.FIRE_UP:
+                    id = LocaleDef.COMMON.ITEM_FIREUP; break;
+                case ItemTypedef.TYPE.FIRE_DOWN:
+                    id = LocaleDef.COMMON.ITEM_FIREDOWN; break;
+                case ItemTypedef.TYPE.FIRE_FULL:
+                    id = LocaleDef.COMMON.ITEM_FULLFIRE; break;
+                case ItemTypedef.TYPE.BOMB_UP:
+                    id = LocaleDef.COMMON.ITEM_BOMBUP; break;
+                case ItemTypedef.TYPE.BOMB_DOWN:
+                    id = LocaleDef.COMMON.ITEM_BOMBDOWN; break;
+                case ItemTypedef.TYPE.SPEED_UP:
+                    id = LocaleDef.COMMON.ITEM_SPEEDUP; break;
+                case ItemTypedef.TYPE.SPEED_DOWN:
+                    id = LocaleDef.COMMON.ITEM_SPEEDDOWN; break;
+                case ItemTypedef.TYPE.PUNCH:
+                    id = LocaleDef.COMMON.ITEM_PUNCH; break;
+                case ItemTypedef.TYPE.POWER_GLOVE:
+                    id = LocaleDef.COMMON.ITEM_POWERGLOVE; break;
+                case ItemTypedef.TYPE.KICK:
+                    id = LocaleDef.COMMON.ITEM_KICK; break;
+                case ItemTypedef.TYPE.PENETRATION:
+                    id = LocaleDef.COMMON.ITEM_PENETRATINGBOMB; break;
+                case ItemTypedef.TYPE.ELASTICITY:
+                    id = LocaleDef.COMMON.ITEM_BOUNCINGBOMB; break;
+                case ItemTypedef.TYPE.SKULL:
+                    id = LocaleDef.COMMON.ITEM_SKULL; break;
+                default:
+                    localized = false; break;
+            }
+            if (localized)
+            {
+                string text = LocaleText(id);
+                if (!string.IsNullOrEmpty(text)) return text;
+            }
+            switch (type)
+            {
+                case ItemTypedef.TYPE.FIRE_UP: return "Fire Up";
+                case ItemTypedef.TYPE.FIRE_DOWN: return "Fire Down";
+                case ItemTypedef.TYPE.FIRE_FULL: return "Full Fire";
+                case ItemTypedef.TYPE.BOMB_UP: return "Bomb Up";
+                case ItemTypedef.TYPE.BOMB_DOWN: return "Bomb Down";
+                case ItemTypedef.TYPE.SPEED_UP: return "Speed Up";
+                case ItemTypedef.TYPE.SPEED_DOWN: return "Speed Down";
+                case ItemTypedef.TYPE.PUNCH: return "Punch";
+                case ItemTypedef.TYPE.POWER_GLOVE: return "Power Glove";
+                case ItemTypedef.TYPE.KICK: return "Kick";
+                case ItemTypedef.TYPE.REMOTE: return "Remote";
+                case ItemTypedef.TYPE.PENETRATION: return "Penetration Bomb";
+                case ItemTypedef.TYPE.SKULL: return "Skull";
+                case ItemTypedef.TYPE.ELASTICITY: return "Bouncing Bomb";
+                case ItemTypedef.TYPE.KEY: return "Key";
+                case ItemTypedef.TYPE.CRYSTAL: return "Crystal";
+                default: return type.ToString();
+            }
+        }
+
+        private static uint Weight(PickupPoolMode pool, int type)
+        {
+            if (pool == PickupPoolMode.Chaos)
+            {
+                if (type == 1 || type == 4 || type == 6) return 10;
+                if (type == 8 || type == 9 || type == 10) return 5;
+                if (type == 3 || type == 12 || type == 14) return 4;
+                if (type == 2 || type == 5 || type == 7) return 2;
+                if (type == 13) return 1;
+                return 0;
+            }
+            if (type == 1 || type == 4 || type == 6) return 12;
+            if (type == 8 || type == 9 || type == 10) return 6;
+            if (type == 3 || type == 12 || type == 14) return 3;
+            return 0;
+        }
+
+        private static void ExpandPool(AbstractBattleSceneBase scene,
+            ItemController.ItemInfoTable infos)
+        {
+            ResourceManager rm =
+                SingletonBaseWithGameObject<ResourceManager>.getInstance();
+            IHandle handle = ComBattleHdlField.GetValue(scene) as IHandle;
+            if (rm == null || handle == null) return;
+            ItemDataTable data =
+                rm.getAsset<ItemDataTable>(handle, "ItemDataTable");
+            if (data == null) return;
+            PickupPoolMode pool = Plugin.RandomPickupPool.Value;
+            for (int i = 0; i < data.itemDataCount; i++)
+            {
+                ItemDataTable.ItemData item = data.getItemData(i);
+                if (item == null) continue;
+                int type = (int)item.itemType;
+                if (type <= 0 || type > 14) continue;
+                ItemController.ItemInfo info;
+                if (!infos.TryGetValue(type, out info))
+                {
+                    GameObject prefab =
+                        rm.getAsset<GameObject>(handle, item.prefabName);
+                    if (prefab == null) continue;
+                    info = new ItemController.ItemInfo(item.itemType,
+                        item.isPositive, prefab, 0);
+                }
+                info.appearanceRatioWeight = Weight(pool, type);
+                infos[type] = info;
+            }
+        }
+
+        internal static void OnMapLoaded(AbstractBattleSceneBase scene)
+        {
+            if (!Active || scene == null) return;
+            RuntimeMapData map = MapDataField.GetValue(scene) as RuntimeMapData;
+            if (map == null) return;
+            ItemController.ItemInfoTable infos =
+                ItemInfosField.GetValue(scene) as ItemController.ItemInfoTable;
+            if (infos != null &&
+                Plugin.RandomPickupPool.Value != PickupPoolMode.Vanilla)
+                ExpandPool(scene, infos);
+
+            int cleared = 0;
+            RuntimeMapData.BlockData[] blocks = map.blocks;
+            if (blocks != null)
+            {
+                for (int i = 0; i < blocks.Length; i++)
+                {
+                    int t = (int)blocks[i].itemType;
+                    if (t == 0) continue;
+                    if (t == (int)ItemTypedef.TYPE.KEY ||
+                        t == (int)ItemTypedef.TYPE.CRYSTAL)
+                        continue;
+                    blocks[i].itemType = (ItemTypedef.TYPE)0;
+                    cleared++;
+                }
+            }
+
+            int count = Plugin.RandomPickupCount.Value;
+            if (count <= 0) count = (int)map.randomItemMax;
+            if (count < 0) count = 0;
+            if (count > 64) count = 64;
+            RandomItemMinField.SetValue(map, (uint)count);
+            RandomItemMaxField.SetValue(map, (uint)count);
+            Plugin.Log.LogInfo("Randomizer: pickups " + count +
+                " in random blocks" +
+                (cleared > 0 ? ", replaced " + cleared + " fixed" : "") +
+                ", pool " + Plugin.RandomPickupPool.Value);
+        }
+
+        internal static void OnItemModelActive(Item.Model model)
+        {
+            if (!Active || !Plugin.HidePickupIcons.Value || model == null)
+                return;
+            GameObject go = ModelGoField.GetValue(model) as GameObject;
+            if (go == null) return;
+            InstallMark(go);
+        }
+
+        private static void InstallMark(GameObject modelGo)
+        {
+            Font font = UiFont;
+            if (font == null) return;
+            Transform existing = modelGo.transform.Find(MarkName);
+            if (existing == null)
+            {
+                GameObject mark = new GameObject(MarkName);
+                mark.transform.SetParent(modelGo.transform, false);
+                mark.transform.localPosition = new Vector3(0f, 0.55f, 0f);
+                mark.transform.localRotation = Quaternion.identity;
+                TextMesh tm = mark.AddComponent<TextMesh>();
+                tm.text = QuestionMark;
+                tm.font = font;
+                tm.fontSize = 64;
+                tm.characterSize = 0.32f;
+                tm.anchor = TextAnchor.MiddleCenter;
+                tm.alignment = TextAlignment.Center;
+                tm.color = new Color(1f, 0.94f, 0.45f, 1f);
+                MeshRenderer mr = mark.GetComponent<MeshRenderer>();
+                if (mr != null && tm.font != null)
+                    mr.sharedMaterial = tm.font.material;
+                mark.AddComponent<PickupBillboard>();
+                existing = mark.transform;
+            }
+            else
+            {
+                existing.gameObject.SetActive(true);
+            }
+            Animator[] animators =
+                modelGo.GetComponentsInChildren<Animator>(true);
+            for (int i = 0; i < animators.Length; i++)
+            {
+                if (animators[i] != null) animators[i].enabled = false;
+            }
+            Renderer[] renderers =
+                modelGo.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer r = renderers[i];
+                if (r == null) continue;
+                if (r.transform == existing || r.transform.IsChildOf(existing))
+                    continue;
+                r.enabled = false;
+            }
+        }
+
+        internal static void ShowToast(Player player, ItemTypedef.TYPE type,
+            bool positive)
+        {
+            if (!Active || !Plugin.PickupToast.Value || player == null) return;
+            if (type == ItemTypedef.TYPE.INVALID) return;
+            if (player.playerIndex != 0) return;
+            Font font = UiFont;
+            if (font == null) return;
+            GameObject go = new GameObject("BomberQoL_PickupToast");
+            go.transform.position = player.pos + Vector3.up * 1.8f;
+            TextMesh tm = go.AddComponent<TextMesh>();
+            tm.text = ItemName(type);
+            tm.font = font;
+            tm.fontSize = 64;
+            tm.characterSize = 0.35f;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.alignment = TextAlignment.Center;
+            tm.color = positive
+                ? new Color(1f, 0.92f, 0.35f, 1f)
+                : new Color(1f, 0.35f, 0.35f, 1f);
+            MeshRenderer mr = go.GetComponent<MeshRenderer>();
+            if (mr != null) mr.sharedMaterial = font.material;
+            go.AddComponent<PickupToast>();
+        }
+    }
+
+    public class PickupBillboard : MonoBehaviour
+    {
+        private void LateUpdate()
+        {
+            Camera cam = Camera.main;
+            if (cam == null) cam = FindObjectOfType<Camera>();
+            if (cam != null) transform.rotation = cam.transform.rotation;
+        }
+    }
+
+    public class PickupToast : MonoBehaviour
+    {
+        private float _age;
+        private TextMesh _text;
+
+        private void Awake()
+        {
+            _text = GetComponent<TextMesh>();
+        }
+
+        private void Update()
+        {
+            _age += Time.deltaTime;
+            transform.position += Vector3.up * (0.8f * Time.deltaTime);
+            Camera cam = Camera.main;
+            if (cam == null) cam = FindObjectOfType<Camera>();
+            if (cam != null) transform.rotation = cam.transform.rotation;
+            if (_text != null)
+            {
+                Color c = _text.color;
+                c.a = Mathf.Clamp01(1f - Mathf.Max(0f, _age - 0.55f) / 0.75f);
+                _text.color = c;
+            }
+            if (_age > 1.4f) Destroy(gameObject);
         }
     }
 
@@ -1835,8 +2209,46 @@ namespace BomberQoL
         {
             if (!RandomRun.Active || !incStoryFlow) return;
             if (gsMgr == null || strMgr == null) return;
-            if (gsMgr.prevSceneName != "StoryBattle") return;
+            string scene = gsMgr.mainSceneName;
+            if (scene != "StoryBattle" &&
+                gsMgr.prevSceneName != "StoryBattle")
+            {
+                Plugin.Log.LogInfo("Random run: not advancing from scene '" +
+                    scene + "' (prev '" + gsMgr.prevSceneName + "')");
+                return;
+            }
+            Plugin.Log.LogInfo("Random run: advancing after battle (" +
+                scene + ")");
             RandomRun.SelectNext(strMgr);
+        }
+    }
+
+
+    [HarmonyPatch(typeof(AbstractBattleSceneBase), "endLoadMapData")]
+    internal static class PickupMapPatch
+    {
+        private static void Postfix(AbstractBattleSceneBase __instance)
+        {
+            Pickups.OnMapLoaded(__instance);
+        }
+    }
+
+    [HarmonyPatch(typeof(Item.Model), "setActive")]
+    internal static class PickupIconPatch
+    {
+        private static void Postfix(Item.Model __instance, bool __0)
+        {
+            if (__0) Pickups.OnItemModelActive(__instance);
+        }
+    }
+
+    [HarmonyPatch(typeof(Player), "addItem")]
+    internal static class PickupToastPatch
+    {
+        private static void Postfix(Player __instance, ItemTypedef.TYPE __0,
+            bool __1, bool __result)
+        {
+            if (__result) Pickups.ShowToast(__instance, __0, __1);
         }
     }
 
@@ -1859,9 +2271,23 @@ namespace BomberQoL
             sd.storyData.resetStoryPlayParams();
             if (mode == 1) return;
 
-            int[] values = mode == 2
-                ? MaxStats
-                : new[]
+            int[] values;
+            if (mode == 2)
+            {
+                values = MaxStats;
+            }
+            else if (mode == 4)
+            {
+                values = new int[StatIndices.Length];
+                values[0] = Randomizer.Next(1, 5);
+                values[1] = Randomizer.Next(1, 5);
+                values[2] = Randomizer.Next(1, 4);
+                for (int i = 3; i < values.Length; i++)
+                    values[i] = Randomizer.Next(0, 2);
+            }
+            else
+            {
+                values = new[]
                 {
                     Plugin.PracticeFire.Value,
                     Plugin.PracticeBomb.Value,
@@ -1873,6 +2299,7 @@ namespace BomberQoL
                     Plugin.PracticePenetration.Value,
                     Plugin.PracticeElasticity.Value
                 };
+            }
 
             for (int c = 0; c < sd.storyData.characterDatas.Length; c++)
             {
@@ -1889,7 +2316,7 @@ namespace BomberQoL
                 }
             }
             Plugin.Log.LogInfo("Practice stats mode: " +
-                (mode == 2 ? "max" : "custom"));
+                (mode == 2 ? "max" : mode == 4 ? "random" : "custom"));
         }
 
         internal static bool StartRandomRun(string difficulty, int statsMode)
@@ -2083,7 +2510,7 @@ namespace BomberQoL
                     _difficulty = Mathf.Clamp(_difficulty + delta, 0,
                         DiffLabels.Length - 1);
                 else if (_row == 1)
-                    _stats = Mathf.Clamp(_stats + delta, 0, 3);
+                    _stats = Mathf.Clamp(_stats + delta, 0, 4);
             }
             if (up) _row = (_row + 2) % 3;
             if (down) _row = (_row + 1) % 3;
@@ -2130,7 +2557,7 @@ namespace BomberQoL
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
             const int w = 570;
-            const int h = 330;
+            const int h = 358;
             Rect r = new Rect((Screen.width - w) / 2,
                 (Screen.height - h) / 2, w, h);
             GUI.Box(r, "Random Run");
@@ -2149,7 +2576,8 @@ namespace BomberQoL
             GUILayout.Space(6);
             GUILayout.Label((_row == 1 ? "> " : "  ") + "Stats");
             GUILayout.BeginHorizontal();
-            string[] statLabels = { "Save", "Default", "Max", "Custom" };
+            string[] statLabels =
+                { "Save", "Default", "Max", "Custom", "Random" };
             for (int i = 0; i < statLabels.Length; i++)
             {
                 if (GUILayout.Button(statLabels[i],
@@ -2161,6 +2589,10 @@ namespace BomberQoL
             GUILayout.Space(10);
             GUILayout.Label("10 random stages -> random boss. Repeat until all " +
                 "7 bosses are defeated; world 7 is last.");
+            GUILayout.Label("Pickups: " + (Plugin.RandomPickups.Value
+                ? Plugin.RandomPickupCount.Value +
+                    " random blocks, ? icons, name popup"
+                : "vanilla"));
             GUILayout.Label(DiffLabels[_difficulty] + "  —  stats " +
                 statLabels[_stats] + "  (story saves disabled)");
             GUILayout.Label(_row == 2
