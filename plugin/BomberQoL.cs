@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.Diagnostics;
+using System.IO;
 using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
@@ -14,7 +16,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.3.4")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.3.5")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -35,6 +37,7 @@ namespace BomberQoL
         internal static ConfigEntry<bool> SoftResetRequireCtrl;
         internal static ConfigEntry<bool> SoftResetSave;
         internal static ConfigEntry<bool> SoftResetDebug;
+        internal static ConfigEntry<bool> SoftResetRelaunch;
         internal static ConfigEntry<string> PracticeMenuKeyName;
         internal static ConfigEntry<string> PracticeMenuPadCombo;
         internal static ConfigEntry<float> PracticeMenuPadHold;
@@ -89,6 +92,8 @@ namespace BomberQoL
                 "Save all data before soft resetting. Off by default; saving a story battle can write an invalid stock-0 save.");
             SoftResetDebug = Config.Bind("Gameplay", "SoftResetDebug", false,
                 "Log controller button states while the soft-reset combo is held (diagnostics).");
+            SoftResetRelaunch = Config.Bind("Gameplay", "SoftResetRelaunch", true,
+                "Make the soft-reset combo restart the game process instead of returning to the title screen.");
             PracticeMenuKeyName = Config.Bind("Practice", "PracticeMenuKey", "F9",
                 "Key used to open the in-game practice stage selector.");
             PracticeMenuPadCombo = Config.Bind("Practice", "PracticeMenuPadCombo", "4,5,2",
@@ -638,8 +643,68 @@ namespace BomberQoL
                 "] adapter=[" + adapt.Trim() + "]");
         }
 
+        private static string QuoteArg(string value)
+        {
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+
+        private static bool RelaunchProcess()
+        {
+            try
+            {
+                string dataPath = Application.dataPath;
+                string gameDir = Path.GetDirectoryName(dataPath);
+                string exe = Path.Combine(gameDir, "SuperBombermanR.exe");
+                if (!File.Exists(exe))
+                {
+                    Log.LogWarning("Relaunch: executable not found at " + exe);
+                    return false;
+                }
+
+                string args = "";
+                string[] argv = Environment.GetCommandLineArgs();
+                for (int i = 1; i < argv.Length; i++)
+                {
+                    if (args.Length > 0) args += " ";
+                    args += QuoteArg(argv[i]);
+                }
+
+                string batch = Path.Combine(Path.GetTempPath(),
+                    "bomber_relaunch.bat");
+                string body =
+                    "@echo off\r\n" +
+                    "ping -n 3 127.0.0.1 >nul\r\n" +
+                    "start \"\" \"" + exe + "\"" +
+                    (args.Length > 0 ? " " + args : "") + "\r\n" +
+                    "del \"%~f0\" >nul 2>&1\r\n";
+                File.WriteAllText(batch, body);
+
+                ProcessStartInfo psi = new ProcessStartInfo(
+                    "cmd.exe", "/c \"\"" + batch + "\"\"");
+                psi.WorkingDirectory = gameDir;
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                Process.Start(psi);
+                Log.LogInfo("Relaunching game process (2s delay)");
+                Application.Quit();
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.LogWarning("Relaunch failed: " + e.Message);
+                return false;
+            }
+        }
+
         internal static void DoSoftReset(string source)
         {
+            if (SoftResetRelaunch.Value)
+            {
+                Log.LogInfo("Full relaunch via " + source);
+                if (RelaunchProcess()) return;
+                Log.LogWarning("Falling back to title reset");
+            }
+
             bool save = SoftResetSave.Value;
             if (save)
             {

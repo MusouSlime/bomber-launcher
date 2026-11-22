@@ -100,18 +100,21 @@ cannot be used here.
 
 ## Soft reset
 
-The retail game has a `Reset` scene and `ResetUtility.resetStart()` which saves
-all data, resets every singleton and reloads `Entry` — a full in-process soft
-reset to title. It is not exposed in the UI. The plugin binds it to a controller
-combo:
+The retail game has a `Reset` scene and `ResetUtility.resetStart()` which
+resets every singleton and reloads `Entry` — an in-process reset to title. The
+plugin’s combo now defaults to a **full process relaunch** instead:
+`SoftResetRelaunch = true` writes a small delayed `bomber_relaunch.bat`, starts
+the game executable again, and quits the current process. Set it to `false`
+to use the old in-process title reset.
 
 - **Hold LB + RB + Start (L1 + R1 + Options) for 0.75 s**
 - `SoftResetEnabled` (default `true`)
 - `SoftResetPadCombo = 4,5,7` — button indices: `0=A/Cross, 1=B/Circle,
   2=X/Square, 3=Y/Triangle, 4=LB/L1, 5=RB/R1, 6=Back/Share, 7=Start/Options`
 - `SoftResetPadHold = 0.75` seconds (0.2–3.0)
-- `SoftResetSave = false` by default. Saving a story battle can write stock 0
-  and leave the save unloadable; leave this off unless you are at the world map.
+- `SoftResetRelaunch = true` (default) restarts the process.
+- `SoftResetSave = false` only applies to the non-relaunch reset path.
+  Saving a story battle can write stock 0 and leave the save unloadable.
 - Keyboard shortcut active by default: `SoftResetKeyEnabled = true`,
   `SoftResetKey = F10`, `SoftResetRequireCtrl = true` → `Ctrl+F10`
 

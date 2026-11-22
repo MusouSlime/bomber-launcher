@@ -17,7 +17,7 @@ artwork extracted from the game itself.
 | **Skip Boot Intro** | Replaces the two ~4-minute opening MP4s with a 1-second clip |
 | **Master Difficulty** | BepInEx plugin: activates the hidden Master option in the difficulty menu |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
-| **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to return to title |
+| **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to fully relaunch the game |
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
 | **Motion Blur / DoF / Bloom** | BepInEx plugin: per-effect post-processing switches |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
@@ -87,12 +87,13 @@ The plugin adds:
   `AutoSkipLogos` (default true). If a skip does nothing, `BepInEx/LogOutput.log` records what happened:
   `UI_ANY injected via …` (native logo/cutscene skip), `Skipping movie …`,
   `Skipping movie scene …`, or `no movie scene found`.
-- **Soft Reset** — hold **LB + RB + Start** (L1 + R1 + Options) for 0.75 s to
-  return to the title screen without quitting. Config:
-  `SoftResetEnabled` (default true), `SoftResetPadCombo = 4,5,7`,
-  `SoftResetPadHold = 0.75`. The keyboard shortcut **Ctrl+F10** is also active
-  by default (`SoftResetKeyEnabled = true`). `SoftResetSave` is off by default:
-  saving a story battle can write a stock-0 save that will not reload.
+- **Soft Reset / Full Relaunch** — hold **LB + RB + Start**
+  (L1 + R1 + Options) for 0.75 s to restart the game process. The keyboard
+  shortcut **Ctrl+F10** is also active by default
+  (`SoftResetKeyEnabled = true`). Config: `SoftResetEnabled` (default true),
+  `SoftResetPadCombo = 4,5,7`, `SoftResetPadHold = 0.75`,
+  `SoftResetRelaunch = true`. Set `SoftResetRelaunch = false` to use the old
+  in-process title reset instead. The relaunch does not save mid-battle state.
 - **Practice Stage Selector** — press **F9** or hold **L1 + R1 + X** for
   0.6 s in the title, world map or a battle to open a world/stage/difficulty
   picker. Use **arrow keys / D-pad**
