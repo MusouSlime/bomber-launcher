@@ -14,7 +14,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.3.2")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.3.3")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -38,6 +38,7 @@ namespace BomberQoL
         internal static ConfigEntry<string> PracticeMenuKeyName;
         internal static ConfigEntry<string> PracticeMenuPadCombo;
         internal static ConfigEntry<float> PracticeMenuPadHold;
+        internal static ConfigEntry<bool> PracticeMenuDebug;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -94,6 +95,8 @@ namespace BomberQoL
                 "Controller combo for the practice selector: 4=L1/LB, 5=R1/RB, 6=Select/Back. Default L1+R1+Select.");
             PracticeMenuPadHold = Config.Bind("Practice", "PracticeMenuPadHold", 0.6f,
                 "Seconds the practice-selector combo must be held (0.2 - 3.0).");
+            PracticeMenuDebug = Config.Bind("Practice", "PracticeMenuDebug", false,
+                "Log practice-selector button states while its combo is held (diagnostics).");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -155,6 +158,14 @@ namespace BomberQoL
                 PracticeMenuPadButtons = new[] { 4, 5, 6 };
                 Log.LogWarning("Invalid PracticeMenuPadCombo; using 4,5,6 (L1+R1+Select).");
             }
+            string combo = "";
+            for (int i = 0; i < PracticeMenuPadButtons.Length; i++)
+            {
+                if (i > 0) combo += ",";
+                combo += PracticeMenuPadButtons[i];
+            }
+            Log.LogInfo("Practice combo: " + combo +
+                " hold " + PracticeMenuPadHold.Value + "s");
 
             var harmony = new Harmony(GUID);
             harmony.PatchAll(typeof(PostFxPatch));
@@ -479,6 +490,47 @@ namespace BomberQoL
             return scene == "Reset" || scene == "Entry";
         }
 
+        internal static bool PracticeDebugHeld()
+        {
+            if (PracticeMenuPadButtons == null) return false;
+            for (int i = 0; i < PracticeMenuPadButtons.Length; i++)
+            {
+                if (PadButtonHeld(PracticeMenuPadButtons[i])) return true;
+            }
+            return false;
+        }
+
+        internal static void LogPracticePadState()
+        {
+            string raw = "";
+            if (PracticeMenuPadButtons != null)
+            {
+                for (int i = 0; i < PracticeMenuPadButtons.Length; i++)
+                {
+                    raw += PracticeMenuPadButtons[i] + "=" +
+                        (PadButtonHeld(PracticeMenuPadButtons[i]) ? "1" : "0") + " ";
+                }
+            }
+            string adapt = "";
+            InputAdapter adapter =
+                SingletonBaseWithGameObject<InputAdapter>.getInstance();
+            if (adapter != null)
+            {
+                string[] names = { "A", "B", "X", "Y", "L", "R", "START", "SELECT" };
+                for (int i = 0; i < names.Length; i++)
+                {
+                    try
+                    {
+                        if (adapter.GetButton(names[i] + "_1P"))
+                            adapt += names[i] + " ";
+                    }
+                    catch { }
+                }
+            }
+            Log.LogInfo("Practice combo state: " + raw.Trim() +
+                " adapter=[" + adapt.Trim() + "]");
+        }
+
         internal static bool PracticeComboHeld()
         {
             if (PracticeMenuPadButtons == null ||
@@ -801,6 +853,7 @@ namespace BomberQoL
         private bool _upHeld;
         private bool _downHeld;
         private float _comboHeld;
+        private float _lastPadLog;
         private bool _comboLatched;
 
         private void Update()
@@ -812,6 +865,13 @@ namespace BomberQoL
                 return;
             }
 
+            if (Plugin.PracticeMenuDebug.Value &&
+                Plugin.PracticeDebugHeld() &&
+                Time.unscaledTime - _lastPadLog > 1f)
+            {
+                _lastPadLog = Time.unscaledTime;
+                Plugin.LogPracticePadState();
+            }
             if (Plugin.PracticeComboHeld())
             {
                 if (!_comboLatched)
