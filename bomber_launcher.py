@@ -711,6 +711,31 @@ class BomberWindow(Adw.ApplicationWindow):
             "avatar_white.png", "Custom BGM Folder",
             "Folder of .ogg/.wav/.mp3 tracks; empty keeps the original BGM",
             self.bgm_btn))
+        audio.append(self._separator())
+
+        self.bgm_shuffle_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.bgm_shuffle_sw.connect("notify::active", self.on_bgm_shuffle)
+        audio.append(self._row(
+            "avatar_yellow.png", "Shuffle BGM",
+            "Randomize custom BGM instead of sequential order",
+            self.bgm_shuffle_sw))
+        audio.append(self._separator())
+
+        self.sfx_btn = Gtk.Button(label="Choose…")
+        self.sfx_btn.set_valign(Gtk.Align.CENTER)
+        self.sfx_btn.connect("clicked", self.on_sfx_folder)
+        audio.append(self._row(
+            "avatar_pink.png", "Custom SFX Folder",
+            "Files named <label>.ogg or <label>_N.ogg; empty keeps original SFX",
+            self.sfx_btn))
+        audio.append(self._separator())
+
+        self.sfx_shuffle_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.sfx_shuffle_sw.connect("notify::active", self.on_sfx_shuffle)
+        audio.append(self._row(
+            "avatar_blue.png", "Shuffle SFX",
+            "Randomize among variants with the same sound label",
+            self.sfx_shuffle_sw))
         page.append(audio)
 
         # ----- environment / post processing
@@ -1013,6 +1038,12 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Gameplay", {}).get("SoftResetEnabled", "true").lower() == "true")
                     bgm = cfg.get("Audio", {}).get("CustomBgmFolder", "").strip()
                     self.bgm_btn.set_tooltip_text(bgm or "No custom BGM folder")
+                    sfx = cfg.get("Audio", {}).get("CustomSfxFolder", "").strip()
+                    self.sfx_btn.set_tooltip_text(sfx or "No custom SFX folder")
+                    self.bgm_shuffle_sw.set_active(
+                        cfg.get("Audio", {}).get("CustomBgmShuffle", "true").lower() == "true")
+                    self.sfx_shuffle_sw.set_active(
+                        cfg.get("Audio", {}).get("CustomSfxShuffle", "true").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -1106,6 +1137,37 @@ class BomberWindow(Adw.ApplicationWindow):
                 except Exception as e:
                     self.toast(str(e))
         chooser.destroy()
+
+    def on_sfx_folder(self, _btn):
+        if not self.mods or not self.mods.plugin_installed():
+            self.toast("BomberQoL plugin not installed")
+            return
+        chooser = Gtk.FileChooserNative(
+            title="Custom SFX folder", transient_for=self,
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+            accept_label="Choose", cancel_label="Cancel")
+        chooser.connect("response", self._sfx_folder_response)
+        chooser.show()
+
+    def _sfx_folder_response(self, chooser, response):
+        if response == Gtk.ResponseType.ACCEPT:
+            f = chooser.get_file()
+            path = f.get_path() if f else None
+            if path:
+                try:
+                    self.mods.set_plugin_value(
+                        "Audio", "CustomSfxFolder", path)
+                    self.sfx_btn.set_tooltip_text(path)
+                    self.toast(f"Custom SFX folder: {path}")
+                except Exception as e:
+                    self.toast(str(e))
+        chooser.destroy()
+
+    def on_bgm_shuffle(self, row, _pspec):
+        self._plugin_write("Audio", "CustomBgmShuffle", row.get_active())
+
+    def on_sfx_shuffle(self, row, _pspec):
+        self._plugin_write("Audio", "CustomSfxShuffle", row.get_active())
 
     def on_aspect(self, row, _pspec):
         if self._loading:

@@ -16,7 +16,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.3.8")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.4.0")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -54,6 +54,10 @@ namespace BomberQoL
         internal static ConfigEntry<string> CustomBgmFolder;
         internal static ConfigEntry<bool> CustomBgmPlaylist;
         internal static ConfigEntry<float> CustomBgmVolume;
+        internal static ConfigEntry<bool> CustomBgmShuffle;
+        internal static ConfigEntry<string> CustomSfxFolder;
+        internal static ConfigEntry<bool> CustomSfxShuffle;
+        internal static ConfigEntry<float> CustomSfxVolume;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -138,6 +142,14 @@ namespace BomberQoL
                 "If a BGM label has no matching file, cycle through the folder instead of using the original track.");
             CustomBgmVolume = Config.Bind("Audio", "CustomBgmVolume", 0.8f,
                 "Volume for custom BGM (0.0 - 1.0).");
+            CustomBgmShuffle = Config.Bind("Audio", "CustomBgmShuffle", true,
+                "Shuffle the custom BGM folder when a BGM label has no exact file match.");
+            CustomSfxFolder = Config.Bind("Audio", "CustomSfxFolder", "",
+                "Folder with custom sound effects; files must be named <label>.ogg/wav or <label>_N.ogg/wav. Empty disables replacement.");
+            CustomSfxShuffle = Config.Bind("Audio", "CustomSfxShuffle", true,
+                "Randomize among custom SFX variants for the same sound label.");
+            CustomSfxVolume = Config.Bind("Audio", "CustomSfxVolume", 0.8f,
+                "Volume for custom sound effects (0.0 - 1.0).");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -221,6 +233,10 @@ namespace BomberQoL
             harmony.PatchAll(typeof(CustomBgmUnpausePatch));
             harmony.PatchAll(typeof(CustomBgmRestartPatch));
             harmony.PatchAll(typeof(CustomBgmPopPatch));
+            harmony.PatchAll(typeof(CustomSfxPlayPatch));
+            harmony.PatchAll(typeof(CustomSfxStopPatch));
+            harmony.PatchAll(typeof(CustomSfxIsPlayingPatch));
+            harmony.PatchAll(typeof(CustomSfxStopAllPatch));
 
             Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
             MethodInfo logoExec = logoType == null ? null :
@@ -268,6 +284,9 @@ namespace BomberQoL
             var customBgm = new GameObject("BomberQoLCustomBgm");
             UnityEngine.Object.DontDestroyOnLoad(customBgm);
             customBgm.AddComponent<CustomBgmPlayer>();
+            var customSfx = new GameObject("BomberQoLCustomSfx");
+            UnityEngine.Object.DontDestroyOnLoad(customSfx);
+            customSfx.AddComponent<CustomSfxPlayer>();
             StartCoroutine(LogJoysticksSoon());
 
             SceneManager.sceneLoaded += OnSceneLoaded;
@@ -873,6 +892,239 @@ namespace BomberQoL
         }
     }
 
+    public class CustomSfxPlayer : MonoBehaviour
+    {
+        internal static CustomSfxPlayer Instance;
+        private class Voice
+        {
+            internal AudioSource source;
+            internal int id;
+        }
+
+        private readonly List<Voice> _voices = new List<Voice>();
+        private readonly Dictionary<string, AudioClip> _cache =
+            new Dictionary<string, AudioClip>();
+        private readonly HashSet<int> _ids = new HashSet<int>();
+        private string _folder;
+        private string[] _files;
+        private int _nextId = -100000;
+
+        private void Awake()
+        {
+            Instance = this;
+        }
+
+        private static string ResolveFolder(string folder)
+        {
+            if (string.IsNullOrEmpty(folder)) return null;
+            if (folder.StartsWith("/"))
+                folder = "Z:" + folder.Replace('/', '\\');
+            return folder;
+        }
+
+        private static string ToFileUri(string path)
+        {
+            string p = path.Replace('\\', '/');
+            return new Uri("file:///" + p).AbsoluteUri;
+        }
+
+        private static AudioType AudioTypeFor(string path)
+        {
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            if (ext == ".ogg") return AudioType.OGGVORBIS;
+            if (ext == ".wav") return AudioType.WAV;
+            if (ext == ".mp3") return AudioType.MPEG;
+            return AudioType.UNKNOWN;
+        }
+
+        private string FileFor(string label)
+        {
+            string folder = ResolveFolder(Plugin.CustomSfxFolder.Value);
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+                return null;
+            if (folder != _folder)
+            {
+                _folder = folder;
+                string[] all = Directory.GetFiles(folder);
+                var list = new List<string>();
+                for (int i = 0; i < all.Length; i++)
+                {
+                    string ext = Path.GetExtension(all[i]).ToLowerInvariant();
+                    if (ext == ".ogg" || ext == ".wav" || ext == ".mp3")
+                        list.Add(all[i]);
+                }
+                list.Sort(StringComparer.OrdinalIgnoreCase);
+                _files = list.ToArray();
+            }
+            if (_files == null || _files.Length == 0) return null;
+
+            string want = Path.GetFileNameWithoutExtension(label);
+            var matches = new List<string>();
+            for (int i = 0; i < _files.Length; i++)
+            {
+                string name = Path.GetFileNameWithoutExtension(_files[i]);
+                if (string.Equals(name, want, StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith(want + "_", StringComparison.OrdinalIgnoreCase))
+                    matches.Add(_files[i]);
+            }
+            if (matches.Count == 0) return null;
+            if (Plugin.CustomSfxShuffle.Value && matches.Count > 1)
+                return matches[UnityEngine.Random.Range(0, matches.Count)];
+            return matches[0];
+        }
+
+        private Voice AcquireVoice()
+        {
+            for (int i = 0; i < _voices.Count; i++)
+            {
+                if (!_voices[i].source.isPlaying)
+                    return _voices[i];
+            }
+            Voice v = new Voice();
+            GameObject go = new GameObject("BomberQoLSfxVoice");
+            go.transform.SetParent(transform, false);
+            v.source = go.AddComponent<AudioSource>();
+            v.source.playOnAwake = false;
+            v.source.loop = false;
+            v.source.spatialBlend = 0f;
+            _voices.Add(v);
+            return v;
+        }
+
+        internal static bool TryPlay(SoundManager owner, string label,
+            float delay, out int id)
+        {
+            id = 0;
+            if (Instance == null) return false;
+            if (string.IsNullOrEmpty(Plugin.CustomSfxFolder.Value)) return false;
+            string file = Instance.FileFor(label);
+            if (file == null) return false;
+            id = Instance._nextId--;
+            Instance._ids.Add(id);
+            Instance.StartCoroutine(Instance.Play(file, id, delay));
+            return true;
+        }
+
+        private IEnumerator Play(string file, int id, float delay)
+        {
+            AudioClip clip;
+            if (!_cache.TryGetValue(file, out clip))
+            {
+                WWW www = new WWW(ToFileUri(file));
+                yield return www;
+                if (!string.IsNullOrEmpty(www.error))
+                {
+                    Plugin.Log.LogWarning("Custom SFX failed: " + file +
+                        " (" + www.error + ")");
+                    www.Dispose();
+                    _ids.Remove(id);
+                    yield break;
+                }
+                clip = www.GetAudioClip(false, true, AudioTypeFor(file));
+                www.Dispose();
+                if (clip == null)
+                {
+                    Plugin.Log.LogWarning("Custom SFX decode failed: " + file);
+                    _ids.Remove(id);
+                    yield break;
+                }
+                _cache[file] = clip;
+            }
+            if (delay > 0f) yield return new WaitForSeconds(delay);
+            if (!_ids.Contains(id)) yield break;
+            Voice v = AcquireVoice();
+            v.id = id;
+            v.source.clip = clip;
+            v.source.volume = Mathf.Clamp01(Plugin.CustomSfxVolume.Value);
+            v.source.loop = false;
+            v.source.Play();
+        }
+
+        internal static bool Stop(int id)
+        {
+            if (Instance == null) return false;
+            if (!Instance._ids.Remove(id)) return false;
+            for (int i = 0; i < Instance._voices.Count; i++)
+            {
+                if (Instance._voices[i].id != id) continue;
+                Instance._voices[i].source.Stop();
+                return true;
+            }
+            return true;
+        }
+
+        internal static bool IsPlaying(int id, out bool playing)
+        {
+            playing = false;
+            if (Instance == null || !Instance._ids.Contains(id)) return false;
+            for (int i = 0; i < Instance._voices.Count; i++)
+            {
+                if (Instance._voices[i].id != id) continue;
+                playing = Instance._voices[i].source.isPlaying;
+                return true;
+            }
+            return true;
+        }
+
+        internal static void StopAll()
+        {
+            if (Instance == null) return;
+            for (int i = 0; i < Instance._voices.Count; i++)
+                Instance._voices[i].source.Stop();
+            Instance._ids.Clear();
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "play")]
+    internal static class CustomSfxPlayPatch
+    {
+        private static bool Prefix(SoundManager __instance, string soundLabel,
+            float delay, ref int __result)
+        {
+            int id;
+            if (CustomSfxPlayer.TryPlay(__instance, soundLabel, delay, out id))
+            {
+                __result = id;
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "stop")]
+    internal static class CustomSfxStopPatch
+    {
+        private static bool Prefix(int instanceId)
+        {
+            return !CustomSfxPlayer.Stop(instanceId);
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "isPlaying")]
+    internal static class CustomSfxIsPlayingPatch
+    {
+        private static bool Prefix(int instanceId, ref bool __result)
+        {
+            bool playing;
+            if (CustomSfxPlayer.IsPlaying(instanceId, out playing))
+            {
+                __result = playing;
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "stopAll")]
+    internal static class CustomSfxStopAllPatch
+    {
+        private static bool Prefix()
+        {
+            CustomSfxPlayer.StopAll();
+            return true;
+        }
+    }
+
     public class CustomBgmPlayer : MonoBehaviour
     {
         internal static CustomBgmPlayer Instance;
@@ -988,6 +1240,18 @@ namespace BomberQoL
             return file;
         }
 
+        private int _lastRandom = -1;
+
+        private string RandomFile()
+        {
+            if (_files == null || _files.Length == 0) return null;
+            if (_files.Length == 1) return _files[0];
+            int idx = UnityEngine.Random.Range(0, _files.Length);
+            if (idx == _lastRandom) idx = (idx + 1) % _files.Length;
+            _lastRandom = idx;
+            return _files[idx];
+        }
+
         internal static bool TryPlay(SoundManager owner, string label,
             float fade, bool change)
         {
@@ -996,9 +1260,13 @@ namespace BomberQoL
             string file = Instance.FileFor(label);
             if (file == null)
             {
-                if (!Plugin.CustomBgmPlaylist.Value || !IsBgmLabel(label))
+                if (!IsBgmLabel(label)) return false;
+                if (Plugin.CustomBgmShuffle.Value)
+                    file = Instance.RandomFile();
+                else if (Plugin.CustomBgmPlaylist.Value)
+                    file = Instance.NextPlaylistFile();
+                else
                     return false;
-                file = Instance.NextPlaylistFile();
             }
             if (file == null) return false;
 

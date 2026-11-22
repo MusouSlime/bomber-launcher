@@ -233,8 +233,11 @@ Choose a folder in either launcher or set:
 ```ini
 [Audio]
 CustomBgmFolder = /path/to/music
-CustomBgmPlaylist = false
+CustomBgmShuffle = true
 CustomBgmVolume = 0.8
+CustomSfxFolder = /path/to/sfx
+CustomSfxShuffle = true
+CustomSfxVolume = 0.8
 ```
 
 Supported files: `.ogg`, `.wav`, `.mp3`. The plugin hooks
@@ -243,10 +246,15 @@ persistent `AudioSource`:
 
 - Exact label match: `BGM_sys_title_01.ogg`, `snd_bgm_btl_stg_01.wav`, etc.
   The label is the game’s BGM name without extension.
-- `CustomBgmPlaylist = true` makes unmatched `BGM_*` / `snd_bgm_*` labels cycle
-  through the folder.
-- Jingles (`SE_jingle_*`) are left to the original audio.
+- `CustomBgmShuffle = true` picks a random unmatched `BGM_*` / `snd_bgm_*`
+  track; exact matches still win.
+- `CustomSfxFolder` replaces sound effects. Name files `<label>.ogg` or
+  variants `<label>_1.ogg`, `<label>_2.ogg`; `CustomSfxShuffle` picks a random
+  variant.
+- Jingles (`SE_jingle_*`) are left to the original audio unless matched.
 - `stopBGM`, pause/resume and restart are forwarded to the custom source.
+- Custom SFX IDs are tracked so `SoundManager.stop`, `isPlaying` and `stopAll`
+  still work for replaced sounds.
 - The path is converted from `/home/...` to `Z:\home\...` automatically under
   Proton.
 

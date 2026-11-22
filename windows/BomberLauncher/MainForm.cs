@@ -58,6 +58,8 @@ public class MainForm : Form
     private readonly ComboBox _language = new();
     private readonly CheckBox _borderless = new();
     private readonly ComboBox _aspectCombo = new();
+    private readonly CheckBox _shuffleBgm = new();
+    private readonly CheckBox _shuffleSfx = new();
     private readonly CheckBox _dual = new();
     private readonly CheckBox _intro = new();
     private readonly CheckBox _skipMovies = new();
@@ -173,6 +175,16 @@ public class MainForm : Form
             "Folder of .ogg/.wav/.mp3 tracks; empty keeps original BGM",
             "Choose", ChooseBgmFolder);
         Separator(basic);
+        AddRow(basic, "Shuffle BGM",
+            "Randomize custom BGM instead of sequential order", _shuffleBgm);
+        Separator(basic);
+        AddButtonRow(basic, "Custom SFX Folder",
+            "Files named <label>.ogg or <label>_N.ogg; empty keeps original SFX",
+            "Choose", ChooseSfxFolder);
+        Separator(basic);
+        AddRow(basic, "Shuffle SFX",
+            "Randomize among variants with the same sound label", _shuffleSfx);
+        Separator(basic);
         AddRow(basic, "Japanese Voices",
             "JP voice acting with the selected text language", _dual);
         Separator(basic);
@@ -251,6 +263,8 @@ public class MainForm : Form
         _autoSkip.CheckedChanged += (_, _) => SavePluginValue("Movies", "AutoSkipMovies", _autoSkip.Checked ? "5" : "0");
         _master.CheckedChanged += (_, _) => SavePlugin("Gameplay", "UnlockMaster", _master.Checked);
         _softReset.CheckedChanged += (_, _) => SavePlugin("Gameplay", "SoftResetEnabled", _softReset.Checked);
+        _shuffleBgm.CheckedChanged += (_, _) => SavePlugin("Audio", "CustomBgmShuffle", _shuffleBgm.Checked);
+        _shuffleSfx.CheckedChanged += (_, _) => SavePlugin("Audio", "CustomSfxShuffle", _shuffleSfx.Checked);
         _fastResults.CheckedChanged += (_, _) => SavePlugin("Results", "FastResults", _fastResults.Checked);
 
         Shown += (_, _) => RefreshState();
@@ -481,6 +495,10 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Gameplay", "UnlockMaster", "false") == "true";
                     _softReset.Checked =
                         Core.GetPluginOption(_game, "Gameplay", "SoftResetEnabled", "true") == "true";
+                    _shuffleBgm.Checked =
+                        Core.GetPluginOption(_game, "Audio", "CustomBgmShuffle", "true") == "true";
+                    _shuffleSfx.Checked =
+                        Core.GetPluginOption(_game, "Audio", "CustomSfxShuffle", "true") == "true";
                     if (int.TryParse(Core.GetPluginOption(_game, "Movies", "SkipJoystickButton", "0"), out int pad))
                     {
                         int idx = Array.FindIndex(Pads, p => p.Value == pad);
@@ -558,6 +576,19 @@ public class MainForm : Form
     {
         if (_loading || _game == null || !NeedClosed()) return;
         Guard(() => Core.SetIntroSkip(_game!, _intro.Checked));
+    }
+
+    private void ChooseSfxFolder()
+    {
+        if (_game == null || !Core.PluginInstalled(_game)) return;
+        using var dlg = new FolderBrowserDialog
+        {
+            Description = "Select a folder of custom sound effects",
+            UseDescriptionForTitle = true,
+        };
+        if (dlg.ShowDialog(this) == DialogResult.OK)
+            Guard(() => Core.SetPluginValue(_game!, "Audio",
+                "CustomSfxFolder", dlg.SelectedPath));
     }
 
     private void ChooseBgmFolder()

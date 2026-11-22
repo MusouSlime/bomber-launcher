@@ -18,6 +18,7 @@ artwork extracted from the game itself.
 | **Master Difficulty** | BepInEx plugin: activates the hidden Master option in the difficulty menu |
 | **Aspect Ratio** | Windowed borderless at Native, 16:9, 16:10, 21:9 or 4:3 |
 | **Custom BGM Folder** | Play .ogg/.wav/.mp3 files from a folder instead of the game BGM |
+| **Custom SFX Folder + Shuffle** | Replace or shuffle sound effects by label |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
 | **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to fully relaunch the game |
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
@@ -99,9 +100,11 @@ The plugin adds:
 - **Aspect Ratio** — choose Native, 16:9, 16:10, 21:9 or 4:3. The launcher
   fits the chosen shape inside the desktop (with bars if needed) and passes the
   matching `-screen-width/-screen-height` to Unity.
-- **Custom BGM** — choose a folder in the launcher. Files are matched by BGM
-  label (`BGM_sys_title_01.ogg`, `snd_bgm_btl_stg_01.wav`, …); if no match and
-  `CustomBgmPlaylist = true`, tracks are cycled. Config lives under `[Audio]`.
+- **Custom BGM / SFX shuffle** — choose folders in the launcher. BGM files are
+  matched by label (`BGM_sys_title_01.ogg`, `snd_bgm_btl_stg_01.wav`, …);
+  `CustomBgmShuffle` randomizes unmatched tracks. SFX files are matched by
+  sound label (`SE_btl_cmn_08.ogg`, or variants `SE_btl_cmn_08_1.ogg`);
+  `CustomSfxShuffle` randomizes variants. Config lives under `[Audio]`.
 - **Practice Stage Selector** — press **F9** or hold **L1 + R1 + X** for
   0.6 s in the title, world map or a battle to open a world/stage/difficulty
   picker. Use **arrow keys / D-pad**
