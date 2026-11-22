@@ -423,7 +423,7 @@ internal static class Core
         src.CopyTo(dst);
     }
 
-    public static void Launch(string game, bool borderless)
+    public static void Launch(string game, bool borderless, double ratio = 0)
     {
         string? steamExe = null;
         try
@@ -439,7 +439,27 @@ internal static class Core
         if (borderless)
         {
             var b = Screen.PrimaryScreen?.Bounds ?? new Rectangle(0, 0, 1920, 1080);
-            args += $" -popupwindow -screen-width {b.Width} -screen-height {b.Height}";
+            int w = b.Width, h = b.Height;
+            if (ratio > 0)
+            {
+                if ((double)b.Width / b.Height > ratio)
+                {
+                    h = b.Height;
+                    w = (int)(b.Height * ratio);
+                }
+                else
+                {
+                    w = b.Width;
+                    h = (int)(b.Width / ratio);
+                }
+                w = Math.Max(2, w - (w % 2));
+                h = Math.Max(2, h - (h % 2));
+            }
+            args += $" -popupwindow -screen-fullscreen 0" +
+                    $" -screen-width {w} -screen-height {h}";
+            if (ratio > 0)
+                args += $" -screen-x {Math.Max(0, (b.Width - w) / 2)}" +
+                        $" -screen-y {Math.Max(0, (b.Height - h) / 2)}";
         }
         Process.Start(new ProcessStartInfo(steamExe, args)
         {

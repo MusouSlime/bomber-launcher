@@ -77,6 +77,14 @@ PAT_J = bytes.fromhex("05 5f 00 4a 00 00")  # #US literal "_J"
 
 LANG_OFFSET = 1132
 LANG_AUTO = 0xFF
+ASPECTS = [
+    ("Native / display", 0.0),
+    ("16:9", 16 / 9),
+    ("16:10", 16 / 10),
+    ("21:9", 21 / 9),
+    ("4:3", 4 / 3),
+]
+
 PAD_BUTTONS = [
     ("Disabled", -1),
     ("A / Cross", 0),
@@ -616,6 +624,21 @@ class BomberWindow(Adw.ApplicationWindow):
                                self.border_sw))
         basic.append(self._separator())
 
+        self.aspect_dd = Gtk.DropDown.new_from_strings(
+            [name for name, _ in ASPECTS])
+        self.aspect_dd.set_valign(Gtk.Align.CENTER)
+        try:
+            self.aspect_dd.set_selected(
+                int(self.cfg.get("aspect", 0)) % len(ASPECTS))
+        except Exception:
+            self.aspect_dd.set_selected(0)
+        self.aspect_dd.connect("notify::selected", self.on_aspect)
+        basic.append(self._row(
+            "avatar_pink.png", "Aspect Ratio",
+            "Window shape; the game fits inside the desktop with bars",
+            self.aspect_dd))
+        basic.append(self._separator())
+
         self.dual_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.dual_sw.connect("notify::active", self.on_dual)
         basic.append(self._row("avatar_red.png", "Japanese Voices",
@@ -993,9 +1016,14 @@ class BomberWindow(Adw.ApplicationWindow):
             return
         args = []
         if self.border_sw.get_active():
-            w, h = self.screen_size()
-            args = ["-popupwindow", "-screen-width", str(w),
-                    "-screen-height", str(h)]
+            ratio = self.aspect_ratio()
+            w, h = self.screen_size(ratio)
+            args = ["-popupwindow", "-screen-fullscreen", "0",
+                    "-screen-width", str(w), "-screen-height", str(h)]
+            if ratio > 0:
+                dw, dh = self.desktop_size()
+                args += ["-screen-x", str(max(0, (dw - w) // 2)),
+                         "-screen-y", str(max(0, (dh - h) // 2))]
         try:
             subprocess.Popen(["steam", "-applaunch", STEAM_APPID, *args],
                              start_new_session=True,
@@ -1005,7 +1033,7 @@ class BomberWindow(Adw.ApplicationWindow):
         except Exception as e:
             self.toast(f"Launch failed: {e}")
 
-    def screen_size(self):
+    def desktop_size(self):
         try:
             display = Gdk.Display.get_default()
             mon = display.get_monitors().get_item(0)
@@ -1014,10 +1042,36 @@ class BomberWindow(Adw.ApplicationWindow):
         except Exception:
             return 1920, 1080
 
+    def aspect_ratio(self):
+        idx = self.aspect_dd.get_selected()
+        if idx < 0 or idx >= len(ASPECTS):
+            return 0.0
+        return ASPECTS[idx][1]
+
+    def screen_size(self, ratio=0.0):
+        dw, dh = self.desktop_size()
+        if ratio <= 0:
+            return dw, dh
+        if dw / dh > ratio:
+            h = dh
+            w = int(dh * ratio)
+        else:
+            w = dw
+            h = int(dw / ratio)
+        w = max(2, w - (w % 2))
+        h = max(2, h - (h % 2))
+        return w, h
+
     def on_borderless(self, row, _pspec):
         if self._loading:
             return
         self.cfg["borderless"] = row.get_active()
+        save_config(self.cfg)
+
+    def on_aspect(self, row, _pspec):
+        if self._loading:
+            return
+        self.cfg["aspect"] = row.get_selected()
         save_config(self.cfg)
 
     def on_dual(self, row, _pspec):

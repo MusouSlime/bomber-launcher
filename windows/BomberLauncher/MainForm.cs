@@ -22,6 +22,20 @@ public class MainForm : Form
         public override string ToString() => Name;
     }
 
+    private sealed record AspectItem(string Name, double Ratio)
+    {
+        public override string ToString() => Name;
+    }
+
+    private static readonly AspectItem[] Aspects =
+    {
+        new("Native / display", 0),
+        new("16:9", 16.0 / 9.0),
+        new("16:10", 16.0 / 10.0),
+        new("21:9", 21.0 / 9.0),
+        new("4:3", 4.0 / 3.0),
+    };
+
     private static readonly PadItem[] Pads =
     {
         new("Disabled", -1), new("A / Cross", 0), new("B / Circle", 1),
@@ -43,6 +57,7 @@ public class MainForm : Form
     private readonly Button _play;
     private readonly ComboBox _language = new();
     private readonly CheckBox _borderless = new();
+    private readonly ComboBox _aspectCombo = new();
     private readonly CheckBox _dual = new();
     private readonly CheckBox _intro = new();
     private readonly CheckBox _skipMovies = new();
@@ -145,6 +160,14 @@ public class MainForm : Form
         var basic = AddCard();
         AddRow(basic, "Borderless Fullscreen",
             "Launch with -popupwindow at desktop resolution", _borderless);
+        Separator(basic);
+        _aspectCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+        _aspectCombo.Width = 230;
+        foreach (var a in Aspects) _aspectCombo.Items.Add(a);
+        _aspectCombo.SelectedIndex = 0;
+        AddRow(basic, "Aspect Ratio",
+            "Window shape; the game fits inside the desktop with bars",
+            _aspectCombo);
         Separator(basic);
         AddRow(basic, "Japanese Voices",
             "JP voice acting with the selected text language", _dual);
@@ -398,6 +421,7 @@ public class MainForm : Form
             _language.Enabled = editable;
             _language.SelectedItem = Languages.First(l => l.Value == 255);
             _borderless.Enabled = _game != null;
+            _aspectCombo.Enabled = _game != null;
             _dual.Enabled = editable;
             _intro.Enabled = editable;
             _skipMovies.Enabled = editable && plugin;
@@ -504,7 +528,8 @@ public class MainForm : Form
     private void Launch()
     {
         if (!NeedGame()) return;
-        try { Core.Launch(_game!, _borderless.Checked); }
+        double ratio = Aspects[Math.Max(0, _aspectCombo.SelectedIndex)].Ratio;
+        try { Core.Launch(_game!, _borderless.Checked, ratio); }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, AppName,

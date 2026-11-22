@@ -226,6 +226,15 @@ to make deterministic.
   line up. This needs Unity 5.6 asset-bundle tooling (or careful UABEA/UnityPy
   mesh injection), not just a file swap.
 
+## Display aspect ratios
+
+The launcher’s **Aspect Ratio** selector supports Native, 16:9, 16:10, 21:9
+and 4:3. It computes the largest window with that ratio that fits the current
+desktop, centers it with `-screen-x/-screen-y`, and launches with
+`-popupwindow -screen-width W -screen-height H`. On a 1600×1200 desktop this
+gives 1600×900 for 16:9, 1600×1000 for 16:10, 1600×684 for 21:9, and
+1600×1200 for 4:3.
+
 ## Recommended order
 
 1. **Move set swapper/randomizer** — smallest change, immediate gameplay
