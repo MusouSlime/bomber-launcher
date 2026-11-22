@@ -226,6 +226,32 @@ to make deterministic.
   line up. This needs Unity 5.6 asset-bundle tooling (or careful UABEA/UnityPy
   mesh injection), not just a file swap.
 
+## Custom BGM
+
+Choose a folder in either launcher or set:
+
+```ini
+[Audio]
+CustomBgmFolder = /path/to/music
+CustomBgmPlaylist = false
+CustomBgmVolume = 0.8
+```
+
+Supported files: `.ogg`, `.wav`, `.mp3`. The plugin hooks
+`SoundManager.playAsBGM` / `changeBGM` and plays matching files through a
+persistent `AudioSource`:
+
+- Exact label match: `BGM_sys_title_01.ogg`, `snd_bgm_btl_stg_01.wav`, etc.
+  The label is the game’s BGM name without extension.
+- `CustomBgmPlaylist = true` makes unmatched `BGM_*` / `snd_bgm_*` labels cycle
+  through the folder.
+- Jingles (`SE_jingle_*`) are left to the original audio.
+- `stopBGM`, pause/resume and restart are forwarded to the custom source.
+- The path is converted from `/home/...` to `Z:\home\...` automatically under
+  Proton.
+
+The folder picker is in **Audio → Custom BGM Folder** in both launchers.
+
 ## Display aspect ratios
 
 The launcher’s **Aspect Ratio** selector supports Native, 16:9, 16:10, 21:9

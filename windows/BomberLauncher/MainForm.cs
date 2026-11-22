@@ -169,6 +169,10 @@ public class MainForm : Form
             "Window shape; the game fits inside the desktop with bars",
             _aspectCombo);
         Separator(basic);
+        AddButtonRow(basic, "Custom BGM Folder",
+            "Folder of .ogg/.wav/.mp3 tracks; empty keeps original BGM",
+            "Choose", ChooseBgmFolder);
+        Separator(basic);
         AddRow(basic, "Japanese Voices",
             "JP voice acting with the selected text language", _dual);
         Separator(basic);
@@ -554,6 +558,19 @@ public class MainForm : Form
     {
         if (_loading || _game == null || !NeedClosed()) return;
         Guard(() => Core.SetIntroSkip(_game!, _intro.Checked));
+    }
+
+    private void ChooseBgmFolder()
+    {
+        if (_game == null || !Core.PluginInstalled(_game)) return;
+        using var dlg = new FolderBrowserDialog
+        {
+            Description = "Select a folder of .ogg/.wav/.mp3 BGM tracks",
+            UseDescriptionForTitle = true,
+        };
+        if (dlg.ShowDialog(this) == DialogResult.OK)
+            Guard(() => Core.SetPluginValue(_game!, "Audio",
+                "CustomBgmFolder", dlg.SelectedPath));
     }
 
     private void SavePlugin(string section, string key, bool value)

@@ -16,7 +16,7 @@ using UnityEngine.UI;
 
 namespace BomberQoL
 {
-    [BepInPlugin(GUID, "Bomber QoL", "0.3.6")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.3.8")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -51,6 +51,9 @@ namespace BomberQoL
         internal static ConfigEntry<int> PracticeRemote;
         internal static ConfigEntry<int> PracticePenetration;
         internal static ConfigEntry<int> PracticeElasticity;
+        internal static ConfigEntry<string> CustomBgmFolder;
+        internal static ConfigEntry<bool> CustomBgmPlaylist;
+        internal static ConfigEntry<float> CustomBgmVolume;
         internal static ConfigEntry<bool> FastResults;
         internal static ConfigEntry<float> ResultSpeed;
         internal static ConfigEntry<bool> NoMotionBlur;
@@ -129,6 +132,12 @@ namespace BomberQoL
                 "Custom practice penetration (index 12).");
             PracticeElasticity = Config.Bind("Practice", "StatsElasticity", 0,
                 "Custom practice elasticity (index 14).");
+            CustomBgmFolder = Config.Bind("Audio", "CustomBgmFolder", "",
+                "Folder containing custom .ogg/.wav/.mp3 BGM files. Empty disables replacement.");
+            CustomBgmPlaylist = Config.Bind("Audio", "CustomBgmPlaylist", false,
+                "If a BGM label has no matching file, cycle through the folder instead of using the original track.");
+            CustomBgmVolume = Config.Bind("Audio", "CustomBgmVolume", 0.8f,
+                "Volume for custom BGM (0.0 - 1.0).");
             FastResults = Config.Bind("Results", "FastResults", false,
                 "Shorten the post-battle result screen delays.");
             ResultSpeed = Config.Bind("Results", "ResultSpeed", 0.5f,
@@ -205,6 +214,13 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PracticeSavePatch));
             harmony.PatchAll(typeof(PracticeSaveAllPatch));
             harmony.PatchAll(typeof(PracticeInputPatch));
+            harmony.PatchAll(typeof(CustomBgmPlayPatch));
+            harmony.PatchAll(typeof(CustomBgmChangePatch));
+            harmony.PatchAll(typeof(CustomBgmStopPatch));
+            harmony.PatchAll(typeof(CustomBgmPausePatch));
+            harmony.PatchAll(typeof(CustomBgmUnpausePatch));
+            harmony.PatchAll(typeof(CustomBgmRestartPatch));
+            harmony.PatchAll(typeof(CustomBgmPopPatch));
 
             Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
             MethodInfo logoExec = logoType == null ? null :
@@ -249,6 +265,9 @@ namespace BomberQoL
             var practiceMenu = new GameObject("BomberQoLPractice");
             UnityEngine.Object.DontDestroyOnLoad(practiceMenu);
             practiceMenu.AddComponent<PracticeMenu>();
+            var customBgm = new GameObject("BomberQoLCustomBgm");
+            UnityEngine.Object.DontDestroyOnLoad(customBgm);
+            customBgm.AddComponent<CustomBgmPlayer>();
             StartCoroutine(LogJoysticksSoon());
 
             SceneManager.sceneLoaded += OnSceneLoaded;
@@ -850,6 +869,316 @@ namespace BomberQoL
                     return true;
                 }
             }
+            return false;
+        }
+    }
+
+    public class CustomBgmPlayer : MonoBehaviour
+    {
+        internal static CustomBgmPlayer Instance;
+        internal static bool Bypass;
+        private AudioSource _source;
+        private string _folder;
+        private string[] _files;
+        private int _playlistIndex;
+        private Coroutine _loading;
+        private SoundManager _owner;
+        private string _label;
+        private float _fade;
+        private bool _change;
+
+        private void Awake()
+        {
+            Instance = this;
+            _source = gameObject.AddComponent<AudioSource>();
+            _source.playOnAwake = false;
+            _source.loop = true;
+            _source.spatialBlend = 0f;
+        }
+
+        internal static bool HasActive
+        {
+            get
+            {
+                return Instance != null && Instance._source != null &&
+                    Instance._loading == null &&
+                    Instance._source.clip != null &&
+                    Instance._source.gameObject.activeInHierarchy;
+            }
+        }
+
+        internal static bool HasCustom
+        {
+            get
+            {
+                return Instance != null && Instance._source != null &&
+                    (Instance._loading != null ||
+                     Instance._source.clip != null);
+            }
+        }
+
+        private static string ResolveFolder(string folder)
+        {
+            if (string.IsNullOrEmpty(folder)) return null;
+            if (folder.StartsWith("/"))
+                folder = "Z:" + folder.Replace('/', '\\');
+            return folder;
+        }
+
+        private static string ToFileUri(string path)
+        {
+            string p = path.Replace('\\', '/');
+            return new Uri("file:///" + p).AbsoluteUri;
+        }
+
+        private static AudioType AudioTypeFor(string path)
+        {
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            if (ext == ".ogg") return AudioType.OGGVORBIS;
+            if (ext == ".wav") return AudioType.WAV;
+            if (ext == ".mp3") return AudioType.MPEG;
+            return AudioType.UNKNOWN;
+        }
+
+        private static bool IsBgmLabel(string label)
+        {
+            if (string.IsNullOrEmpty(label)) return false;
+            return label.StartsWith("BGM_", StringComparison.OrdinalIgnoreCase) ||
+                label.StartsWith("snd_bgm_", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string FileFor(string label)
+        {
+            string folder = ResolveFolder(Plugin.CustomBgmFolder.Value);
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+                return null;
+            if (folder != _folder)
+            {
+                _folder = folder;
+                string[] all = Directory.GetFiles(folder);
+                var list = new List<string>();
+                for (int i = 0; i < all.Length; i++)
+                {
+                    string ext = Path.GetExtension(all[i]).ToLowerInvariant();
+                    if (ext == ".ogg" || ext == ".wav" || ext == ".mp3")
+                        list.Add(all[i]);
+                }
+                list.Sort(StringComparer.OrdinalIgnoreCase);
+                _files = list.ToArray();
+                _playlistIndex = 0;
+            }
+            if (_files == null || _files.Length == 0) return null;
+
+            string want = Path.GetFileNameWithoutExtension(label);
+            for (int i = 0; i < _files.Length; i++)
+            {
+                if (string.Equals(
+                    Path.GetFileNameWithoutExtension(_files[i]), want,
+                    StringComparison.OrdinalIgnoreCase))
+                    return _files[i];
+            }
+            return null;
+        }
+
+        private string NextPlaylistFile()
+        {
+            if (_files == null || _files.Length == 0) return null;
+            string file = _files[_playlistIndex % _files.Length];
+            _playlistIndex = (_playlistIndex + 1) % _files.Length;
+            return file;
+        }
+
+        internal static bool TryPlay(SoundManager owner, string label,
+            float fade, bool change)
+        {
+            if (Bypass || Instance == null) return false;
+            if (string.IsNullOrEmpty(Plugin.CustomBgmFolder.Value)) return false;
+            string file = Instance.FileFor(label);
+            if (file == null)
+            {
+                if (!Plugin.CustomBgmPlaylist.Value || !IsBgmLabel(label))
+                    return false;
+                file = Instance.NextPlaylistFile();
+            }
+            if (file == null) return false;
+
+            Instance._owner = owner;
+            Instance._label = label;
+            Instance._fade = fade;
+            Instance._change = change;
+            if (Instance._loading != null)
+                Instance.StopCoroutine(Instance._loading);
+            Instance._loading = Instance.StartCoroutine(
+                Instance.LoadAndPlay(file));
+            return true;
+        }
+
+        private IEnumerator LoadAndPlay(string file)
+        {
+            WWW www = new WWW(ToFileUri(file));
+            yield return www;
+            if (!string.IsNullOrEmpty(www.error))
+            {
+                Plugin.Log.LogWarning("Custom BGM failed: " + file + " (" +
+                    www.error + ")");
+                www.Dispose();
+                _loading = null;
+                Fallback();
+                yield break;
+            }
+            AudioClip clip = www.GetAudioClip(false, true,
+                AudioTypeFor(file));
+            www.Dispose();
+            if (clip == null)
+            {
+                Plugin.Log.LogWarning("Custom BGM decode failed: " + file);
+                _loading = null;
+                Fallback();
+                yield break;
+            }
+            _source.clip = clip;
+            _source.volume = Mathf.Clamp01(Plugin.CustomBgmVolume.Value);
+            _source.loop = true;
+            _source.Play();
+            Plugin.Log.LogInfo("Custom BGM: " + _label + " -> " +
+                Path.GetFileName(file));
+            _loading = null;
+        }
+
+        private void Fallback()
+        {
+            if (_source != null) _source.Stop();
+            if (_owner == null) return;
+            Bypass = true;
+            try
+            {
+                if (_change) _owner.changeBGM(_label, _fade);
+                else _owner.playAsBGM(_label, _fade);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning("BGM fallback failed: " + e.Message);
+            }
+            finally
+            {
+                Bypass = false;
+            }
+        }
+
+        internal static void Stop()
+        {
+            if (Instance == null) return;
+            if (Instance._loading != null)
+            {
+                Instance.StopCoroutine(Instance._loading);
+                Instance._loading = null;
+            }
+            if (Instance._source == null) return;
+            Instance._source.Stop();
+            Instance._source.clip = null;
+        }
+
+        internal static void Pause()
+        {
+            if (Instance != null && Instance._source != null)
+                Instance._source.Pause();
+        }
+
+        internal static void Unpause()
+        {
+            if (Instance != null && Instance._source != null)
+                Instance._source.UnPause();
+        }
+
+        internal static void Restart()
+        {
+            if (Instance != null && Instance._source != null &&
+                Instance._source.clip != null)
+            {
+                Instance._source.Stop();
+                Instance._source.Play();
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "playAsBGM")]
+    internal static class CustomBgmPlayPatch
+    {
+        private static bool Prefix(SoundManager __instance, string bgmLabel,
+            float fadeTime)
+        {
+            if (CustomBgmPlayer.Bypass) return true;
+            return !CustomBgmPlayer.TryPlay(__instance, bgmLabel, fadeTime, false);
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "changeBGM")]
+    internal static class CustomBgmChangePatch
+    {
+        private static bool Prefix(SoundManager __instance, string bgmLabel,
+            float fadeTime)
+        {
+            if (CustomBgmPlayer.Bypass) return true;
+            return !CustomBgmPlayer.TryPlay(__instance, bgmLabel, fadeTime, true);
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "stopBGM")]
+    internal static class CustomBgmStopPatch
+    {
+        private static bool Prefix()
+        {
+            if (CustomBgmPlayer.Bypass || !CustomBgmPlayer.HasCustom)
+                return true;
+            CustomBgmPlayer.Stop();
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "onPauseBGM")]
+    internal static class CustomBgmPausePatch
+    {
+        private static bool Prefix()
+        {
+            if (CustomBgmPlayer.Bypass || !CustomBgmPlayer.HasActive)
+                return true;
+            CustomBgmPlayer.Pause();
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "offPauseBGM")]
+    internal static class CustomBgmUnpausePatch
+    {
+        private static bool Prefix()
+        {
+            if (CustomBgmPlayer.Bypass || !CustomBgmPlayer.HasActive)
+                return true;
+            CustomBgmPlayer.Unpause();
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "restartBGM")]
+    internal static class CustomBgmRestartPatch
+    {
+        private static bool Prefix()
+        {
+            if (CustomBgmPlayer.Bypass || !CustomBgmPlayer.HasActive)
+                return true;
+            CustomBgmPlayer.Restart();
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(SoundManager), "popBGM")]
+    internal static class CustomBgmPopPatch
+    {
+        private static bool Prefix()
+        {
+            if (CustomBgmPlayer.Bypass || !CustomBgmPlayer.HasCustom)
+                return true;
+            CustomBgmPlayer.Stop();
             return false;
         }
     }

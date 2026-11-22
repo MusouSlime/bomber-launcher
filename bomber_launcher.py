@@ -701,6 +701,18 @@ class BomberWindow(Adw.ApplicationWindow):
             self.softreset_sw))
         page.append(basic)
 
+        # ----- audio
+        page.append(self._section("audio"))
+        audio = self._card()
+        self.bgm_btn = Gtk.Button(label="Choose…")
+        self.bgm_btn.set_valign(Gtk.Align.CENTER)
+        self.bgm_btn.connect("clicked", self.on_bgm_folder)
+        audio.append(self._row(
+            "avatar_white.png", "Custom BGM Folder",
+            "Folder of .ogg/.wav/.mp3 tracks; empty keeps the original BGM",
+            self.bgm_btn))
+        page.append(audio)
+
         # ----- environment / post processing
         page.append(self._section("environment"))
         env = self._card()
@@ -999,6 +1011,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Gameplay", {}).get("UnlockMaster", "false").lower() == "true")
                     self.softreset_sw.set_active(
                         cfg.get("Gameplay", {}).get("SoftResetEnabled", "true").lower() == "true")
+                    bgm = cfg.get("Audio", {}).get("CustomBgmFolder", "").strip()
+                    self.bgm_btn.set_tooltip_text(bgm or "No custom BGM folder")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -1067,6 +1081,31 @@ class BomberWindow(Adw.ApplicationWindow):
             return
         self.cfg["borderless"] = row.get_active()
         save_config(self.cfg)
+
+    def on_bgm_folder(self, _btn):
+        if not self.mods or not self.mods.plugin_installed():
+            self.toast("BomberQoL plugin not installed")
+            return
+        chooser = Gtk.FileChooserNative(
+            title="Custom BGM folder", transient_for=self,
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+            accept_label="Choose", cancel_label="Cancel")
+        chooser.connect("response", self._bgm_folder_response)
+        chooser.show()
+
+    def _bgm_folder_response(self, chooser, response):
+        if response == Gtk.ResponseType.ACCEPT:
+            f = chooser.get_file()
+            path = f.get_path() if f else None
+            if path:
+                try:
+                    self.mods.set_plugin_value(
+                        "Audio", "CustomBgmFolder", path)
+                    self.bgm_btn.set_tooltip_text(path)
+                    self.toast(f"Custom BGM folder: {path}")
+                except Exception as e:
+                    self.toast(str(e))
+        chooser.destroy()
 
     def on_aspect(self, row, _pspec):
         if self._loading:
