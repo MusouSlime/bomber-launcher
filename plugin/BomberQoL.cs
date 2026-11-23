@@ -24,7 +24,7 @@ namespace BomberQoL
         Difficulty
     }
 
-    [BepInPlugin(GUID, "Bomber QoL", "0.6.9")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.10")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -99,6 +99,9 @@ namespace BomberQoL
         internal static ConfigEntry<int> LowEndFps;
         internal static ConfigEntry<bool> LowEndHalfTextures;
         internal static ConfigEntry<bool> LowEndShadowsOff;
+        internal static ConfigEntry<bool> UltraLow;
+        internal static ConfigEntry<int> UltraWidth;
+        internal static ConfigEntry<int> UltraHeight;
         internal static KeyCode SkipKey = KeyCode.Space;
         internal static KeyCode SoftResetKey = KeyCode.F10;
         internal static KeyCode PracticeMenuKey = KeyCode.F9;
@@ -243,13 +246,19 @@ namespace BomberQoL
             NoGrain = Config.Bind("Graphics", "DisableGrain", false,
                 "Disable film grain.");
             LowEnd = Config.Bind("Performance", "LowEnd", false,
-                "Low-end performance mode: 30 FPS, no post-FX, shadows off, half textures, reduced lights/LOD.");
-            LowEndFps = Config.Bind("Performance", "TargetFps", 30,
+                "Low-end performance mode: 60 FPS target, no post-FX, shadows off, half textures, reduced lights/LOD.");
+            LowEndFps = Config.Bind("Performance", "TargetFps", 60,
                 "Frame-rate cap for low-end mode. 0 disables the cap.");
             LowEndHalfTextures = Config.Bind("Performance", "HalfTextures", true,
                 "Use half-resolution textures in low-end mode.");
             LowEndShadowsOff = Config.Bind("Performance", "ShadowsOff", true,
                 "Disable shadows in low-end mode.");
+            UltraLow = Config.Bind("Performance", "UltraLow", false,
+                "Ultra-low mode: 960x540, quarter textures, no pixel lights, LOD 2, no particles.");
+            UltraWidth = Config.Bind("Performance", "UltraWidth", 960,
+                "Ultra-low window width. 0 keeps the current resolution.");
+            UltraHeight = Config.Bind("Performance", "UltraHeight", 540,
+                "Ultra-low window height. 0 keeps the current resolution.");
 
             try
             {
@@ -558,6 +567,49 @@ namespace BomberQoL
         private static bool _defReflection;
         private static bool _perfLogged;
 
+        private static bool _ultraResolutionApplied;
+        private static int _steamTier = -1;
+        private static int[] _origSteamSettings;
+        private static readonly Dictionary<int, bool[]> CameraDefaults =
+            new Dictionary<int, bool[]>();
+
+        private static void SyncGameSteamSettings(int tier)
+        {
+            if (tier == _steamTier) return;
+            SaveDataManager sd =
+                SingletonBaseWithGameObject<SaveDataManager>.getInstance();
+            if (sd == null) return;
+            SaveDataManager.SystemData data = sd.systemData;
+            if (data == null) return;
+            if (tier > 0)
+            {
+                if (_origSteamSettings == null)
+                {
+                    _origSteamSettings = new int[8];
+                    for (int i = 0; i < _origSteamSettings.Length; i++)
+                        _origSteamSettings[i] = data.getSteamSettingAt(i);
+                }
+                data.setSteamSettingAt(0, -1);
+                data.setSteamSettingAt(2, tier == 2 ? 0 : 1);
+                data.setSteamSettingAt(3, 0);
+                data.setSteamSettingAt(4, 0);
+                data.setSteamSettingAt(5, 0);
+                data.applySteamSettings();
+                Log.LogInfo("In-game options set to " +
+                    (tier == 2 ? "ultra-low" : "low") +
+                    " (texture, AA, shadows, lights)");
+            }
+            else if (_origSteamSettings != null)
+            {
+                for (int i = 0; i < _origSteamSettings.Length; i++)
+                    data.setSteamSettingAt(i, _origSteamSettings[i]);
+                data.applySteamSettings();
+                _origSteamSettings = null;
+                Log.LogInfo("In-game options restored");
+            }
+            _steamTier = tier;
+        }
+
         internal static void ApplyPerformance()
         {
             if (!_perfCaptured)
@@ -577,18 +629,21 @@ namespace BomberQoL
                 _defSoft = QualitySettings.softParticles;
                 _defReflection = QualitySettings.realtimeReflectionProbes;
             }
-            if (LowEnd.Value)
+            bool ultra = UltraLow.Value;
+            bool low = LowEnd.Value || ultra;
+            SyncGameSteamSettings(low ? (ultra ? 2 : 1) : 0);
+            if (low)
             {
                 int fps = LowEndFps.Value;
                 Application.targetFrameRate = fps > 0 ? fps : -1;
                 QualitySettings.vSyncCount = 0;
                 QualitySettings.antiAliasing = 0;
-                QualitySettings.masterTextureLimit =
-                    LowEndHalfTextures.Value ? 1 : 0;
-                QualitySettings.pixelLightCount = 1;
-                QualitySettings.lodBias = 0.6f;
-                QualitySettings.particleRaycastBudget = 64;
-                QualitySettings.maximumLODLevel = 1;
+                QualitySettings.masterTextureLimit = ultra ? 2 :
+                    (LowEndHalfTextures.Value ? 1 : 0);
+                QualitySettings.pixelLightCount = ultra ? 0 : 1;
+                QualitySettings.lodBias = ultra ? 0.4f : 0.6f;
+                QualitySettings.particleRaycastBudget = ultra ? 0 : 64;
+                QualitySettings.maximumLODLevel = ultra ? 2 : 1;
                 QualitySettings.shadows = LowEndShadowsOff.Value
                     ? ShadowQuality.Disable : _defShadows;
                 QualitySettings.shadowDistance = LowEndShadowsOff.Value
@@ -597,15 +652,19 @@ namespace BomberQoL
                     AnisotropicFiltering.Disable;
                 QualitySettings.softParticles = false;
                 QualitySettings.realtimeReflectionProbes = false;
+                ApplyCameraOverrides(ultra);
+                if (ultra) ApplyUltraResolution();
                 if (!_perfLogged)
                 {
                     _perfLogged = true;
-                    Log.LogInfo("Low-end mode: " +
-                        (fps > 0 ? fps + " FPS" : "uncapped") +
+                    Log.LogInfo((ultra ? "Ultra-low" : "Low-end") +
+                        " mode: " + (fps > 0 ? fps + " FPS" : "uncapped") +
                         ", shadows " + (LowEndShadowsOff.Value
                             ? "off" : "default") +
-                        ", half textures " +
-                        (LowEndHalfTextures.Value ? "on" : "off"));
+                        ", textures " + (ultra ? "quarter" :
+                            (LowEndHalfTextures.Value ? "half" : "full")) +
+                        (ultra ? " at " + UltraWidth.Value + "x" +
+                            UltraHeight.Value : ""));
                 }
             }
             else
@@ -623,6 +682,38 @@ namespace BomberQoL
                 QualitySettings.anisotropicFiltering = _defAniso;
                 QualitySettings.softParticles = _defSoft;
                 QualitySettings.realtimeReflectionProbes = _defReflection;
+                ApplyCameraOverrides(false);
+                _ultraResolutionApplied = false;
+            }
+        }
+
+        private static void ApplyUltraResolution()
+        {
+            if (_ultraResolutionApplied) return;
+            int w = UltraWidth.Value;
+            int h = UltraHeight.Value;
+            if (w <= 0 || h <= 0) return;
+            _ultraResolutionApplied = true;
+            Screen.SetResolution(w, h, false);
+            Log.LogInfo("Ultra-low resolution: " + w + "x" + h);
+        }
+
+        private static void ApplyCameraOverrides(bool ultra)
+        {
+            Camera[] cameras = Camera.allCameras;
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                Camera cam = cameras[i];
+                if (cam == null) continue;
+                int id = cam.GetInstanceID();
+                bool[] def;
+                if (!CameraDefaults.TryGetValue(id, out def))
+                {
+                    def = new[] { cam.allowHDR, cam.allowMSAA };
+                    CameraDefaults[id] = def;
+                }
+                cam.allowHDR = ultra ? false : def[0];
+                cam.allowMSAA = ultra ? false : def[1];
             }
         }
 
@@ -3202,7 +3293,7 @@ namespace BomberQoL
                 if (_tab == 0) return 15;
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
-                if (_tab == 3) return 17;
+                if (_tab == 3) return 18;
                 return 0;
             }
         }
@@ -3214,8 +3305,23 @@ namespace BomberQoL
             if (_stage < 1) _stage = 1;
         }
 
+        private float _lastPerfReapply;
+
         private void Update()
         {
+            if (Plugin.LowEnd.Value || Plugin.UltraLow.Value)
+            {
+                if (Time.unscaledTime - _lastPerfReapply > 2f)
+                {
+                    _lastPerfReapply = Time.unscaledTime;
+                    Plugin.ApplyPerformance();
+                    Plugin.ApplyAllPostFx();
+                }
+            }
+            else
+            {
+                _lastPerfReapply = 0f;
+            }
             if (Plugin.PracticeMenuKey != KeyCode.None &&
                 Input.GetKeyDown(Plugin.PracticeMenuKey))
             {
@@ -3378,6 +3484,11 @@ namespace BomberQoL
                 MainMenuQoLUtility.Apply();
             if (entry == Plugin.LowEnd)
                 Plugin.ApplyPerformance();
+            if (entry == Plugin.UltraLow)
+            {
+                if (entry.Value) Plugin.LowEnd.Value = true;
+                Plugin.ApplyPerformance();
+            }
         }
 
         private static void ToggleInverted(ConfigEntry<bool> entry)
@@ -3470,6 +3581,7 @@ namespace BomberQoL
                             Plugin.LowEndFps.Value <= 30 ? 60 : 30;
                         Plugin.ApplyPerformance();
                         break;
+                    case 17: Toggle(Plugin.UltraLow); break;
                 }
                 return;
             }
@@ -3840,6 +3952,11 @@ namespace BomberQoL
             if (value == entry.Value) return;
             entry.Value = value;
             if (entry == Plugin.LowEnd) Plugin.ApplyPerformance();
+            if (entry == Plugin.UltraLow)
+            {
+                if (entry.Value) Plugin.LowEnd.Value = true;
+                Plugin.ApplyPerformance();
+            }
         }
 
         private void DrawDifficultyOddsToggle(int row)
@@ -4049,9 +4166,11 @@ namespace BomberQoL
                 OnOff(Plugin.CustomBgmShuffle.Value) + "  |  SFX shuffle " +
                 OnOff(Plugin.CustomSfxShuffle.Value) + "  |  Main-menu entry " +
                 OnOff(Plugin.MainMenuQoL.Value) + "  |  Low-end " +
-                OnOff(Plugin.LowEnd.Value));
+                OnOff(Plugin.LowEnd.Value) + "  |  Ultra " +
+                OnOff(Plugin.UltraLow.Value));
+            float colW = Mathf.Clamp((Screen.width - 104) / 3f, 200f, 400f);
             GUILayout.BeginHorizontal();
-            GUILayout.BeginVertical(GUILayout.Width(350));
+            GUILayout.BeginVertical(GUILayout.Width(colW));
             DrawInvertedToggle(0, Plugin.NoMotionBlur, "Motion blur");
             DrawInvertedToggle(1, Plugin.NoDepthOfField, "Depth of field");
             DrawInvertedToggle(2, Plugin.NoBloom, "Bloom");
@@ -4060,7 +4179,8 @@ namespace BomberQoL
             DrawToggle(5, Plugin.FastResults, "Fast results");
             DrawToggle(6, Plugin.UnlockMaster, "Master difficulty");
             GUILayout.EndVertical();
-            GUILayout.BeginVertical(GUILayout.Width(350));
+            GUILayout.Space(12);
+            GUILayout.BeginVertical(GUILayout.Width(colW));
             DrawToggle(7, Plugin.SkipEnabled, "Skip movies");
             DrawToggle(8, Plugin.AutoSkipLogos, "Auto-skip logos");
             DrawAutoSkipToggle(9);
@@ -4070,27 +4190,37 @@ namespace BomberQoL
             DrawToggle(13, Plugin.MainMenuQoL,
                 "Bomber QoL main-menu entry");
             GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(6);
-            DrawToggle(15, Plugin.LowEnd,
-                "Low-end mode (no post-FX, shadows off)");
+            GUILayout.Space(12);
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawToggle(15, Plugin.LowEnd, "Low-end mode");
             DrawLowEndFps(16);
+            DrawToggle(17, Plugin.UltraLow, "Ultra-low mode");
+            GUILayout.Space(4);
+            GUILayout.Label(Plugin.UltraLow.Value
+                ? "960x540, quarter textures, no pixel lights"
+                : (Plugin.LowEnd.Value
+                    ? "60 FPS, no post-FX, half textures, shadows off"
+                    : "Off: the game's own graphics options apply"),
+                _smallWrapStyle ?? (_smallWrapStyle = MakeWrapStyle()));
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
 
             GUILayout.Space(8);
             string bgm = Plugin.CustomBgmFolder.Value;
             string bgmSource = Plugin.CustomBgmSource.Value;
             string sfx = Plugin.CustomSfxFolder.Value;
+            GUIStyle wrap = _smallWrapStyle ??
+                (_smallWrapStyle = MakeWrapStyle());
             GUILayout.Label("BGM source: " + (string.IsNullOrEmpty(bgmSource)
                 ? (string.IsNullOrEmpty(bgm)
                     ? "none"
                     : Path.GetFileName(bgm.TrimEnd('/', '\\')))
-                : Path.GetFileName(bgmSource.TrimEnd('/', '\\'))));
+                : Path.GetFileName(bgmSource.TrimEnd('/', '\\'))), wrap);
             GUILayout.Label("BGM cache: " + (string.IsNullOrEmpty(bgm)
-                ? "none" : bgm));
+                ? "none" : bgm), wrap);
             GUILayout.Label("SFX folder: " + (string.IsNullOrEmpty(sfx)
                 ? "none"
-                : Path.GetFileName(sfx.TrimEnd('/', '\\'))));
+                : Path.GetFileName(sfx.TrimEnd('/', '\\'))), wrap);
             GUILayout.Space(8);
             GUILayout.BeginVertical(RowStyle(14));
             if (GUILayout.Button((RowSelected(14) ? ">> " : "   ") +
@@ -4106,6 +4236,14 @@ namespace BomberQoL
         private GUIStyle _helpStyle;
         private GUIStyle _helpTitle;
         private GUIStyle _helpHeading;
+        private GUIStyle _smallWrapStyle;
+
+        private GUIStyle MakeWrapStyle()
+        {
+            GUIStyle style = new GUIStyle(GUI.skin.label);
+            style.wordWrap = true;
+            return style;
+        }
 
         private void DrawHelp()
         {
@@ -4178,9 +4316,11 @@ namespace BomberQoL
                 "Runtime launcher options: post-processing effects, fast " +
                 "results, Master difficulty, movie skipping, soft reset, " +
                 "BGM/SFX shuffle, the Bomber QoL main-menu entry and " +
-                "low-end mode (30 FPS cap, no post-FX, shadows off, half " +
-                "textures, reduced lights/LOD). The original game options " +
-                "are still available from this tab.", _helpStyle);
+                "low-end mode (60 FPS, no post-FX, shadows off, half " +
+                "textures, reduced lights/LOD) and ultra-low mode " +
+                "(960x540, quarter textures, no pixel lights, LOD 2). The " +
+                "original game options are still available from this tab.",
+                _helpStyle);
             GUILayout.Label(
                 "BGM folders are converted to an OGG cache by the launcher. " +
                 "Folder pickers, launch options, voice selection, BepInEx " +
@@ -4245,10 +4385,7 @@ namespace BomberQoL
             {
                 int tab = i;
                 if (_tab == tab)
-                {
-                    GUI.backgroundColor = MarkerColor;
-                    GUI.contentColor = Color.black;
-                }
+                    GUI.contentColor = MarkerColor;
                 string name = _tab == tab
                     ? ">> " + tabNames[tab] + " <<"
                     : tabNames[tab];
@@ -5053,7 +5190,7 @@ namespace BomberQoL
                 _logged = true;
             }
 
-            bool low = Plugin.LowEnd.Value;
+            bool low = Plugin.LowEnd.Value || Plugin.UltraLow.Value;
             if ((low || Plugin.NoMotionBlur.Value) && p.motionBlur != null)
                 p.motionBlur.enabled = false;
             if ((low || Plugin.NoDepthOfField.Value) && p.depthOfField != null)

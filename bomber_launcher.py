@@ -1030,8 +1030,16 @@ class BomberWindow(Adw.ApplicationWindow):
         self.low_end_sw.connect("notify::active", self.on_low_end)
         env.append(self._row(
             "avatar_blue.png", "Low-End Mode",
-            "30 FPS, no post-FX, shadows off, half textures",
+            "60 FPS cap (30 optional), no post-FX, half textures",
             self.low_end_sw))
+        env.append(self._separator())
+
+        self.ultra_low_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.ultra_low_sw.connect("notify::active", self.on_ultra_low)
+        env.append(self._row(
+            "avatar_pink.png", "Ultra-Low Mode",
+            "960x540, quarter textures, no pixel lights, LOD 2",
+            self.ultra_low_sw))
         env.append(self._separator())
 
         self.fast_results_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
@@ -1333,13 +1341,14 @@ class BomberWindow(Adw.ApplicationWindow):
                   self.autoskip_sw, self.master_sw, self.mblur_sw,
                   self.dof_sw, self.bloom_sw, self.vignette_sw,
                   self.grain_sw, self.low_end_sw,
-                  self.fast_results_sw):
+                  self.ultra_low_sw, self.fast_results_sw):
             w.set_sensitive(plugin and not running)
         if not plugin:
             for w in (self.skip_movies_sw, self.logos_sw, self.autoskip_sw,
                       self.master_sw, self.mblur_sw, self.dof_sw,
                       self.bloom_sw, self.vignette_sw, self.grain_sw,
-                      self.low_end_sw, self.fast_results_sw):
+                      self.low_end_sw, self.ultra_low_sw,
+                      self.fast_results_sw):
                 w.set_active(False)
 
         if self.mods:
@@ -1412,6 +1421,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg["Graphics"].get("DisableGrain", "false").lower() != "true")
                     self.low_end_sw.set_active(
                         cfg.get("Performance", {}).get("LowEnd", "false").lower() == "true")
+                    self.ultra_low_sw.set_active(
+                        cfg.get("Performance", {}).get("UltraLow", "false").lower() == "true")
                 except Exception:
                     pass
         self._loading = False
@@ -1772,8 +1783,23 @@ class BomberWindow(Adw.ApplicationWindow):
         try:
             self.mods.set_plugin_option("Performance", "LowEnd", active)
             if active:
-                self.mods.set_plugin_value("Performance", "TargetFps", "30")
+                self.mods.set_plugin_value("Performance", "TargetFps", "60")
             self.toast("Low-end mode " + ("on" if active else "off") +
+                       " — applies next launch")
+        except Exception as e:
+            self.toast(str(e))
+        self.refresh()
+
+    def on_ultra_low(self, row, _pspec):
+        if self._loading or not self.mods or not self.mods.plugin_installed():
+            return
+        active = row.get_active()
+        try:
+            self.mods.set_plugin_option("Performance", "UltraLow", active)
+            if active:
+                self.mods.set_plugin_option("Performance", "LowEnd", True)
+                self.mods.set_plugin_value("Performance", "TargetFps", "60")
+            self.toast("Ultra-low mode " + ("on" if active else "off") +
                        " — applies next launch")
         except Exception as e:
             self.toast(str(e))
@@ -1957,13 +1983,21 @@ def apply_preset(name):
         print("game not found")
         return 1
     mods = Mods(game)
+    if name in ("ultra-low", "ultralow", "ultra"):
+        mods.set_plugin_option("Performance", "UltraLow", True)
+        mods.set_plugin_option("Performance", "LowEnd", True)
+        mods.set_plugin_value("Performance", "TargetFps", "60")
+        print("Ultra-low mode enabled for", game)
+        return 0
     if name in ("low-end", "lowend", "low"):
         mods.set_plugin_option("Performance", "LowEnd", True)
-        mods.set_plugin_value("Performance", "TargetFps", "30")
+        mods.set_plugin_option("Performance", "UltraLow", False)
+        mods.set_plugin_value("Performance", "TargetFps", "60")
         print("Low-end mode enabled for", game)
         return 0
     if name in ("balanced", "default"):
         mods.set_plugin_option("Performance", "LowEnd", False)
+        mods.set_plugin_option("Performance", "UltraLow", False)
         print("Low-end mode disabled for", game)
         return 0
     print("unknown preset:", name)
@@ -1973,6 +2007,8 @@ def apply_preset(name):
 def main():
     if "--check" in sys.argv:
         raise SystemExit(check())
+    if "--ultra-low" in sys.argv or "--ultralow" in sys.argv:
+        raise SystemExit(apply_preset("ultra-low"))
     if "--low-end" in sys.argv or "--lowend" in sys.argv:
         raise SystemExit(apply_preset("low-end"))
     for arg in sys.argv[1:]:

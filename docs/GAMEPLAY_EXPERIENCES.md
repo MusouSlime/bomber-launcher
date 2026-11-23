@@ -387,14 +387,17 @@ or the F9 Settings tab:
 ```ini
 [Performance]
 LowEnd = true
-TargetFps = 30
+TargetFps = 60
 HalfTextures = true
 ShadowsOff = true
+UltraLow = false
+UltraWidth = 960
+UltraHeight = 540
 ```
 
 It applies at startup and on scene loads:
 
-- 30 FPS cap (or 60; `TargetFps = 0` uncaps)
+- 60 FPS target by default; optional 30 FPS cap (`TargetFps = 30`, `0` uncaps)
 - VSync off
 - anti-aliasing off
 - shadows off and shadow distance 0
@@ -404,16 +407,32 @@ It applies at startup and on scene loads:
 - reduced particle raycast budget
 - no soft particles or realtime reflection probes
 - all post-processing effects forced off
+- the in-game Options screen is updated to match (texture, AA, shadows,
+  lights), so the saved game settings show the same values
 
-The launcher exposes a **Low-End Mode** switch and a headless preset:
+**Ultra-Low Mode** goes further:
+
+- sets the window to **960x540** (configurable)
+- quarter-resolution textures (`masterTextureLimit = 2`)
+- zero pixel lights
+- LOD bias 0.4 and maximum LOD level 2
+- particle raycast budget 0
+- HDR/MSAA off on all cameras
+- 60 FPS by default (optional 30 cap), no shadows, no post-FX
+
+The launcher exposes both switches and headless presets:
 
 ```bash
 python3 bomber_launcher.py --low-end
+python3 bomber_launcher.py --ultra-low
 ./BomberLauncher.exe --low-end
+./BomberLauncher.exe --ultra-low
 ```
 
-This is a performance/settings profile for the existing PC build, not a
-separate game build. It does not change game files.
+Ultra-low changes the window resolution once at startup. The UI/text will be
+blurry and the resolution persists until the game/desktop is restarted or the
+in-game options change it. This is a performance profile for the existing PC
+build, not a separate game build.
 
 ## Story game over
 
