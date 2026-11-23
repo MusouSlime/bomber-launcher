@@ -289,6 +289,8 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PracticeInputPatch));
             harmony.PatchAll(typeof(SmarterBotsPatch));
             harmony.PatchAll(typeof(RandomCpuOpponentPatch));
+            harmony.PatchAll(typeof(RandomCpuReadyResetPatch));
+            harmony.PatchAll(typeof(RandomCpuFinalLogPatch));
             harmony.PatchAll(typeof(CpuSkillDesirePatch));
             harmony.PatchAll(typeof(CpuSkillConditionPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
@@ -3209,16 +3211,26 @@ namespace BomberQoL
         }
     }
 
-    [HarmonyPatch(typeof(LocalBattleScene), "mainStart")]
+    [HarmonyPatch(typeof(OfflineReadyScene), "execPreMoveScene")]
     internal static class RandomCpuOpponentPatch
     {
         private static readonly FieldInfo AiTypesField =
             AccessTools.Field(typeof(LocalBattleScene),
                 "CHARACTER_NPC_AI_TYPES");
+        private static int _lastReadyId;
 
-        private static void Prefix()
+        internal static void ResetGuard()
+        {
+            _lastReadyId = 0;
+        }
+
+        private static void Prefix(OfflineReadyScene __instance)
         {
             if (!Plugin.RandomCpuOpponent.Value) return;
+            if (__instance == null) return;
+            int readyId = __instance.GetInstanceID();
+            if (readyId == _lastReadyId) return;
+            _lastReadyId = readyId;
             GameSceneManager gs =
                 SingletonBaseWithGameObject<GameSceneManager>.getInstance();
             CharacterDataManager cd =
@@ -3251,9 +3263,11 @@ namespace BomberQoL
                 if (chars[i].controlType == BattleDef.CONTROL_TYPE.COM)
                     comCount++;
             }
-            Plugin.Log.LogInfo("Multiplayer: random CPU params=" +
+            Plugin.Log.LogInfo("Multiplayer: random CPU (ready) params=" +
                 chars.Length + " com=" + comCount + " npcType=" + npcType +
                 " aiType=" + aiType);
+            Plugin.Log.LogInfo("Multiplayer: CPU before=" +
+                DescribeCpuSlots(chars));
 
             var pool = new List<CharacterInfoDataTable.CharacterInfoData>();
             for (int i = 0; i < total; i++)
@@ -3333,12 +3347,33 @@ namespace BomberQoL
                 gs.param.characterParams = chars;
                 Plugin.Log.LogInfo("Multiplayer: randomized " + count +
                     " CPU character slots");
+                Plugin.Log.LogInfo("Multiplayer: CPU after=" +
+                    DescribeCpuSlots(chars));
             }
             else
             {
                 Plugin.Log.LogWarning(
                     "Multiplayer: no CPU slots randomized");
             }
+        }
+
+        internal static string DescribeCpuSlots(
+            MoveSceneParam.CharacterParam[] chars)
+        {
+            CharacterDataManager cd =
+                SingletonBase<CharacterDataManager>.getInstance();
+            string text = "";
+            if (chars == null || cd == null) return text;
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (chars[i].controlType != BattleDef.CONTROL_TYPE.COM)
+                    continue;
+                CharacterInfoDataTable.CharacterInfoData info =
+                    cd.getCharacterInfo(chars[i].characterId);
+                text += (text.Length == 0 ? "" : " ") +
+                    (info == null ? "?" : info.charKey);
+            }
+            return text;
         }
 
         private static bool HasAnyAi(CharacterDataManager cd,
@@ -3411,6 +3446,30 @@ namespace BomberQoL
             if (SceneManager.GetActiveScene().name != "LocalBattle")
                 return;
             ConditionField.SetValue(__instance, new NPCConditionTrue());
+        }
+    }
+
+    [HarmonyPatch(typeof(OfflineReadyScene), "entryPreMoveScene")]
+    internal static class RandomCpuReadyResetPatch
+    {
+        private static void Postfix()
+        {
+            RandomCpuOpponentPatch.ResetGuard();
+        }
+    }
+
+    [HarmonyPatch(typeof(LocalBattleScene), "mainStart")]
+    internal static class RandomCpuFinalLogPatch
+    {
+        private static void Postfix()
+        {
+            if (!Plugin.RandomCpuOpponent.Value) return;
+            GameSceneManager gs =
+                SingletonBaseWithGameObject<GameSceneManager>.getInstance();
+            if (gs == null) return;
+            Plugin.Log.LogInfo("Multiplayer: battle CPU=" +
+                RandomCpuOpponentPatch.DescribeCpuSlots(
+                    gs.param.characterParams));
         }
     }
 
