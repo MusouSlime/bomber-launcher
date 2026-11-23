@@ -324,10 +324,14 @@ ResetStatsPerStage = true
   so achievements and counters still come from actual pickups.
 - **Stats per stage** — `ResetStatsPerStage` re-applies the selected stats preset
   at the start of every stage. `Random` re-rolls, while Save keeps the current
-  stats. `MasterStatReset` forces a default reset on Master.
+  stats. `MasterStatReset` makes Master re-apply the selected preset every
+  stage; with Save selected it falls back to Default. The Default preset is
+  Fire 1 / Bomb 1 / Speed 1, so bombs always remain usable.
 - **Practice tab** — the F9 menu starts on Beginner and has Practice,
-  Randomizer, Multiplayer, Settings, and Help tabs. The selected row is highlighted in gold and the active tab is filled gold. Practice selects world and stage directly, always resets to default
-  stats, keeps the normal character-select screen (it never randomizes
+  Randomizer, Multiplayer, Settings, and Help tabs. The selected row is highlighted in gold and the active tab is filled gold; each tab shows a
+  Selected line with the current difficulty, stats preset and stage. Practice
+  selects world and stage directly, uses the selected stats preset (Default by
+  default), keeps the normal character-select screen (it never randomizes
   characters), and can **Repeat stage when cleared**. `[Practice] RepeatStage`
   stores the toggle.
 - **F9 toggles** — the Randomizer tab toggles random pickups, blank icons,

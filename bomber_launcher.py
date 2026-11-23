@@ -120,15 +120,16 @@ def convert_bgm_folder(source, progress=None):
             name = f"{stem}_{n}{out_ext}"
             n += 1
         used.add(name.lower())
-        jobs.append((src, out_ext, dest / name))
+        jobs.append((src, out_ext, dest / name,
+                     ext not in (".ogg", ".wav")))
 
     ffmpeg = shutil.which("ffmpeg")
     total = len(jobs)
     errors = []
 
     def work(job):
-        src, ext, out = job
-        if ext in (".ogg", ".wav"):
+        src, _ext, out, needs_convert = job
+        if not needs_convert:
             shutil.copy2(src, out)
             return
         if not ffmpeg:

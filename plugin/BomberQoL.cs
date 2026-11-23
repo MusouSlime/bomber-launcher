@@ -2728,21 +2728,38 @@ namespace BomberQoL
         private static readonly int[] StatIndices = { 1, 4, 6, 8, 9, 10, 11, 12, 14 };
         private static readonly int[] MaxStats = { 5, 5, 4, 1, 1, 1, 1, 1, 1 };
 
+        private static void SetDefaultStats(
+            SaveDataManager.StoryData storyData)
+        {
+            for (int c = 0; c < storyData.characterDatas.Length; c++)
+            {
+                byte[] items = storyData.characterDatas[c].items;
+                if (items == null) continue;
+                // ItemTypedef.TYPE: 1 = FIRE_UP, 4 = BOMB_UP,
+                // 6 = SPEED_UP. A zeroed item array means zero bombs.
+                if (items.Length > 1) items[1] = 1;
+                if (items.Length > 4) items[4] = 1;
+                if (items.Length > 6) items[6] = 1;
+            }
+        }
+
         private static void ApplyStats(SaveDataManager.StoryData storyData,
             int mode, string difficulty)
         {
             if (storyData == null) return;
-            if (difficulty == "super" && Plugin.MasterStatReset.Value)
+            bool masterReset = difficulty == "super" &&
+                Plugin.MasterStatReset.Value;
+            if (mode == 0)
             {
-                storyData.resetStoryPlayParams();
-                Plugin.Log.LogInfo("Practice stats reset for Master");
-                return;
+                if (!masterReset) return;
+                mode = 1;
             }
-            if (mode == 0) return;
             storyData.resetStoryPlayParams();
             if (mode == 1)
             {
-                Plugin.Log.LogInfo("Practice stats mode: default");
+                SetDefaultStats(storyData);
+                Plugin.Log.LogInfo("Practice stats mode: default" +
+                    (masterReset ? " (Master reset)" : ""));
                 return;
             }
 
@@ -2799,7 +2816,8 @@ namespace BomberQoL
             if (storyData == null) return;
             if (!RandomRun.Active && !Active) return;
             bool perStage = Plugin.ResetStatsPerStage.Value ||
-                !RandomRun.Active;
+                !RandomRun.Active ||
+                (RunDifficulty == "super" && Plugin.MasterStatReset.Value);
             int key = CurrentWorld * 1000 + CurrentStage;
             if (perStage && key != _lastStatsKey)
             {
@@ -2832,11 +2850,11 @@ namespace BomberQoL
         }
 
         internal static bool StartPractice(int world, int stage,
-            string difficulty, bool repeat)
+            string difficulty, bool repeat, int statsMode)
         {
             RandomRun.Cancel();
             RunDifficulty = difficulty;
-            RunStatsMode = 1; // practice always starts from default stats
+            RunStatsMode = statsMode;
             RepeatStage = repeat;
             _lastStatsKey = int.MinValue;
             _statsApplied = false;
@@ -2948,7 +2966,7 @@ namespace BomberQoL
         private CursorLockMode _prevLockMode;
         private int _tab;
         private int _difficulty;
-        private int _stats = 4;
+        private int _stats = 1;
         private int _world = 1;
         private int _stage = 1;
         private int _row;
@@ -3125,7 +3143,6 @@ namespace BomberQoL
                 Plugin.EnableMasterButton();
             if (entry == Plugin.MainMenuQoL)
                 MainMenuQoLUtility.Apply();
-            MainMenuQoLUtility.Apply();
         }
 
         private static void ToggleInverted(ConfigEntry<bool> entry)
@@ -3234,15 +3251,15 @@ namespace BomberQoL
         private void ActivateRow()
         {
             if (_tab == 4) return;
-            if (_tab == 0 && _row == 4)
+            if (_tab == 0)
             {
-                StartPractice();
-                return;
+                if (_row == 4) { StartPractice(); return; }
+                if (_row <= 2) return; // value rows: use Left/Right
             }
-            if (_tab == 1 && _row == 12)
+            if (_tab == 1)
             {
-                StartRun();
-                return;
+                if (_row == 12) { StartRun(); return; }
+                if (_row <= 1) return; // difficulty/stats: use Left/Right
             }
             if (_tab == 3 && _row == 14)
             {
@@ -3304,7 +3321,7 @@ namespace BomberQoL
         {
             if (Practice.StartPractice(_world, _stage,
                 Difficulties[_difficulty],
-                Plugin.PracticeRepeatStage.Value))
+                Plugin.PracticeRepeatStage.Value, _stats))
                 SetVisible(false);
         }
 
@@ -3408,6 +3425,26 @@ namespace BomberQoL
             GUI.contentColor = fg;
         }
 
+        private GUIStyle _summaryStyle;
+
+        private static string OnOff(bool value)
+        {
+            return value ? "ON" : "OFF";
+        }
+
+        private void Summary(string text)
+        {
+            if (_summaryStyle == null)
+            {
+                _summaryStyle = new GUIStyle(GUI.skin.label);
+                _summaryStyle.fontStyle = FontStyle.Bold;
+                _summaryStyle.wordWrap = true;
+                _summaryStyle.normal.textColor = MarkerColor;
+            }
+            GUILayout.Label(text, _summaryStyle);
+            GUILayout.Space(4);
+        }
+
         private void DrawDifficulty()
         {
             GUILayout.BeginVertical(RowStyle(0));
@@ -3473,6 +3510,10 @@ namespace BomberQoL
 
         private void DrawPractice()
         {
+            Summary("Selected: " + DiffLabels[_difficulty] + "  |  World " +
+                _world + "  |  Stage " + _stage + "  |  Stats " +
+                StatLabels[_stats] + "  |  Repeat " +
+                OnOff(Plugin.PracticeRepeatStage.Value));
             DrawDifficulty();
 
             GUILayout.BeginVertical(RowStyle(1));
@@ -3525,6 +3566,9 @@ namespace BomberQoL
 
         private void DrawRandomizer()
         {
+            Summary("Selected: " + DiffLabels[_difficulty] + "  |  Stats " +
+                StatLabels[_stats] + "  |  Random Run: 10 stages per boss, " +
+                "13 bosses");
             DrawDifficulty();
             DrawStats();
 
@@ -3563,8 +3607,11 @@ namespace BomberQoL
 
         private void DrawMultiplayer()
         {
-            GUILayout.Label("Local battle only.");
-            GUILayout.Space(6);
+            Summary("Selected: Smarter bots " +
+                OnOff(Plugin.SmarterBots.Value) + "  |  Random CPU " +
+                OnOff(Plugin.RandomCpuOpponent.Value) + "  |  CPU specials " +
+                OnOff(Plugin.CpuSpecialAbilities.Value) + "  |  Platform " +
+                OnOff(Plugin.PlatformExclusives.Value));
             DrawToggle(0, Plugin.SmarterBots, "Smarter bots");
             DrawToggle(1, Plugin.RandomCpuOpponent, "Random CPU opponent");
             DrawToggle(2, Plugin.CpuSpecialAbilities,
@@ -3610,6 +3657,10 @@ namespace BomberQoL
 
         private void DrawSettings()
         {
+            Summary("Selected: BGM shuffle " +
+                OnOff(Plugin.CustomBgmShuffle.Value) + "  |  SFX shuffle " +
+                OnOff(Plugin.CustomSfxShuffle.Value) + "  |  Main-menu entry " +
+                OnOff(Plugin.MainMenuQoL.Value));
             GUILayout.BeginHorizontal();
             GUILayout.BeginVertical(GUILayout.Width(350));
             DrawInvertedToggle(0, Plugin.NoMotionBlur, "Motion blur");
