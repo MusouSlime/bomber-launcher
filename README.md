@@ -25,7 +25,7 @@ artwork extracted from the game itself.
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
 | **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to fully relaunch the game |
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
-| **Motion Blur / DoF / Bloom** | BepInEx plugin: per-effect post-processing switches |
+| **Post-processing** | Motion blur, depth of field, bloom, vignette and film grain switches |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
 
@@ -160,7 +160,9 @@ The plugin adds:
   or **Custom** item loadouts. It jumps through `StageSetup` into the selected
   story battle and suppresses story saves while practice mode is active, so your
   real save is untouched.
-- **Motion Blur / Depth of Field / Bloom** — independent switches.
+- **Motion Blur / Depth of Field / Bloom / Vignette / Film Grain** —
+  independent switches. Environment toggles save immediately to the plugin
+  config and reload on the next launcher start.
 
 These are exposed in the launcher and stored in
 `BepInEx/config/bomber.qol.cfg`; changes apply on the next launch. Plugin

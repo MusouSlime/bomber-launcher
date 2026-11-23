@@ -85,6 +85,8 @@ public class MainForm : Form
     private readonly CheckBox _motionBlur = new();
     private readonly CheckBox _dof = new();
     private readonly CheckBox _bloom = new();
+    private readonly CheckBox _vignette = new();
+    private readonly CheckBox _grain = new();
 
     private string? _game;
     private bool _loading;
@@ -271,6 +273,12 @@ public class MainForm : Form
         AddRow(env, "Bloom",
             "Post-processing effect (BepInEx, next launch)", _bloom);
         Separator(env);
+        AddRow(env, "Vignette",
+            "Darkened screen edges (BepInEx, next launch)", _vignette);
+        Separator(env);
+        AddRow(env, "Film Grain",
+            "Grain overlay (BepInEx, next launch)", _grain);
+        Separator(env);
         AddRow(env, "Faster Result Screens",
             "Halves post-battle result delays (BepInEx)", _fastResults);
 
@@ -306,6 +314,8 @@ public class MainForm : Form
         _motionBlur.CheckedChanged += (_, _) => SavePlugin("Graphics", "DisableMotionBlur", !_motionBlur.Checked);
         _dof.CheckedChanged += (_, _) => SavePlugin("Graphics", "DisableDepthOfField", !_dof.Checked);
         _bloom.CheckedChanged += (_, _) => SavePlugin("Graphics", "DisableBloom", !_bloom.Checked);
+        _vignette.CheckedChanged += (_, _) => SavePlugin("Graphics", "DisableVignette", !_vignette.Checked);
+        _grain.CheckedChanged += (_, _) => SavePlugin("Graphics", "DisableGrain", !_grain.Checked);
         _padCombo.SelectedIndexChanged += (_, _) => SavePadButton();
         _logos.CheckedChanged += (_, _) => SavePlugin("Movies", "AutoSkipLogos", _logos.Checked);
         _autoSkip.CheckedChanged += (_, _) => SavePluginValue("Movies", "AutoSkipMovies", _autoSkip.Checked ? "5" : "0");
@@ -541,6 +551,8 @@ public class MainForm : Form
             _motionBlur.Enabled = editable && plugin;
             _dof.Enabled = editable && plugin;
             _bloom.Enabled = editable && plugin;
+            _vignette.Enabled = editable && plugin;
+            _grain.Enabled = editable && plugin;
 
             _dual.Checked = false;
             _intro.Checked = false;
@@ -553,6 +565,8 @@ public class MainForm : Form
             _motionBlur.Checked = false;
             _dof.Checked = false;
             _bloom.Checked = true;
+            _vignette.Checked = true;
+            _grain.Checked = true;
 
             if (_game != null)
             {
@@ -575,6 +589,10 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Graphics", "DisableDepthOfField", "true") != "true";
                     _bloom.Checked =
                         Core.GetPluginOption(_game, "Graphics", "DisableBloom", "false") != "true";
+                    _vignette.Checked =
+                        Core.GetPluginOption(_game, "Graphics", "DisableVignette", "false") != "true";
+                    _grain.Checked =
+                        Core.GetPluginOption(_game, "Graphics", "DisableGrain", "false") != "true";
                     _logos.Checked =
                         Core.GetPluginOption(_game, "Movies", "AutoSkipLogos", "true") == "true";
                     _autoSkip.Checked =

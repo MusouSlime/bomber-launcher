@@ -586,8 +586,11 @@ class Mods:
         return cfg
 
     def set_plugin_option(self, section, key, value):
-        self.set_plugin_value(section, key,
-                              "true" if value else "false")
+        if isinstance(value, str):
+            self.set_plugin_value(section, key, value)
+        else:
+            self.set_plugin_value(section, key,
+                                  "true" if value else "false")
 
     def set_plugin_value(self, section, key, value):
         path = self.game / PLUGIN_CFG_REL
@@ -1008,6 +1011,20 @@ class BomberWindow(Adw.ApplicationWindow):
                              self.bloom_sw))
         env.append(self._separator())
 
+        self.vignette_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.vignette_sw.connect("notify::active", self.on_vignette)
+        env.append(self._row("avatar_pink.png", "Vignette",
+                             "Darkened screen edges (BepInEx, next launch)",
+                             self.vignette_sw))
+        env.append(self._separator())
+
+        self.grain_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.grain_sw.connect("notify::active", self.on_grain)
+        env.append(self._row("avatar_white.png", "Film Grain",
+                             "Grain overlay (BepInEx, next launch)",
+                             self.grain_sw))
+        env.append(self._separator())
+
         self.fast_results_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.fast_results_sw.connect("notify::active", self.on_fast_results)
         env.append(self._row(
@@ -1305,12 +1322,14 @@ class BomberWindow(Adw.ApplicationWindow):
         plugin = self.mods is not None and self.mods.plugin_installed()
         for w in (self.skip_movies_sw, self.pad_dd, self.logos_sw,
                   self.autoskip_sw, self.master_sw, self.mblur_sw,
-                  self.dof_sw, self.bloom_sw, self.fast_results_sw):
+                  self.dof_sw, self.bloom_sw, self.vignette_sw,
+                  self.grain_sw, self.fast_results_sw):
             w.set_sensitive(plugin and not running)
         if not plugin:
             for w in (self.skip_movies_sw, self.logos_sw, self.autoskip_sw,
                       self.master_sw, self.mblur_sw, self.dof_sw,
-                      self.bloom_sw, self.fast_results_sw):
+                      self.bloom_sw, self.vignette_sw, self.grain_sw,
+                      self.fast_results_sw):
                 w.set_active(False)
 
         if self.mods:
@@ -1377,6 +1396,10 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg["Graphics"].get("DisableDepthOfField", "true").lower() != "true")
                     self.bloom_sw.set_active(
                         cfg["Graphics"].get("DisableBloom", "false").lower() != "true")
+                    self.vignette_sw.set_active(
+                        cfg["Graphics"].get("DisableVignette", "false").lower() != "true")
+                    self.grain_sw.set_active(
+                        cfg["Graphics"].get("DisableGrain", "false").lower() != "true")
                 except Exception:
                     pass
         self._loading = False
@@ -1684,7 +1707,7 @@ class BomberWindow(Adw.ApplicationWindow):
             self.refresh()
             return
         try:
-            self.mods.set_plugin_option(
+            self.mods.set_plugin_value(
                 section, key, "true" if value else "false")
             self.toast("Saved — applies next launch")
         except Exception as e:
@@ -1743,6 +1766,14 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_bloom(self, row, _pspec):
         self._plugin_write("Graphics", "DisableBloom",
+                           not row.get_active())
+
+    def on_vignette(self, row, _pspec):
+        self._plugin_write("Graphics", "DisableVignette",
+                           not row.get_active())
+
+    def on_grain(self, row, _pspec):
+        self._plugin_write("Graphics", "DisableGrain",
                            not row.get_active())
 
     def on_language(self, row, _pspec):
