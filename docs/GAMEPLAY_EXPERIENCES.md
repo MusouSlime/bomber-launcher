@@ -365,6 +365,7 @@ SmarterBots = false
 [Multiplayer]
 RandomCpuOpponent = true
 CpuSpecialAbilities = true
+PlatformExclusives = false
 ```
 
 - **SmarterBots** — postfixes `NPCAIData.getParam` for local-battle NPCs:
@@ -381,9 +382,20 @@ CpuSpecialAbilities = true
   replace the special-skill process condition with an always-true condition.
   `NPCProcessSpecialSkill` still checks `Player/IStatus.haveSpecialSkill`, so
   only characters that actually have an A-button special ability will use one.
+- **PlatformExclusives** — makes the built-in platform-gated IDs usable:
+  `M001` Master Chief, `M002` Arbiter, `M003` Grunt, `S001` Ratchet & Clank,
+  `S002` Toro, `S003` Piposaru, `V001` P-body, `V002` ATLAS, `N001` Max,
+  `N002` Caesar. The Steam `chara_pack_03`/`04` assets contain their models,
+  textures, and icons, and `CharacterVoiceDataTable` contains their voice keys.
+  The plugin also injects display names for the M/S/N variants. They are
+  player-selectable, but the `CharacterNpcAiInfoDataTable` only has 18 base
+  characters, so platform exclusives are not selected as CPU opponents.
+  Nintendo-specific models (Mario, Luigi, etc.) are not present in the Steam
+  packs.
 
-All three are local-battle only. Story enemies, online play, and achievement
-counters are not changed.
+SmarterBots, RandomCpuOpponent, and CpuSpecialAbilities are local-battle only.
+PlatformExclusives also affects the character-select and random-character
+pools. Story enemies, online play, and achievement counters are not changed.
 
 ## Dead online room achievements
 

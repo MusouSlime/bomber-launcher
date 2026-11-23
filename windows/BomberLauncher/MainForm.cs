@@ -70,6 +70,7 @@ public class MainForm : Form
     private readonly CheckBox _smartBots = new();
     private readonly CheckBox _randomCpu = new();
     private readonly CheckBox _cpuSkills = new();
+    private readonly CheckBox _platformExclusive = new();
     private readonly CheckBox _dual = new();
     private readonly CheckBox _intro = new();
     private readonly CheckBox _skipMovies = new();
@@ -247,6 +248,10 @@ public class MainForm : Form
         Separator(mp);
         AddRow(mp, "CPU Special Abilities",
             "Local battle CPUs use their A-button special ability when they have one", _cpuSkills);
+        Separator(mp);
+        AddRow(mp, "Platform Exclusives",
+            "Enable Master Chief/Ratchet/etc. IDs; models and voices present, no NPC AI",
+            _platformExclusive);
 
         AddSection("ENVIRONMENT");
         var env = AddCard();
@@ -307,6 +312,7 @@ public class MainForm : Form
         _smartBots.CheckedChanged += (_, _) => SavePlugin("Bots", "SmarterBots", _smartBots.Checked);
         _randomCpu.CheckedChanged += (_, _) => SavePlugin("Multiplayer", "RandomCpuOpponent", _randomCpu.Checked);
         _cpuSkills.CheckedChanged += (_, _) => SavePlugin("Multiplayer", "CpuSpecialAbilities", _cpuSkills.Checked);
+        _platformExclusive.CheckedChanged += (_, _) => SavePlugin("Multiplayer", "PlatformExclusives", _platformExclusive.Checked);
         _fastResults.CheckedChanged += (_, _) => SavePlugin("Results", "FastResults", _fastResults.Checked);
 
         Shown += (_, _) => RefreshState();
@@ -588,6 +594,8 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Multiplayer", "RandomCpuOpponent", "false") == "true";
                     _cpuSkills.Checked =
                         Core.GetPluginOption(_game, "Multiplayer", "CpuSpecialAbilities", "true") == "true";
+                    _platformExclusive.Checked =
+                        Core.GetPluginOption(_game, "Multiplayer", "PlatformExclusives", "false") == "true";
                     if (int.TryParse(Core.GetPluginOption(_game, "Movies", "SkipJoystickButton", "0"), out int pad))
                     {
                         int idx = Array.FindIndex(Pads, p => p.Value == pad);

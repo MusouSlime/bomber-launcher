@@ -75,6 +75,7 @@ namespace BomberQoL
         internal static ConfigEntry<bool> SmarterBots;
         internal static ConfigEntry<bool> RandomCpuOpponent;
         internal static ConfigEntry<bool> CpuSpecialAbilities;
+        internal static ConfigEntry<bool> PlatformExclusives;
         internal static ConfigEntry<bool> SkipGemContinue;
         internal static ConfigEntry<bool> MasterStatReset;
         internal static ConfigEntry<bool> ResetStatsPerStage;
@@ -193,6 +194,8 @@ namespace BomberQoL
                 "Randomize the character used by CPU slots in local battle.");
             CpuSpecialAbilities = Config.Bind("Multiplayer", "CpuSpecialAbilities", true,
                 "Let local battle CPUs use their A-button special ability when they have one.");
+            PlatformExclusives = Config.Bind("Multiplayer", "PlatformExclusives", false,
+                "Make the built-in platform-exclusive character IDs usable (Master Chief, Ratchet, etc.).");
             SkipGemContinue = Config.Bind("Gameplay", "SkipGemContinue", true,
                 "On story game over, skip the gem continue dialog and return to the main menu.");
             MasterStatReset = Config.Bind("Gameplay", "MasterStatReset", true,
@@ -293,6 +296,8 @@ namespace BomberQoL
             harmony.PatchAll(typeof(RandomCpuFinalLogPatch));
             harmony.PatchAll(typeof(CpuSkillDesirePatch));
             harmony.PatchAll(typeof(CpuSkillConditionPatch));
+            harmony.PatchAll(typeof(PlatformUsableCharacterPatch));
+            harmony.PatchAll(typeof(PlatformUsableBuiltinPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
             harmony.PatchAll(typeof(CustomBgmChangePatch));
             harmony.PatchAll(typeof(CustomBgmStopPatch));
@@ -383,6 +388,7 @@ namespace BomberQoL
             Practice.OnSceneLoaded(scene);
             Randomizer.ApplyMoveSets();
             Randomizer.EnsureBombNormalSkills();
+            PlatformCharacters.ApplyLocaleNames();
             RandomRun.OnSceneLoaded(scene);
             ApplyAllPostFx();
             ApplyResultTweaks();
@@ -1568,6 +1574,22 @@ namespace BomberQoL
             }
         }
 
+        private static int PickUsableIndex(CharacterDataManager cd,
+            int count, int exclude)
+        {
+            for (int attempt = 0; attempt < 80; attempt++)
+            {
+                int index = Rng.Next(0, count);
+                if (index == exclude) continue;
+                CharacterInfoDataTable.CharacterInfoData info =
+                    cd.getCharacterInfoFromSorted(index);
+                if (info == null) continue;
+                if (!cd.isUsableCharacter(info)) continue;
+                return index;
+            }
+            return -1;
+        }
+
         internal static void RandomizeCharacters()
         {
             if (!Plugin.RandomStoryCharacters.Value) return;
@@ -1582,7 +1604,8 @@ namespace BomberQoL
 
             int count = cd.getTotalCharacterCount();
             if (count <= 0) return;
-            int first = Rng.Next(0, count);
+            int first = PickUsableIndex(cd, count, -1);
+            if (first < 0) return;
             CharacterInfoDataTable.CharacterInfoData a =
                 cd.getCharacterInfoFromSorted(first);
             if (a == null) return;
@@ -1602,10 +1625,9 @@ namespace BomberQoL
 
             if (sd.storyData.characterDatas.Length > 1)
             {
-                int second = count > 1 ? Rng.Next(0, count - 1) : 0;
-                if (second >= first) second++;
+                int second = PickUsableIndex(cd, count, first);
                 CharacterInfoDataTable.CharacterInfoData b =
-                    cd.getCharacterInfoFromSorted(second);
+                    second >= 0 ? cd.getCharacterInfoFromSorted(second) : null;
                 if (b != null)
                 {
                     CharacterDataManager.CharacterID idB =
@@ -1692,6 +1714,106 @@ namespace BomberQoL
             if (fixedCount > 0)
                 Plugin.Log.LogInfo("Randomizer: repaired " + fixedCount +
                     " non-bomb normal skills");
+        }
+    }
+
+    internal static class PlatformCharacters
+    {
+        private static readonly HashSet<string> ExclusiveKeys =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "M001", "M002", "M003", "V001", "V002",
+                "S001", "S002", "S003", "N001", "N002"
+            };
+
+        private static readonly HashSet<string> ExclusiveReferences =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "refM001", "refM002", "refM003", "refV001", "refV002",
+                "refS001", "refS002", "refS003", "refN001", "refN002"
+            };
+
+        private static readonly FieldInfo LocaleDatasField =
+            AccessTools.Field(typeof(LocaleDataTable), "_localeDatas");
+
+        private static readonly Dictionary<string, string> LocaleNames =
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                { "PF03_M001_BOMBER", "Master Chief Bomber" },
+                { "PF03_M001_BOMBER_ABILITY", "Spartan Shot" },
+                { "PF03_M002_BOMBER", "Arbiter Bomber" },
+                { "PF03_M002_BOMBER_ABILITY", "Mediate" },
+                { "PF03_M003_BOMBER", "Grunt Bomber" },
+                { "PF03_M003_BOMBER_ABILITY", "Plasma Pistol" },
+                { "PF02_S001_BOMBER", "Ratchet & Clank Bomber" },
+                { "PF02_S001_BOMBER_ABILITY", "Ratchet Blaster" },
+                { "PF02_S002_BOMBER", "Toro" },
+                { "PF02_S002_BOMBER_ABILITY", "Copycat" },
+                { "PF02_S003_BOMBER", "Piposaru" },
+                { "PF02_S003_BOMBER_ABILITY", "Ape Escape" },
+                { "PF01_N001_BOMBER", "Max" },
+                { "PF01_N002_BOMBER", "Caesar Bomber" },
+                { "PF01_N002_BOMBER_ABILITY", "Speedster" },
+                { "PF04_V001_BOMBER", "P-body Bomber" },
+                { "PF04_V001_BOMBER_ABILITY", "Portal #1" },
+                { "PF04_V002_BOMBER", "ATLAS Bomber" },
+                { "PF04_V002_BOMBER_ABILITY", "Portal #0" }
+            };
+
+        internal static bool IsExclusive(string key)
+        {
+            return !string.IsNullOrEmpty(key) && ExclusiveKeys.Contains(key);
+        }
+
+        internal static bool IsExclusiveReference(string key)
+        {
+            return !string.IsNullOrEmpty(key) &&
+                ExclusiveReferences.Contains(key);
+        }
+
+        internal static void ApplyLocaleNames()
+        {
+            if (!Plugin.PlatformExclusives.Value) return;
+            if (LocaleDatasField == null) return;
+            LocaleManager lm = SingletonBase<LocaleManager>.getInstance();
+            if (lm == null) return;
+            LocaleDataTable table = lm.tbl;
+            if (table == null) return;
+            LocaleDataTable.LocaleData[] data =
+                LocaleDatasField.GetValue(table) as
+                    LocaleDataTable.LocaleData[];
+            if (data == null) return;
+
+            var missing = new List<KeyValuePair<string, string>>();
+            foreach (KeyValuePair<string, string> pair in LocaleNames)
+            {
+                object indexObj = LocaleDef.LOCALE_TABLE[pair.Key];
+                if (indexObj is int)
+                {
+                    int index = (int)indexObj;
+                    if (index >= 0 && index < data.Length &&
+                        data[index] != null &&
+                        data[index].val == pair.Value)
+                        continue;
+                }
+                missing.Add(pair);
+            }
+            if (missing.Count == 0) return;
+
+            LocaleDataTable.LocaleData[] expanded =
+                new LocaleDataTable.LocaleData[data.Length + missing.Count];
+            Array.Copy(data, expanded, data.Length);
+            int at = data.Length;
+            for (int i = 0; i < missing.Count; i++)
+            {
+                expanded[at] = new LocaleDataTable.LocaleData(
+                    missing[i].Value);
+                LocaleDef.LOCALE_TABLE[missing[i].Key] = at;
+                at++;
+            }
+            LocaleDatasField.SetValue(table, expanded);
+            Plugin.Log.LogInfo("Platform exclusives: injected " +
+                missing.Count + " locale names");
         }
     }
 
@@ -2714,7 +2836,7 @@ namespace BomberQoL
             {
                 if (_tab == 0) return 5;
                 if (_tab == 1) return 13;
-                return 3;
+                return 4;
             }
         }
 
@@ -2808,6 +2930,8 @@ namespace BomberQoL
             entry.Value = !entry.Value;
             if (entry == Plugin.RandomMoveSets && entry.Value)
                 Randomizer.ApplyMoveSets(true);
+            if (entry == Plugin.PlatformExclusives && entry.Value)
+                PlatformCharacters.ApplyLocaleNames();
         }
 
         private static void ToggleDifficultyOdds()
@@ -2850,6 +2974,7 @@ namespace BomberQoL
                     case 0: Toggle(Plugin.SmarterBots); break;
                     case 1: Toggle(Plugin.RandomCpuOpponent); break;
                     case 2: Toggle(Plugin.CpuSpecialAbilities); break;
+                    case 3: Toggle(Plugin.PlatformExclusives); break;
                 }
                 return;
             }
@@ -3102,10 +3227,14 @@ namespace BomberQoL
             DrawToggle(1, Plugin.RandomCpuOpponent, "Random CPU opponent");
             DrawToggle(2, Plugin.CpuSpecialAbilities,
                 "CPU A-button special abilities");
+            DrawToggle(3, Plugin.PlatformExclusives,
+                "Platform exclusives");
             GUILayout.Space(12);
             GUILayout.Label("Smarter bots: longer search range and faster retargeting.");
             GUILayout.Label("Random CPU: randomises COM character slots each battle.");
             GUILayout.Label("CPU specials: CPUs use their A-button ability when available.");
+            GUILayout.Label("Platform exclusives: unlocks Master Chief/Ratchet/etc.");
+            GUILayout.Label("They can be player characters; they have no NPC AI data.");
             GUILayout.Space(8);
             GUILayout.Label("Enter / A: toggle    B / Esc: close");
         }
@@ -3470,6 +3599,35 @@ namespace BomberQoL
             Plugin.Log.LogInfo("Multiplayer: battle CPU=" +
                 RandomCpuOpponentPatch.DescribeCpuSlots(
                     gs.param.characterParams));
+        }
+    }
+
+    [HarmonyPatch(typeof(CharacterDataManager), "isUsableCharacterInternal")]
+    internal static class PlatformUsableCharacterPatch
+    {
+        private static bool Prefix(
+            CharacterInfoDataTable.CharacterInfoData __0, bool __1,
+            ref bool __result)
+        {
+            if (!Plugin.PlatformExclusives.Value || __0 == null)
+                return true;
+            if (!PlatformCharacters.IsExclusive(__0.charKey))
+                return true;
+            __result = true;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(CharacterDataManager), "isUsableBuiltinCharacter")]
+    internal static class PlatformUsableBuiltinPatch
+    {
+        private static bool Prefix(string __0, bool __1, ref bool __result)
+        {
+            if (!Plugin.PlatformExclusives.Value) return true;
+            if (!PlatformCharacters.IsExclusiveReference(__0))
+                return true;
+            __result = true;
+            return false;
         }
     }
 

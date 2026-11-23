@@ -803,6 +803,13 @@ class BomberWindow(Adw.ApplicationWindow):
             "avatar_blue.png", "CPU Special Abilities",
             "Local battle CPUs use their A-button special ability when they have one",
             self.cpu_skills_sw))
+        mp.append(self._separator())
+        self.platform_excl_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.platform_excl_sw.connect("notify::active", self.on_platform_exclusives)
+        mp.append(self._row(
+            "avatar_red.png", "Platform Exclusives",
+            "Enable Master Chief/Ratchet/etc. IDs; models and voices are present, no NPC AI",
+            self.platform_excl_sw))
         page.append(mp)
 
         # ----- achievements
@@ -1132,6 +1139,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Multiplayer", {}).get("RandomCpuOpponent", "false").lower() == "true")
                     self.cpu_skills_sw.set_active(
                         cfg.get("Multiplayer", {}).get("CpuSpecialAbilities", "true").lower() == "true")
+                    self.platform_excl_sw.set_active(
+                        cfg.get("Multiplayer", {}).get("PlatformExclusives", "false").lower() == "true")
                     self.mblur_sw.set_active(
                         cfg["Graphics"].get("DisableMotionBlur", "true").lower() != "true")
                     self.dof_sw.set_active(
@@ -1329,6 +1338,9 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def on_cpu_skills(self, row, _pspec):
         self._plugin_write("Multiplayer", "CpuSpecialAbilities", row.get_active())
+
+    def on_platform_exclusives(self, row, _pspec):
+        self._plugin_write("Multiplayer", "PlatformExclusives", row.get_active())
 
     def on_room_achievements(self, _btn):
         if not self.mods or not self.mods.plugin_installed():

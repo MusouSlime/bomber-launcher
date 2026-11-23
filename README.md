@@ -21,7 +21,7 @@ artwork extracted from the game itself.
 | **Custom SFX Folder + Shuffle** | Replace or shuffle sound effects by label |
 | **Randomizer** | Random story characters and shuffled character move sets |
 | **Room Achievement Helper** | One-shot unlock for the three dead online room achievements |
-| **Multiplayer** | Smarter local-battle bots, random CPU characters, and CPU special abilities |
+| **Multiplayer** | Smarter bots, random CPU characters, CPU specials, and platform-exclusive IDs |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
 | **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to fully relaunch the game |
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
@@ -126,10 +126,16 @@ The plugin adds:
   50/50 plus a stat reset), hidden pickups use a neutral blank icon, and the
   collected item's name pops up above the player. Character randomization only
   happens when **Random characters** is enabled in the Randomizer tab. The
-  **Multiplayer** tab has Smarter Bots, Random CPU Opponent, and CPU A-button
-  specials toggles.
+  **Multiplayer** tab has Smarter Bots, Random CPU Opponent, CPU A-button
+  specials, and Platform Exclusives toggles.
 - **Game-over continue** — story game over skips the gem continue/retry dialog
   and returns to the main menu. Config: `[Gameplay] SkipGemContinue`.
+- **Platform Exclusives** — unlocks the built-in platform-specific character
+  IDs (`M001`–`M003`, `S001`–`S003`, `V001`–`V002`, `N001`–`N002`). Their
+  models, icons, and voice keys are present in the Steam files. They are
+  player-selectable but have no `CharacterNpcAiInfoDataTable` entries, so they
+  are not used as CPU opponents. Nintendo-specific models (Mario/Luigi/etc.)
+  are not present.
 - **Smarter Bots** — raises local-battle NPC search range to at least 10 tiles
   and caps tactical-target re-evaluation at 0.25 s. This is a real AI parameter
   change, not a stat or achievement shortcut.
