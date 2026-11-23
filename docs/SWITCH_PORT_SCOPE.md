@@ -54,7 +54,7 @@ Keys are present at `~/.switch/prod.keys` and `~/.switch/title.keys`.
 |---|---|---|
 | **Switch asset/data mods (SBR1)** | **High** | Same Unity 5.6 bundles and RomFS paths as PC. LayeredFS replaces individual bundles. |
 | PC data/asset mods → Switch (SBR1) | High | Edit the bundle with UnityPy, repack, place in LayeredFS. |
-| Switch-exclusive Nintendo characters → PC | **High, pending update extraction** | Switch update should contain the Nintendo packs; PC Steam does not. Same engine/format. |
+| Switch platform-exclusive Max/Caesar → PC | **Already available** | The `N` platform pack is **MAX** (`model_pc381_max`) and **Caesar** (`model_pc431_ceaser`), both present in the PC chara packs and already unlockable via the platform-exclusive toggle. No Mario/Luigi/Wario content exists in the data. |
 | Switch maps/stages → PC | Medium | Map/env/thumbnail bundles may be compatible; table IDs and scene flow need checks. |
 | **Full QoL plugin/F9 menu on Switch** | **Low** | Switch SBR1 is ARM64 IL2CPP (`Data/Managed/Metadata`), not a .NET `Assembly-CSharp.dll`. BepInEx 5 x86/x64 cannot run. Requires ARM64/IL2CPP hooks or a sysmodule. |
 | Simple cheat toggles on Switch | Medium | Atmosphere cheats can patch memory/values, but not complex menus, randomizers or save-scoped logic. |
@@ -87,18 +87,18 @@ Candidate mods that need no code:
 
 ### 2. Port Switch-exclusive content to PC
 
-This is the most valuable cross-platform direction:
+There are **no Nintendo-owned characters** (Mario, Luigi, Wario, Donkey Kong,
+etc.) in the SBR1/SBR2 data inspected so far. The Switch platform pack `N` is:
 
-1. Extract the SBR1 2.2 update with a delta-aware tool.
-2. Inspect `chara_pack_02/03/04` and `CharacterInfoDataTable_*` for
-   Nintendo-exclusive entries.
-3. If the bundles load with UnityPy, extract models, textures, icons, voices and
-   status rows.
-4. Add them to the PC `common_pack`/`chara_pack` bundles and extend the existing
-   platform-character unlock (or a new "port" toggle).
-5. Test in the PC build; keep PC and Switch mods separate.
+- `N001` — **MAX** (`model_pc381_max`, mesh `mesh_pc381_max`)
+- `N002` — **Caesar** (`model_pc431_ceaser`)
 
-The same route can bring other Switch-only maps, costumes or music to PC.
+Both models are present in the PC chara packs (`chara_pack_03` and
+`chara_pack_04`) and are already exposed by the platform-exclusive toggle. The
+Switch update therefore does not unlock a hidden Nintendo roster.
+
+Switch-exclusive work is limited to maps, costumes, music, UI or data tables
+that are not in the PC build; verify those after delta extraction.
 
 ### 3. SBR2 (now unblocked for base content)
 
@@ -142,5 +142,5 @@ instrumentation. Realistic alternatives:
 3. Distribution format: LayeredFS zip only (recommended) or attempt NSP repack?
 4. Test target: Ryujinx only, or real Switch hardware?
 5. Is code-level Switch support in scope at all, or asset/data mods only?
-6. Which SBR1 update content is highest priority: Nintendo characters, maps,
-   music, or UI/text?
+6. Which SBR1 update content is highest priority: maps, music, costumes or
+   UI/text? (There is no Nintendo-owned character roster to port.)
