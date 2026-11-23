@@ -176,6 +176,71 @@ LayeredFS.
 randomizer/practice suite on PC. SBR2 follows the same rule, with plain
 UnityFS bundles making asset edits easier but no code plugin support.
 
+## Can Bomber Launcher become an NRO?
+
+**Not as a direct port.** The current launcher is two UI stacks:
+
+- Linux: Python 3 + GTK4/libadwaita
+- Windows: .NET WinForms
+
+Neither runtime/UI stack is practical on Switch homebrew. An NRO would be a
+rewrite in C/C++ using devkitPro + libnx, with SDL2 or a Switch UI library such
+as borealis.
+
+### What the NRO could actually do
+
+A realistic **Bomber Launcher NRO** is a mod/save manager, not the PC plugin
+suite:
+
+| PC launcher feature | NRO equivalent |
+|---|---|
+| Find game folder | Detect installed SBR1/SBR2 title IDs |
+| Install BepInEx + plugin | Not possible; install LayeredFS mod packs instead |
+| Plugin config toggles | Not possible; mod packs are static |
+| Language / voices | Save editing, if the Switch save format is reverse-engineered |
+| Intro skip | Install a movie-replacement mod pack |
+| Post-FX / aspect / borderless | Not applicable or static asset edits |
+| Master difficulty | Save/data edit; no plugin |
+| Save backup | Copy/mount save data via `fs`/save services (JKSV-style) |
+| Custom BGM/SFX | Install prebuilt audio mod packs |
+| Skins / character assets | Install prebuilt asset packs |
+| Randomizer / Practice / F9 | Not portable; ARM64 IL2CPP code |
+| Art extraction / audio conversion | PC-side only |
+| Room achievement helper | Not applicable |
+| Launch game | Possible via `ns`/applet launch services |
+
+### Recommended NRO scope
+
+1. Browse `/switch/bomber-launcher/mods/`.
+2. Install/remove a LayeredFS pack by copying it to
+   `/atmosphere/contents/<titleid>/romfs/...`.
+3. Detect and display the installed SBR1/SBR2 title/version.
+4. Backup/restore save data to SD (with explicit user confirmation).
+5. Launch SBR1/SBR2.
+6. Optional: simple cheat toggle list from Atmosphere cheat files.
+
+Use **borealis** (libnx + SDL2) for a native-feeling UI.
+
+### Toolchain and effort
+
+- devkitPro, libnx, SDL2, borealis, switch-tools.
+- Test in Ryujinx homebrew mode and on hardware.
+- NRO mod manager UI + file operations: 3–6 weeks.
+- Save editor (language/unlocks): additional 1–2 weeks after save-format
+  research; may be blocked by save encryption/permissions.
+- Full PC feature parity: **not feasible** without reimplementing the plugin in
+  ARM64/IL2CPP.
+
+### Better alternative
+
+Keep the PC launcher as the **pack builder**:
+
+- Add an “Export Switch mod pack” action that writes a
+  `atmosphere/contents/...` zip from the selected asset/data edits.
+- Users copy the pack to the SD card and launch the game normally.
+- No NRO needed for the initial mod workflow.
+
+
 ## Legal/distribution
 
 - Never commit NSPs, keys, or extracted game assets.
