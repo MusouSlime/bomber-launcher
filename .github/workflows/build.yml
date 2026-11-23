@@ -32,7 +32,8 @@ jobs:
       - name: Build portable AppImage
         run: |
           python3 -m venv --system-site-packages .venv-build
-          .venv-build/bin/pip install pyinstaller UnityPy pillow cryptography
+          .venv-build/bin/pip install pyinstaller UnityPy pillow cryptography \
+            pyfmodex fmod_toolkit astc-encoder-py archspec
           PYI=.venv-build/bin/pyinstaller ./packaging/build-appimage-portable.sh
       - name: Smoke-test bundled GTK
         run: |
