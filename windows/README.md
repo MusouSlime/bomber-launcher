@@ -14,6 +14,8 @@ writable, otherwise `%LOCALAPPDATA%\BomberLauncher`.
 ## Features
 
 - Steam library detection (registry + `libraryfolders.vdf`)
+- **Game Folder** row with **Choose…** / **Auto** for custom installs; the path
+  is remembered in `data\game_path.txt`
 - Text language (all 12 locales + Auto)
 - Borderless launch via `-popupwindow`
 - Japanese voices (dual audio) — DLL patch with backup

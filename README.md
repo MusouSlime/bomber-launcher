@@ -181,8 +181,12 @@ native game argument; the executable does not parse custom command line flags.
 
 - **Install BepInEx + Plugin** (both launchers): downloads BepInEx x86, copies
   the plugin and sets the Linux `winhttp` override automatically.
-- **Extract Game Artwork** (Linux): rebuilds the interface art from your own
-  game files into the portable data folder.
+- **Game Folder** (both launchers): auto-detects Steam libraries, but a
+  **Choose…** button lets you point at a custom install; **Auto** returns to
+  Steam detection. The choice is remembered.
+- **Extract Game Artwork** (Linux): rebuilds the interface art from the selected
+  game folder into the writable art folder. The toast shows the exact output
+  path, and the launcher reloads it on the next start.
 
 ## Distribution
 

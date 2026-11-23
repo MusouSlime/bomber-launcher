@@ -362,7 +362,9 @@ ResetStatsPerStage = true
   results, Master difficulty, movie skipping, auto-skip, soft reset, and BGM/SFX
   shuffle. The original game options remain available from the Settings tab.
   Folder paths, launch-time options, voices, BepInEx install, and save backups
-  stay in the launcher. Controller navigation uses D-pad/left stick, A/B, and
+  stay in the launcher. The launcher's **Game Folder** row lets you choose a
+  non-Steam install; **Auto** restores library detection. Artwork extraction
+  uses that same folder and prints its output path. Controller navigation uses D-pad/left stick, A/B, and
   L/R for tabs; raw joystick buttons are used as a fallback. Tabs have a scroll
   view that follows the selected row, and **X/Y + Up/Down** (or Shift+Up/Down,
   PageUp/PageDown) scrolls the current tab manually.

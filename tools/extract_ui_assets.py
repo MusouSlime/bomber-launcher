@@ -10,6 +10,7 @@ Everything written to assets/ is derived from files shipped with the game.
 import hashlib
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import UnityPy
@@ -68,7 +69,10 @@ def export(path, name, dst, size=None):
     return img
 
 
-def main(game_dir=None):
+def main(game_dir=None, out_dir=None):
+    global OUT
+    if out_dir is not None:
+        OUT = Path(out_dir)
     if game_dir is not None:
         game = Path(game_dir)
     elif len(sys.argv) > 1:
@@ -78,8 +82,7 @@ def main(game_dir=None):
     if not (game / "SuperBombermanR.exe").exists():
         sys.exit(f"game not found: {game}")
     OUT.mkdir(parents=True, exist_ok=True)
-    tmp = HERE / ".extract"
-    tmp.mkdir(exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix="bomber-art-"))
     steam = game / "SuperBombermanR_Data/StreamingAssets/InAppAssets/steam"
 
     res = game / "SuperBombermanR_Data/resources.assets"

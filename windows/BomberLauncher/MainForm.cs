@@ -60,6 +60,8 @@ public class MainForm : Form
     private readonly ComboBox _aspectCombo = new();
     private readonly CheckBox _shuffleBgm = new();
     private readonly CheckBox _shuffleSfx = new();
+    private LinkLabel _gameChoose = null!;
+    private LinkLabel _gameClearLink = null!;
     private LinkLabel _bgmChoose = null!;
     private LinkLabel _bgmClearLink = null!;
     private LinkLabel _sfxChoose = null!;
@@ -171,6 +173,11 @@ public class MainForm : Form
 
         AddSection("BASIC SETTINGS");
         var basic = AddCard();
+        (_gameChoose, _gameClearLink) = AddAudioFolderRow(basic,
+            "Game Folder",
+            "Folder containing SuperBombermanR.exe; Auto restores Steam detection",
+            ChooseGameFolder, AutoGameFolder, "Auto");
+        Separator(basic);
         AddRow(basic, "Borderless Fullscreen",
             "Launch with -popupwindow at desktop resolution", _borderless);
         Separator(basic);
@@ -435,7 +442,7 @@ public class MainForm : Form
 
     private (LinkLabel choose, LinkLabel clear) AddAudioFolderRow(
         TableLayoutPanel card, string title, string subtitle,
-        Action chooseAction, Action clearAction)
+        Action chooseAction, Action clearAction, string clearText = "Clear")
     {
         var choose = new LinkLabel
         {
@@ -446,7 +453,7 @@ public class MainForm : Form
         };
         var clear = new LinkLabel
         {
-            Text = "Clear",
+            Text = clearText,
             AutoSize = true,
             LinkColor = Color.FromArgb(30, 90, 160),
             Margin = new Padding(12, 0, 0, 0),
@@ -500,6 +507,7 @@ public class MainForm : Form
         try
         {
             _game = Core.FindGame();
+            UpdateGameFolderLink();
             bool running = Core.GameRunning();
             bool plugin = _game != null && Core.PluginInstalled(_game);
 
@@ -685,6 +693,42 @@ public class MainForm : Form
             AppName);
     }
 
+    private void ChooseGameFolder()
+    {
+        if (Core.GameRunning())
+        {
+            MessageBox.Show(this, "Close the game first.", AppName);
+            RefreshState();
+            return;
+        }
+        string current = _game ?? Core.SavedGamePath() ?? "";
+        using var dlg = new FolderBrowserDialog
+        {
+            Description = "Select the Super Bomberman R folder " +
+                          "(contains SuperBombermanR.exe)",
+            UseDescriptionForTitle = true,
+        };
+        if (!string.IsNullOrEmpty(current) && Directory.Exists(current))
+            dlg.SelectedPath = current;
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        string path = dlg.SelectedPath;
+        if (!File.Exists(Path.Combine(path, "SuperBombermanR.exe")))
+        {
+            MessageBox.Show(this,
+                "That folder does not contain SuperBombermanR.exe.",
+                AppName);
+            return;
+        }
+        Core.SetSavedGamePath(path);
+        RefreshState();
+    }
+
+    private void AutoGameFolder()
+    {
+        Core.SetSavedGamePath(null);
+        RefreshState();
+    }
+
     private void ChooseSfxFolder()
     {
         if (_game == null || !Core.PluginInstalled(_game)) return;
@@ -778,6 +822,12 @@ public class MainForm : Form
         });
         try { Directory.Delete(BgmConverter.CacheDir, true); } catch { }
         RefreshState();
+    }
+
+    private void UpdateGameFolderLink()
+    {
+        string path = _game ?? Core.SavedGamePath() ?? "";
+        SetFolderLink(_gameChoose, _gameClearLink, path);
     }
 
     private void UpdateAudioFolderLinks()

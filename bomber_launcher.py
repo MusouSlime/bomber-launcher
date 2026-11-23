@@ -11,6 +11,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -61,9 +62,36 @@ BACKUPS = MODKIT / "backups"
 VIDEO_BACKUPS = BACKUPS / "videos"
 SAVE_BACKUPS = BACKUPS / "saves"
 ASSETS = Path(__file__).resolve().parent / "assets"
-ART = Path(os.environ.get("BOMBER_ASSETS", str(ASSETS)))
-if not (ART / "hero.png").exists() and not os.environ.get("BOMBER_ASSETS"):
-    ART = (PORTABLE / "art") if PORTABLE else (HOME / ".local/share/bomber-launcher/assets")
+
+
+def _writable_dir(path):
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".write-test"
+        probe.write_text("ok")
+        probe.unlink()
+        return True
+    except Exception:
+        return False
+
+
+def resolve_art_dir():
+    env = os.environ.get("BOMBER_ASSETS")
+    if env:
+        return Path(env)
+    if (ASSETS / "hero.png").exists():
+        return ASSETS
+    candidates = []
+    if PORTABLE:
+        candidates.append(PORTABLE / "art")
+    candidates.append(HOME / ".local/share/bomber-launcher/assets")
+    for candidate in candidates:
+        if _writable_dir(candidate):
+            return candidate
+    return Path(tempfile.mkdtemp(prefix="bomber-art-"))
+
+
+ART = resolve_art_dir()
 HAVE_ART = (ART / "hero.png").exists()
 CONFIG_PATH = (PORTABLE / "config.json") if PORTABLE else (HOME / ".config" / "bomber-launcher" / "config.json")
 AUDIO_CACHE_NAME = "bgm_cache"
@@ -635,8 +663,8 @@ class Mods:
             "bomber_extract_art", script)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        mod.main(str(self.game))
-        return "Artwork extracted — restart the launcher"
+        mod.main(str(self.game), str(ART))
+        return f"Artwork extracted to {ART} — restart the launcher"
 
     def _ensure_winhttp_override(self):
         reg = Path.home() / ".local/share/Steam/steamapps/compatdata/702700/pfx/user.reg"
@@ -668,9 +696,10 @@ class BomberWindow(Adw.ApplicationWindow):
         super().__init__(application=app, title=APP_NAME)
         self.set_default_size(700, 980)
         self.cfg = load_config()
-        self.game = find_game_dir()
+        self.game = self._configured_game()
         self.mods = Mods(self.game) if self.game else None
         self._loading = False
+        self._game_chooser = None
 
         self.toasts = Adw.ToastOverlay()
         self.set_content(self.toasts)
@@ -697,6 +726,30 @@ class BomberWindow(Adw.ApplicationWindow):
         scroller.set_child(page)
 
         page.append(self._build_hero())
+
+        page.append(self._section("game"))
+        gamecard = self._card()
+        gamebox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.game_label = Gtk.Label(label="")
+        self.game_label.set_xalign(0)
+        self.game_label.set_hexpand(True)
+        self.game_label.set_wrap(True)
+        self.game_label.set_max_width_chars(46)
+        game_choose = Gtk.Button(label="Choose…")
+        game_choose.set_valign(Gtk.Align.CENTER)
+        game_choose.connect("clicked", self.on_choose_game)
+        game_auto = Gtk.Button(label="Auto")
+        game_auto.set_valign(Gtk.Align.CENTER)
+        game_auto.connect("clicked", self.on_auto_game)
+        gamebox.append(self.game_label)
+        gamebox.append(game_choose)
+        gamebox.append(game_auto)
+        gamecard.append(self._row(
+            "avatar_blue.png", "Game Folder",
+            "Folder that contains SuperBombermanR.exe; Auto restores Steam detection",
+            gamebox))
+        page.append(gamecard)
+        page.append(Gtk.Separator())
 
         # ----- language
         page.append(self._section("language"))
@@ -997,6 +1050,72 @@ class BomberWindow(Adw.ApplicationWindow):
         self.refresh()
         GLib.timeout_add_seconds(3, self._poll)
 
+    # -- game folder ------------------------------------------------------
+    def _configured_game(self):
+        path = (self.cfg.get("game_dir") or "").strip()
+        if path and (Path(path) / "SuperBombermanR.exe").exists():
+            return Path(path)
+        if path:
+            self.cfg.pop("game_dir", None)
+        found = find_game_dir()
+        if found:
+            self.cfg["game_dir"] = str(found)
+            save_config(self.cfg)
+        return found
+
+    def _update_game_label(self):
+        if not hasattr(self, "game_label"):
+            return
+        if self.game:
+            self.game_label.set_text(str(self.game))
+            self.game_label.set_tooltip_text(str(self.game))
+        else:
+            self.game_label.set_text(
+                "Not found — choose the folder containing "
+                "SuperBombermanR.exe")
+            self.game_label.set_tooltip_text("")
+
+    def _set_game_dir(self, path):
+        path = Path(path)
+        if not (path / "SuperBombermanR.exe").exists():
+            self.toast("That folder has no SuperBombermanR.exe")
+            return False
+        self.cfg["game_dir"] = str(path)
+        save_config(self.cfg)
+        self.game = path
+        self.mods = Mods(path)
+        self._update_game_label()
+        self.refresh()
+        self.toast("Game folder: " + str(path))
+        return True
+
+    def on_choose_game(self, _btn):
+        current = str(self.game) if self.game else str(HOME)
+        self._game_chooser = self._open_folder_chooser(
+            "Select the Super Bomberman R folder", current,
+            self._game_folder_response)
+
+    def _game_folder_response(self, chooser, response):
+        self._game_chooser = None
+        if response == Gtk.ResponseType.ACCEPT:
+            f = chooser.get_file()
+            path = f.get_path() if f else None
+            if path:
+                self._set_game_dir(path)
+        chooser.destroy()
+
+    def on_auto_game(self, _btn):
+        self.cfg.pop("game_dir", None)
+        save_config(self.cfg)
+        self.game = find_game_dir()
+        self.mods = Mods(self.game) if self.game else None
+        self._update_game_label()
+        self.refresh()
+        if self.game:
+            self.toast("Game folder: " + str(self.game))
+        else:
+            self.toast("Game not found — choose the folder manually")
+
     # -- widget helpers ---------------------------------------------------
     def _build_hero(self):
         frame = Gtk.Box()
@@ -1061,6 +1180,7 @@ class BomberWindow(Adw.ApplicationWindow):
 
     def _section(self, name):
         labels = {
+            "game": "GAME FOLDER",
             "language": "CHANGE LANGUAGE",
             "basic": "BASIC SETTINGS",
             "environment": "ENVIRONMENT",
@@ -1169,6 +1289,7 @@ class BomberWindow(Adw.ApplicationWindow):
             self.status_pill.remove_css_class(cls)
         self.status_pill.add_css_class(state)
         self.status_pill.set_label(label)
+        self._update_game_label()
 
         for w in (self.dual_sw, self.intro_sw, self.lang_dd, self.border_sw):
             w.set_sensitive(self.mods is not None and not running)

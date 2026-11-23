@@ -36,8 +36,47 @@ internal static class Core
     private static readonly byte[] PatE = { 0x05, 0x5f, 0x00, 0x45, 0x00, 0x00 };
     private static readonly byte[] PatJ = { 0x05, 0x5f, 0x00, 0x4a, 0x00, 0x00 };
 
+    private static string GamePathFile =>
+        Path.Combine(BackupRoot, "game_path.txt");
+
+    public static string? SavedGamePath()
+    {
+        try
+        {
+            if (!File.Exists(GamePathFile)) return null;
+            string path = File.ReadAllText(GamePathFile).Trim();
+            if (path.Length == 0) return null;
+            return File.Exists(Path.Combine(path, "SuperBombermanR.exe"))
+                ? path : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static void SetSavedGamePath(string? path)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                if (File.Exists(GamePathFile)) File.Delete(GamePathFile);
+                return;
+            }
+            Directory.CreateDirectory(BackupRoot);
+            File.WriteAllText(GamePathFile, path.Trim());
+        }
+        catch
+        {
+            // A read-only data folder should not break the launcher.
+        }
+    }
+
     public static string? FindGame()
     {
+        string? saved = SavedGamePath();
+        if (saved != null) return saved;
         foreach (string lib in SteamLibraries())
         {
             string p = Path.Combine(lib, "steamapps", "common",
