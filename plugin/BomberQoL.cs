@@ -2728,9 +2728,6 @@ namespace BomberQoL
             }
         }
 
-        private static readonly int[] StatIndices = { 1, 4, 6, 8, 9, 10, 11, 12, 14 };
-        private static readonly int[] MaxStats = { 5, 5, 4, 1, 1, 1, 1, 1, 1 };
-
         internal static readonly int[] CustomStats = new int[9];
 
         internal static void InitCustomStats()
@@ -2766,6 +2763,44 @@ namespace BomberQoL
             }
         }
 
+        private static void WriteStatItems(byte[] items, int baseFire,
+            int baseBomb, int baseSpeed, int targetFire, int targetBomb,
+            int targetSpeed, bool punch, bool glove, bool kick,
+            bool remote, bool penetration, bool elasticity,
+            bool basePunch, bool baseGlove, bool baseKick)
+        {
+            if (items == null) return;
+            for (int i = 0; i < items.Length; i++) items[i] = 0;
+            int pos = 0;
+
+            // ItemTypedef.TYPE: 1 FIRE_UP, 2 FIRE_DOWN, 4 BOMB_UP,
+            // 5 BOMB_DOWN, 6 SPEED_UP, 7 SPEED_DOWN.
+            int delta = targetFire - baseFire;
+            for (int n = 0; n < Mathf.Abs(delta) && pos < items.Length; n++)
+                items[pos++] = (byte)(delta > 0 ? 1 : 2);
+
+            delta = targetBomb - baseBomb;
+            for (int n = 0; n < Mathf.Abs(delta) && pos < items.Length; n++)
+                items[pos++] = (byte)(delta > 0 ? 4 : 5);
+
+            delta = targetSpeed - baseSpeed;
+            for (int n = 0; n < Mathf.Abs(delta) && pos < items.Length; n++)
+                items[pos++] = (byte)(delta > 0 ? 6 : 7);
+
+            // 8 PUNCH, 9 POWER_GLOVE, 10 KICK, 11 REMOTE,
+            // 12 PENETRATION, 14 ELASTICITY. Skip abilities the
+            // character already has.
+            if (punch && !basePunch && pos < items.Length)
+                items[pos++] = 8;
+            if (glove && !baseGlove && pos < items.Length)
+                items[pos++] = 9;
+            if (kick && !baseKick && pos < items.Length)
+                items[pos++] = 10;
+            if (remote && pos < items.Length) items[pos++] = 11;
+            if (penetration && pos < items.Length) items[pos++] = 12;
+            if (elasticity && pos < items.Length) items[pos++] = 14;
+        }
+
         private static void ApplyStats(SaveDataManager.StoryData storyData,
             int mode, string difficulty)
         {
@@ -2779,53 +2814,92 @@ namespace BomberQoL
             }
             storyData.resetStoryPlayParams();
 
-            int[] values;
-            if (mode == 1)
-            {
-                values = new int[StatIndices.Length];
-            }
-            else if (mode == 2)
-            {
-                values = MaxStats;
-            }
-            else if (mode == 4)
-            {
-                values = new int[StatIndices.Length];
-                values[0] = Randomizer.Next(1, 5);
-                values[1] = Randomizer.Next(1, 5);
-                values[2] = Randomizer.Next(1, 4);
-                for (int i = 3; i < values.Length; i++)
-                    values[i] = Randomizer.Next(0, 2);
-            }
-            else
-            {
-                values = (int[])CustomStats.Clone();
-            }
+            CharacterDataManager cd =
+                SingletonBase<CharacterDataManager>.getInstance();
+            int[] custom = (int[])CustomStats.Clone();
+            int lastFire = 0;
+            int lastBomb = 0;
+            int lastSpeed = 0;
 
-            // CharacterData.items is a list of ItemTypedef.TYPE ids in
-            // pickup order, terminated by a zero byte. It is not a
-            // per-item count table.
             for (int c = 0; c < storyData.characterDatas.Length; c++)
             {
-                byte[] items = storyData.characterDatas[c].items;
-                if (items == null) continue;
-                for (int i = 0; i < items.Length; i++) items[i] = 0;
-                int pos = 0;
-                for (int i = 0; i < StatIndices.Length &&
-                     pos < items.Length; i++)
+                CharacterDataManager.CharacterID id =
+                    new CharacterDataManager.CharacterID(
+                        storyData.characterDatas[c].characterId);
+                CharacterInfoDataTable.CharacterInfoData info =
+                    cd == null ? null : cd.getCharacterInfo(id);
+                CharacterStatusDataTable.CharacterStatusData st =
+                    (cd == null || info == null) ? null :
+                    cd.getCharacterStatus(info.normalStatusId);
+
+                int baseFire = st == null ? 2 : st.initFirepower;
+                int baseBomb = st == null ? 1 : st.initBombCount;
+                int baseSpeed = st == null ? 0 : st.initSpeedLv;
+                int maxFire = st == null ? 8 : st.maxFirepower;
+                int maxBomb = st == null ? 8 : st.maxBombCount;
+                int maxSpeed = st == null ? 8 : st.maxSpeedLv;
+
+                int targetFire = baseFire;
+                int targetBomb = baseBomb;
+                int targetSpeed = baseSpeed;
+                bool punch = false;
+                bool glove = false;
+                bool kick = false;
+                bool remote = false;
+                bool penetration = false;
+                bool elasticity = false;
+
+                if (mode == 2)
                 {
-                    int count = Mathf.Clamp(values[i], 0, 9);
-                    for (int n = 0; n < count && pos < items.Length; n++)
-                        items[pos++] = (byte)StatIndices[i];
+                    targetFire = maxFire;
+                    targetBomb = maxBomb;
+                    targetSpeed = maxSpeed;
+                    punch = glove = kick = remote = penetration =
+                        elasticity = true;
                 }
+                else if (mode == 4)
+                {
+                    targetFire = Randomizer.Next(1, maxFire + 1);
+                    targetBomb = Randomizer.Next(1, maxBomb + 1);
+                    targetSpeed = Randomizer.Next(0, maxSpeed + 1);
+                    punch = Randomizer.Next(0, 2) == 1;
+                    glove = Randomizer.Next(0, 2) == 1;
+                    kick = Randomizer.Next(0, 2) == 1;
+                    remote = Randomizer.Next(0, 2) == 1;
+                    penetration = Randomizer.Next(0, 2) == 1;
+                    elasticity = Randomizer.Next(0, 2) == 1;
+                }
+                else if (mode == 3)
+                {
+                    targetFire = Mathf.Clamp(custom[0], 1, maxFire);
+                    targetBomb = Mathf.Clamp(custom[1], 1, maxBomb);
+                    targetSpeed = Mathf.Clamp(custom[2], 0, maxSpeed);
+                    punch = custom[3] != 0;
+                    glove = custom[4] != 0;
+                    kick = custom[5] != 0;
+                    remote = custom[6] != 0;
+                    penetration = custom[7] != 0;
+                    elasticity = custom[8] != 0;
+                }
+
+                lastFire = targetFire;
+                lastBomb = targetBomb;
+                lastSpeed = targetSpeed;
+                WriteStatItems(storyData.characterDatas[c].items,
+                    baseFire, baseBomb, baseSpeed, targetFire, targetBomb,
+                    targetSpeed, punch, glove, kick, remote, penetration,
+                    elasticity,
+                    st != null && st.initPunchable,
+                    st != null && st.initThrowable,
+                    st != null && st.initKickable);
             }
             Plugin.Log.LogInfo("Practice stats mode: " +
                 (mode == 1 ? "default" :
                  mode == 2 ? "max" :
                  mode == 4 ? "random" : "custom") +
                 (masterReset ? " (Master reset)" : "") +
-                " F+" + values[0] + " B+" + values[1] +
-                " S+" + values[2]);
+                " target F" + lastFire + " B" + lastBomb +
+                " S" + lastSpeed);
         }
 
         internal static void ApplyRunStats(SaveDataManager.StoryData storyData)
@@ -3625,9 +3699,9 @@ namespace BomberQoL
             Summary("Selected: " + DiffLabels[_difficulty] + "  |  World " +
                 _world + "  |  Stage " + _stage + "  |  Stats " +
                 StatLabels[_practiceStats] + "  |  " +
-                "F+" + Practice.CustomStats[0] +
-                " B+" + Practice.CustomStats[1] +
-                " S+" + Practice.CustomStats[2] +
+                "F" + Practice.CustomStats[0] +
+                " B" + Practice.CustomStats[1] +
+                " S" + Practice.CustomStats[2] +
                 "  |  Repeat " +
                 OnOff(Plugin.PracticeRepeatStage.Value));
             DrawDifficulty();
@@ -3674,7 +3748,7 @@ namespace BomberQoL
                 Plugin.PracticeRepeatStage.Value = repeat;
 
             GUILayout.Space(8);
-            GUILayout.Label("Starting items (bonus on top of the character's base stats)");
+            GUILayout.Label("Starting items (final stat levels and abilities)");
             for (int i = 0; i < LoadoutLabels.Length; i++)
                 DrawLoadoutRow(5 + i, i);
 
@@ -3870,10 +3944,10 @@ namespace BomberQoL
                 "Pick a difficulty, world and stage and start one stage with " +
                 "the Stats preset chosen on the Practice tab (Default by " +
                 "default). The Starting items block edits the Custom preset: " +
-                "Fire/Bombs/Speed add item levels on top of the character's " +
-                "base stats, and the ability rows add Punch, Power Glove, " +
-                "Kick, Remote, Penetration or Elasticity. Editing any value " +
-                "switches Stats to Custom. Story saves are suppressed, and " +
+                "Fire/Bombs/Speed are final levels, and the ability rows " +
+                "grant Punch, Power Glove, Kick, Remote, Penetration or " +
+                "Elasticity. Editing any value switches Stats to Custom. " +
+                "Story saves are suppressed, and " +
                 "Optional repeat restarts the same stage and re-applies the " +
                 "preset each time.", _helpStyle);
 
@@ -4073,10 +4147,26 @@ namespace BomberQoL
             return unique.ToArray();
         }
 
+        internal static void EnsurePool()
+        {
+            if (Pool != null && Pool.Length > 0) return;
+            StoryBattleScene scene =
+                UnityEngine.Object.FindObjectOfType<StoryBattleScene>();
+            if (scene == null) return;
+            RuntimeMapData map = MapField.GetValue(scene) as RuntimeMapData;
+            if (map == null) return;
+            Pool = BuildPool(map.useEnemyList);
+            Active = Pool != null && Pool.Length > 0;
+            if (Active)
+                Plugin.Log.LogInfo("Random enemies: pool from scene " +
+                    Pool.Length + " [" + string.Join(", ", Pool) + "]");
+        }
+
         internal static void Randomize(RuntimeMapData.EnemyStartPointData[] points)
         {
-            if (!Plugin.RandomEnemies.Value || !Active) return;
-            if (Pool == null || Pool.Length == 0) return;
+            if (!Plugin.RandomEnemies.Value) return;
+            EnsurePool();
+            if (!Active || Pool == null || Pool.Length == 0) return;
             for (int i = 0; i < points.Length; i++)
                 points[i].name = Pool[Rng.Next(Pool.Length)];
         }
@@ -4085,8 +4175,6 @@ namespace BomberQoL
         {
             if (!Plugin.RandomEnemies.Value) return;
             if (__instance == null) return;
-            if (SceneManager.GetActiveScene().name != "StoryBattle")
-                return;
             RuntimeMapData map = MapField.GetValue(__instance) as RuntimeMapData;
             if (map == null) return;
             Pool = BuildPool(map.useEnemyList);

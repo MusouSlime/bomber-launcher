@@ -330,7 +330,8 @@ ResetStatsPerStage = true
   stage; with Save selected it falls back to Default. Default adds no items,
   so the character's base stats apply (most characters start at Fire 2 /
   Bomb 1). `CharacterData.items` is a list of `ItemTypedef.TYPE` ids, not a
-  count table, and the plugin writes it that way.
+  count table; the plugin writes UP/DOWN item ids to reach the requested final
+  Fire/Bombs/Speed levels.
 - **Practice tab** — the F9 menu starts on Beginner and has Practice,
   Randomizer, Multiplayer, Settings, and Help tabs. The selected row is highlighted in gold and the active tab is filled gold; each tab shows a
   Selected line with the current difficulty, stats preset and stage. Practice

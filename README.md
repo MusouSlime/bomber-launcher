@@ -117,7 +117,7 @@ The plugin adds:
   sounds are already loaded. A fixed seed lives in
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
   into battle when random characters or a random run is active. Practice has a
-  **Starting items** editor for the Custom preset: Fire/Bombs/Speed levels plus
+  **Starting items** editor for the Custom preset: final Fire/Bombs/Speed levels plus
   Punch, Power Glove, Kick, Remote, Penetration and Elasticity. Editing any
   entry switches Stats to Custom. The F9 menu has
   **Practice**, **Randomizer**, **Multiplayer**, **Settings**, and **Help** tabs,
