@@ -657,13 +657,21 @@ class Mods:
         script = Path(__file__).resolve().parent / "tools" / "extract_ui_assets.py"
         if not script.exists():
             raise RuntimeError("Artwork extractor not bundled")
+        if not self.game or not (
+                Path(self.game) / "SuperBombermanR.exe").exists():
+            raise RuntimeError(
+                "Game folder is missing or invalid — use Game Folder → "
+                "Choose…")
         ART.mkdir(parents=True, exist_ok=True)
         os.environ["BOMBER_ASSETS"] = str(ART)
         spec = importlib.util.spec_from_file_location(
             "bomber_extract_art", script)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        mod.main(str(self.game), str(ART))
+        try:
+            mod.main(str(self.game), str(ART))
+        except SystemExit as exc:
+            raise RuntimeError("Artwork extractor stopped: " + str(exc))
         return f"Artwork extracted to {ART} — restart the launcher"
 
     def _ensure_winhttp_override(self):
@@ -700,6 +708,7 @@ class BomberWindow(Adw.ApplicationWindow):
         self.mods = Mods(self.game) if self.game else None
         self._loading = False
         self._game_chooser = None
+        self._extracting = False
 
         self.toasts = Adw.ToastOverlay()
         self.set_content(self.toasts)
@@ -1760,12 +1769,35 @@ class BomberWindow(Adw.ApplicationWindow):
     def on_extract_art(self, _row):
         if not self._guard():
             return
-        try:
-            msg = self.mods.extract_art()
-            self.toast(msg)
-        except Exception as e:
-            self.toast(str(e))
+        if self._extracting:
+            self.toast("Artwork extraction already running")
+            return
+        mods = self.mods
+        if not self.game or not (
+                Path(self.game) / "SuperBombermanR.exe").exists():
+            self.toast("Choose the game folder first")
+            return
+        self._extracting = True
+        self.toast("Extracting artwork — this can take a minute")
         self.refresh()
+
+        def work():
+            try:
+                msg = mods.extract_art()
+                GLib.idle_add(self._extract_done, msg, None)
+            except BaseException as exc:
+                GLib.idle_add(self._extract_done, None, str(exc))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _extract_done(self, message, error):
+        self._extracting = False
+        if error:
+            self.toast("Artwork extraction failed: " + error)
+        else:
+            self.toast(message)
+        self.refresh()
+        return False
 
     def on_backup_save(self, _row):
         if not self.mods:
@@ -1843,6 +1875,21 @@ def check():
 def main():
     if "--check" in sys.argv:
         raise SystemExit(check())
+    if "--extract-art" in sys.argv:
+        import traceback
+        global ART
+        idx = sys.argv.index("--extract-art")
+        game = sys.argv[idx + 1] if len(sys.argv) > idx + 1 else None
+        out = sys.argv[idx + 2] if len(sys.argv) > idx + 2 else None
+        if out:
+            ART = Path(out)
+        try:
+            mods = Mods(game or find_game_dir())
+            print(mods.extract_art())
+        except BaseException:
+            traceback.print_exc()
+            raise SystemExit(1)
+        return
     BomberApp().run(None)
 
 

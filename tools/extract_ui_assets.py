@@ -80,7 +80,7 @@ def main(game_dir=None, out_dir=None):
     else:
         game = DEFAULT_GAME
     if not (game / "SuperBombermanR.exe").exists():
-        sys.exit(f"game not found: {game}")
+        raise RuntimeError(f"game not found: {game}")
     OUT.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix="bomber-art-"))
     steam = game / "SuperBombermanR_Data/StreamingAssets/InAppAssets/steam"
@@ -129,4 +129,8 @@ def main(game_dir=None, out_dir=None):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(1)

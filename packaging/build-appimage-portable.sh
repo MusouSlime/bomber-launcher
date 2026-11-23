@@ -27,6 +27,10 @@ mkdir -p "$BUILD" "$DIST"
   --add-data "$ROOT/plugin/BomberQoL.dll:plugin" \
   --add-data "$ROOT/tools/extract_ui_assets.py:tools" \
   --collect-all UnityPy \
+  --collect-all pyfmodex \
+  --collect-all fmod_toolkit \
+  --collect-all archspec \
+  --collect-all astc_encoder \
   --hidden-import PIL --hidden-import cryptography \
   --add-data "$SCHEMAS:share/glib-2.0/schemas" \
   --add-data "/usr/share/icons/Adwaita:share/icons/Adwaita" \
