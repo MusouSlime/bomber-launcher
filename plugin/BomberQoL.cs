@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Diagnostics;
 using System.IO;
-using System.Globalization;
 using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
@@ -80,9 +79,6 @@ namespace BomberQoL
         internal static ConfigEntry<bool> CpuSpecialAbilities;
         internal static ConfigEntry<bool> PlatformExclusives;
         internal static ConfigEntry<bool> MainMenuQoL;
-        internal static ConfigEntry<bool> CharacterImportEnabled;
-        internal static ConfigEntry<string> CharacterImportTarget;
-        internal static ConfigEntry<string> CharacterImportModel;
         internal static ConfigEntry<bool> SkipGemContinue;
         internal static ConfigEntry<bool> MasterStatReset;
         internal static ConfigEntry<bool> ResetStatsPerStage;
@@ -209,12 +205,6 @@ namespace BomberQoL
                 "Make the built-in platform-exclusive character IDs usable (Master Chief, Ratchet, etc.).");
             MainMenuQoL = Config.Bind("UI", "MainMenuQoL", true,
                 "Replace the main menu Other option with Bomber QoL and open the F9 overlay.");
-            CharacterImportEnabled = Config.Bind("CharacterImport", "Enabled", false,
-                "Replace the target character's model with an imported OBJ from BepInEx/plugins/BomberQoL/characters.");
-            CharacterImportTarget = Config.Bind("CharacterImport", "Target", "white",
-                "Character key whose model is replaced (for example white, black, simon).");
-            CharacterImportModel = Config.Bind("CharacterImport", "Model", "",
-                "Optional folder name under BomberQoL/characters. Empty uses the first folder with an .obj.");
             SkipGemContinue = Config.Bind("Gameplay", "SkipGemContinue", true,
                 "On story game over, skip the gem continue dialog and return to the main menu.");
             MasterStatReset = Config.Bind("Gameplay", "MasterStatReset", true,
@@ -321,7 +311,6 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PlatformUsableBuiltinPatch));
             harmony.PatchAll(typeof(MainMenuOptionPatch));
             harmony.PatchAll(typeof(RandomEnemiesPatch));
-            harmony.PatchAll(typeof(CharacterImportCreatePatch));
             harmony.PatchAll(typeof(EnemySpawnLogPatch));
             harmony.PatchAll(typeof(MainMenuLabelPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
@@ -1807,662 +1796,6 @@ namespace BomberQoL
         }
     }
 
-    [HarmonyPatch(typeof(Player.CharacterModel), "create")]
-    internal static class CharacterImportCreatePatch
-    {
-        private static void Postfix(Player.CharacterModel __instance)
-        {
-            CharacterImporter.Apply(__instance);
-        }
-    }
-
-    internal static class CharacterImporter
-    {
-        private class ObjData
-        {
-            public Vector3[] Vertices;
-            public Vector2[] Uvs;
-            public Vector3[] Normals;
-            public int[][] Triangles;
-            public string[] Materials;
-            public Dictionary<string, string> Textures;
-            public Bounds Bounds;
-            public bool HasNormals;
-        }
-
-        private class BoneSegment
-        {
-            public int Index;
-            public Vector3 A;
-            public Vector3 B;
-        }
-
-        private static readonly FieldInfo ModelField =
-            AccessTools.Field(typeof(Player.CharacterModel), "_model");
-
-        private static readonly HashSet<string> DeformBones =
-            new HashSet<string>(StringComparer.Ordinal)
-            {
-                "C_hip", "C_waist", "C_spine", "C_head",
-                "L_shoulder", "L_elbow", "L_hand",
-                "R_shoulder", "R_elbow", "R_hand",
-                "L_leg", "L_knee", "L_foot", "L_toe",
-                "R_leg", "R_knee", "R_foot", "R_toe"
-            };
-
-        private static ObjData _data;
-        private static string _folder;
-        private static bool _failed;
-        private static bool _logged;
-
-        internal static string CharactersRoot
-        {
-            get
-            {
-                return Path.Combine(Path.Combine(Paths.PluginPath,
-                    "BomberQoL"), "characters");
-            }
-        }
-
-        internal static void Reload()
-        {
-            _data = null;
-            _folder = null;
-            _failed = false;
-            _logged = false;
-            EnsureLoaded();
-        }
-
-        internal static string FolderName
-        {
-            get
-            {
-                if (string.IsNullOrEmpty(_folder)) return "none";
-                return Path.GetFileName(_folder);
-            }
-        }
-
-        internal static void Apply(Player.CharacterModel model)
-        {
-            if (!Plugin.CharacterImportEnabled.Value || model == null)
-                return;
-            CharacterDataManager cd =
-                SingletonBase<CharacterDataManager>.getInstance();
-            if (cd == null) return;
-            CharacterInfoDataTable.CharacterInfoData info =
-                cd.getCharacterInfo(model.characterId);
-            if (info == null) return;
-
-            string target = Plugin.CharacterImportTarget.Value;
-            if (!string.IsNullOrEmpty(target) &&
-                !string.Equals(target, "all",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(info.charKey, target,
-                    StringComparison.OrdinalIgnoreCase))
-                return;
-            if (!EnsureLoaded()) return;
-
-            GameObject go = ModelField.GetValue(model) as GameObject;
-            if (go == null) return;
-            SkinnedMeshRenderer[] renderers =
-                go.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-            if (renderers == null || renderers.Length == 0) return;
-
-            SkinnedMeshRenderer smr = null;
-            for (int i = 0; i < renderers.Length; i++)
-            {
-                SkinnedMeshRenderer r = renderers[i];
-                if (r == null || r.sharedMesh == null) continue;
-                if (smr == null ||
-                    r.sharedMesh.vertexCount > smr.sharedMesh.vertexCount)
-                    smr = r;
-            }
-            if (smr == null || smr.sharedMesh == null) return;
-
-            Mesh mesh = BuildMesh(smr);
-            if (mesh == null) return;
-            smr.sharedMesh = mesh;
-            smr.sharedMaterials = BuildMaterials(smr);
-            if (!_logged)
-            {
-                _logged = true;
-                Plugin.Log.LogInfo("Character import: " + info.charKey +
-                    " -> " + Path.GetFileName(_folder) + " (" +
-                    mesh.vertexCount + " verts)");
-            }
-        }
-
-        private static bool EnsureLoaded()
-        {
-            if (_data != null) return true;
-            if (_failed) return false;
-            try
-            {
-                string root = CharactersRoot;
-                if (!Directory.Exists(root))
-                {
-                    _failed = true;
-                    Plugin.Log.LogWarning("Character import: folder not found: " +
-                        root);
-                    return false;
-                }
-                string wanted = Plugin.CharacterImportModel.Value;
-                string[] dirs = Directory.GetDirectories(root);
-                Array.Sort(dirs, StringComparer.OrdinalIgnoreCase);
-                for (int i = 0; i < dirs.Length; i++)
-                {
-                    string dir = dirs[i];
-                    if (!string.IsNullOrEmpty(wanted) &&
-                        !string.Equals(Path.GetFileName(dir), wanted,
-                            StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    string obj = FindObj(dir);
-                    if (obj == null) continue;
-                    _data = LoadObj(obj);
-                    _folder = dir;
-                    if (_data != null)
-                    {
-                        Plugin.Log.LogInfo("Character import: loaded " +
-                            obj + " (" + _data.Vertices.Length + " verts, " +
-                            _data.Materials.Length + " materials)");
-                        return true;
-                    }
-                }
-                _failed = true;
-                Plugin.Log.LogWarning(
-                    "Character import: no .obj found under " + root);
-                return false;
-            }
-            catch (Exception e)
-            {
-                _failed = true;
-                Plugin.Log.LogWarning("Character import load failed: " +
-                    e.Message);
-                return false;
-            }
-        }
-
-        private static string FindObj(string dir)
-        {
-            string direct = Path.Combine(dir, "model.obj");
-            if (File.Exists(direct)) return direct;
-            string[] objs = Directory.GetFiles(dir, "*.obj",
-                SearchOption.AllDirectories);
-            return objs.Length == 0 ? null : objs[0];
-        }
-
-        private static ObjData LoadObj(string path)
-        {
-            string folder = Path.GetDirectoryName(path);
-            var positions = new List<Vector3>();
-            var uvs = new List<Vector2>();
-            var normals = new List<Vector3>();
-            var vertices = new List<Vector3>();
-            var vertexUvs = new List<Vector2>();
-            var vertexNormals = new List<Vector3>();
-            var meshUv = new List<Vector2>();
-            var meshNormal = new List<Vector3>();
-            var map = new Dictionary<string, int>();
-            var triangles = new Dictionary<string, List<int>>();
-            var order = new List<string>();
-            string material = "default";
-            string mtlFile = null;
-
-            using (var reader = new StreamReader(path))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    line = line.Trim();
-                    if (line.Length == 0 || line[0] == '#') continue;
-                    if (line.StartsWith("mtllib "))
-                    {
-                        mtlFile = line.Substring(7).Trim();
-                        continue;
-                    }
-                    if (line.StartsWith("v "))
-                    {
-                        positions.Add(ParseVec3(line, 2));
-                    }
-                    else if (line.StartsWith("vt "))
-                    {
-                        Vector3 v = ParseVec3(line, 3);
-                        uvs.Add(new Vector2(v.x, v.y));
-                    }
-                    else if (line.StartsWith("vn "))
-                    {
-                        normals.Add(ParseVec3(line, 3));
-                    }
-                    else if (line.StartsWith("usemtl "))
-                    {
-                        material = line.Substring(7).Trim();
-                        if (!triangles.ContainsKey(material))
-                        {
-                            triangles[material] = new List<int>();
-                            order.Add(material);
-                        }
-                    }
-                    else if (line.StartsWith("f "))
-                    {
-                        if (!triangles.ContainsKey(material))
-                        {
-                            triangles[material] = new List<int>();
-                            order.Add(material);
-                        }
-                        string[] parts = line.Split(new[] { ' ' },
-                            StringSplitOptions.RemoveEmptyEntries);
-                        int count = parts.Length - 1;
-                        if (count < 3) continue;
-                        int[] idx = new int[count];
-                        for (int i = 0; i < count; i++)
-                        {
-                            string token = parts[i + 1];
-                            string[] f = token.Split('/');
-                            int pi = ParseIndex(f[0], positions.Count);
-                            int ti = f.Length > 1 && f[1].Length > 0
-                                ? ParseIndex(f[1], uvs.Count) : -1;
-                            int ni = f.Length > 2 && f[2].Length > 0
-                                ? ParseIndex(f[2], normals.Count) : -1;
-                            string key = pi + "/" + ti + "/" + ni;
-                            int vi;
-                            if (!map.TryGetValue(key, out vi))
-                            {
-                                vi = vertices.Count;
-                                map[key] = vi;
-                                vertices.Add(positions[pi]);
-                                vertexUvs.Add(ti >= 0 ? uvs[ti] : Vector2.zero);
-                                meshUv.Add(ti >= 0 ? uvs[ti] : Vector2.zero);
-                                Vector3 n = ni >= 0 ? normals[ni] :
-                                    Vector3.zero;
-                                meshNormal.Add(n);
-                                vertexNormals.Add(n);
-                            }
-                            idx[i] = vi;
-                        }
-                        List<int> tris = triangles[material];
-                        for (int i = 1; i < count - 1; i++)
-                        {
-                            tris.Add(idx[0]);
-                            tris.Add(idx[i]);
-                            tris.Add(idx[i + 1]);
-                        }
-                    }
-                }
-            }
-            if (vertices.Count == 0) return null;
-
-            var matNames = new List<string>();
-            var dataTris = new int[order.Count][];
-            for (int i = 0; i < order.Count; i++)
-            {
-                matNames.Add(order[i]);
-                int[] t = triangles[order[i]].ToArray();
-                dataTris[i] = t;
-            }
-
-            Vector3 min = vertices[0];
-            Vector3 max = vertices[0];
-            for (int i = 1; i < vertices.Count; i++)
-            {
-                min = Vector3.Min(min, vertices[i]);
-                max = Vector3.Max(max, vertices[i]);
-            }
-            Bounds bounds = new Bounds((min + max) * 0.5f, max - min);
-
-            Dictionary<string, string> textures = LoadMtl(folder, mtlFile);
-            if (textures.Count == 0)
-            {
-                string[] pngs = Directory.GetFiles(folder, "*.png",
-                    SearchOption.AllDirectories);
-                if (pngs.Length > 0) textures["default"] = pngs[0];
-            }
-
-            var data = new ObjData
-            {
-                Vertices = vertices.ToArray(),
-                Uvs = meshUv.ToArray(),
-                Normals = meshNormal.ToArray(),
-                Triangles = dataTris,
-                Materials = matNames.ToArray(),
-                Textures = textures,
-                Bounds = bounds,
-                HasNormals = normals.Count > 0
-            };
-            return data;
-        }
-
-        private static Dictionary<string, string> LoadMtl(string folder,
-            string mtlFile)
-        {
-            var map = new Dictionary<string, string>(
-                StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrEmpty(mtlFile)) return map;
-            string path = Path.IsPathRooted(mtlFile) ? mtlFile :
-                Path.Combine(folder, mtlFile);
-            if (!File.Exists(path)) return map;
-            string current = null;
-            using (var reader = new StreamReader(path))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    line = line.Trim();
-                    if (line.StartsWith("newmtl "))
-                    {
-                        current = line.Substring(7).Trim();
-                    }
-                    else if (current != null &&
-                        line.StartsWith("map_Kd "))
-                    {
-                        string tex = line.Substring(7).Trim().Trim('"');
-                        map[current] = ResolveTexture(folder, tex);
-                    }
-                }
-            }
-            return map;
-        }
-
-        private static string ResolveTexture(string folder, string name)
-        {
-            if (string.IsNullOrEmpty(name)) return null;
-            string p = Path.Combine(folder, name);
-            if (File.Exists(p)) return p;
-            p = Path.Combine(folder, Path.GetFileName(name));
-            if (File.Exists(p)) return p;
-            string[] found = Directory.GetFiles(folder,
-                Path.GetFileName(name), SearchOption.AllDirectories);
-            return found.Length > 0 ? found[0] : null;
-        }
-
-        private static Vector3 ParseVec3(string line, int start)
-        {
-            string[] p = line.Split(new[] { ' ', '\t' },
-                StringSplitOptions.RemoveEmptyEntries);
-            float x = 0f, y = 0f, z = 0f;
-            if (p.Length > start)
-                float.TryParse(p[start], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out x);
-            if (p.Length > start + 1)
-                float.TryParse(p[start + 1], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out y);
-            if (p.Length > start + 2)
-                float.TryParse(p[start + 2], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out z);
-            return new Vector3(x, y, z);
-        }
-
-        private static int ParseIndex(string token, int count)
-        {
-            int idx;
-            if (!int.TryParse(token, NumberStyles.Integer,
-                    CultureInfo.InvariantCulture, out idx))
-                return 0;
-            if (idx < 0) idx = count + idx;
-            else idx = idx - 1;
-            if (idx < 0) idx = 0;
-            if (idx >= count) idx = count - 1;
-            return idx;
-        }
-
-        private static Mesh BuildMesh(SkinnedMeshRenderer smr)
-        {
-            Mesh donor = smr.sharedMesh;
-            if (donor == null) return null;
-            Bounds db = donor.bounds;
-            float height = _data.Bounds.size.y;
-            if (height <= 0.0001f) return null;
-            float scale = db.size.y / height;
-            float yaw = 0f;
-            float pitch = 0f;
-            float roll = 0f;
-            Vector3 offset = Vector3.zero;
-            ReadTransform(scale, ref yaw, ref pitch, ref roll, ref offset);
-            Quaternion rot = Quaternion.Euler(pitch, yaw, roll);
-
-            Vector3 objCenter = _data.Bounds.center;
-            Vector3 objMin = _data.Bounds.min;
-            Vector3 pivot = new Vector3(objCenter.x, objMin.y, objCenter.z);
-            Vector3 baseOffset = new Vector3(db.center.x, db.min.y,
-                db.center.z);
-
-            Vector3[] verts = new Vector3[_data.Vertices.Length];
-            Vector3[] normals = new Vector3[_data.Vertices.Length];
-            for (int i = 0; i < verts.Length; i++)
-            {
-                verts[i] = rot * ((_data.Vertices[i] - pivot) * scale) +
-                    baseOffset + offset;
-                normals[i] = rot * (_data.Normals[i].sqrMagnitude > 0f
-                    ? _data.Normals[i].normalized : Vector3.up);
-            }
-
-            List<BoneSegment> segments = BuildSegments(smr);
-            BoneWeight[] weights = segments.Count == 0 ? null :
-                BuildWeights(verts, segments);
-
-            Mesh mesh = new Mesh();
-            mesh.name = "BomberQoL_Imported";
-            mesh.vertices = verts;
-            if (_data.HasNormals && normals.Length == verts.Length)
-                mesh.normals = normals;
-            if (_data.Uvs != null && _data.Uvs.Length == verts.Length)
-                mesh.uv = _data.Uvs;
-            mesh.subMeshCount = _data.Triangles.Length;
-            for (int i = 0; i < _data.Triangles.Length; i++)
-                mesh.SetTriangles(_data.Triangles[i], i);
-            if (weights != null)
-            {
-                mesh.boneWeights = weights;
-                mesh.bindposes = donor.bindposes;
-            }
-            if (!_data.HasNormals) mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
-            Bounds b = mesh.bounds;
-            b.size = Vector3.Max(b.size, Vector3.one * 0.01f);
-            mesh.bounds = b;
-            return mesh;
-        }
-
-        private static void ReadTransform(float autoScale,
-            ref float yaw, ref float pitch, ref float roll,
-            ref Vector3 offset)
-        {
-            string path = Path.Combine(_folder, "config.txt");
-            if (!File.Exists(path)) return;
-            foreach (string raw in File.ReadAllLines(path))
-            {
-                string line = raw.Trim();
-                int eq = line.IndexOf('=');
-                if (eq <= 0) continue;
-                string key = line.Substring(0, eq).Trim().ToLowerInvariant();
-                string val = line.Substring(eq + 1).Trim();
-                float f;
-                if (!float.TryParse(val, NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out f)) continue;
-                if (key == "yaw") yaw = f;
-                else if (key == "pitch") pitch = f;
-                else if (key == "roll") roll = f;
-                else if (key == "offsetx") offset.x = f;
-                else if (key == "offsety") offset.y = f;
-                else if (key == "offsetz") offset.z = f;
-            }
-        }
-
-        private static List<BoneSegment> BuildSegments(
-            SkinnedMeshRenderer smr)
-        {
-            var list = new List<BoneSegment>();
-            Transform[] bones = smr.bones;
-            if (bones == null) return list;
-            Matrix4x4 w2l = smr.transform.worldToLocalMatrix;
-            for (int i = 0; i < bones.Length; i++)
-            {
-                Transform t = bones[i];
-                if (t == null || !DeformBones.Contains(t.name)) continue;
-                Vector3 a = w2l.MultiplyPoint3x4(t.position);
-                Transform child = null;
-                for (int c = 0; c < t.childCount; c++)
-                {
-                    Transform ct = t.GetChild(c);
-                    if (DeformBones.Contains(ct.name))
-                    {
-                        child = ct;
-                        break;
-                    }
-                }
-                Vector3 b;
-                if (child != null)
-                {
-                    b = w2l.MultiplyPoint3x4(child.position);
-                }
-                else
-                {
-                    b = a + w2l.MultiplyVector(
-                        t.rotation * Vector3.up) * 0.08f;
-                }
-                if ((b - a).sqrMagnitude < 0.0000001f)
-                    b = a + Vector3.up * 0.08f;
-                list.Add(new BoneSegment
-                {
-                    Index = i,
-                    A = a,
-                    B = b
-                });
-            }
-            return list;
-        }
-
-        private static BoneWeight[] BuildWeights(Vector3[] verts,
-            List<BoneSegment> segments)
-        {
-            BoneWeight[] weights = new BoneWeight[verts.Length];
-            for (int v = 0; v < verts.Length; v++)
-            {
-                Vector3 p = verts[v];
-                int i0 = -1, i1 = -1, i2 = -1, i3 = -1;
-                float d0 = float.MaxValue, d1 = float.MaxValue;
-                float d2 = float.MaxValue, d3 = float.MaxValue;
-                for (int s = 0; s < segments.Count; s++)
-                {
-                    BoneSegment seg = segments[s];
-                    float d = DistanceToSegmentSquared(p, seg.A, seg.B);
-                    if (d < d0)
-                    {
-                        d3 = d2; i3 = i2;
-                        d2 = d1; i2 = i1;
-                        d1 = d0; i1 = i0;
-                        d0 = d; i0 = seg.Index;
-                    }
-                    else if (d < d1)
-                    {
-                        d3 = d2; i3 = i2;
-                        d2 = d1; i2 = i1;
-                        d1 = d; i1 = seg.Index;
-                    }
-                    else if (d < d2)
-                    {
-                        d3 = d2; i3 = i2;
-                        d2 = d; i2 = seg.Index;
-                    }
-                    else if (d < d3)
-                    {
-                        d3 = d; i3 = seg.Index;
-                    }
-                }
-                float w0 = 1f / (d0 + 0.0001f);
-                float w1 = i1 >= 0 ? 1f / (d1 + 0.0001f) : 0f;
-                float w2 = i2 >= 0 ? 1f / (d2 + 0.0001f) : 0f;
-                float w3 = i3 >= 0 ? 1f / (d3 + 0.0001f) : 0f;
-                float total = w0 + w1 + w2 + w3;
-                if (total <= 0f) total = 1f;
-                BoneWeight bw = new BoneWeight();
-                bw.boneIndex0 = Mathf.Max(0, i0);
-                bw.weight0 = w0 / total;
-                bw.boneIndex1 = Mathf.Max(0, i1);
-                bw.weight1 = w1 / total;
-                bw.boneIndex2 = Mathf.Max(0, i2);
-                bw.weight2 = w2 / total;
-                bw.boneIndex3 = Mathf.Max(0, i3);
-                bw.weight3 = w3 / total;
-                weights[v] = bw;
-            }
-            return weights;
-        }
-
-        private static float DistanceToSegmentSquared(Vector3 p,
-            Vector3 a, Vector3 b)
-        {
-            Vector3 ab = b - a;
-            float len = ab.sqrMagnitude;
-            if (len < 0.0000001f) return (p - a).sqrMagnitude;
-            float t = Vector3.Dot(p - a, ab) / len;
-            if (t < 0f) t = 0f;
-            else if (t > 1f) t = 1f;
-            Vector3 q = a + ab * t;
-            return (p - q).sqrMagnitude;
-        }
-
-        private static Material[] BuildMaterials(SkinnedMeshRenderer smr)
-        {
-            Material donor = smr.sharedMaterial;
-            if (donor == null) donor = new Material(Shader.Find("Diffuse"));
-            var list = new Material[_data.Materials.Length];
-            for (int i = 0; i < list.Length; i++)
-            {
-                string matName = _data.Materials[i];
-                string texPath = null;
-                if (_data.Textures != null)
-                    _data.Textures.TryGetValue(matName, out texPath);
-                if (string.IsNullOrEmpty(texPath))
-                    _data.Textures.TryGetValue("default", out texPath);
-                Material mat = new Material(donor);
-                if (!string.IsNullOrEmpty(texPath))
-                {
-                    Texture2D tex = LoadTexture(texPath);
-                    if (tex != null)
-                    {
-                        mat.mainTexture = tex;
-                        if (mat.HasProperty("_MainTex"))
-                            mat.SetTexture("_MainTex", tex);
-                        if (mat.HasProperty("_BaseMap"))
-                            mat.SetTexture("_BaseMap", tex);
-                    }
-                }
-                list[i] = mat;
-            }
-            return list;
-        }
-
-        private static readonly Dictionary<string, Texture2D> TextureCache =
-            new Dictionary<string, Texture2D>();
-
-        private static Texture2D LoadTexture(string path)
-        {
-            Texture2D cached;
-            if (TextureCache.TryGetValue(path, out cached)) return cached;
-            try
-            {
-                byte[] bytes = File.ReadAllBytes(path);
-                Texture2D tex = new Texture2D(2, 2, TextureFormat.ARGB32,
-                    false);
-                if (!tex.LoadImage(bytes))
-                {
-                    UnityEngine.Object.Destroy(tex);
-                    return null;
-                }
-                tex.name = Path.GetFileName(path);
-                tex.wrapMode = TextureWrapMode.Clamp;
-                TextureCache[path] = tex;
-                return tex;
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogWarning("Character import texture failed: " +
-                    path + " (" + e.Message + ")");
-                return null;
-            }
-        }
-    }
-
     internal static class PlatformCharacters
     {
         private static readonly HashSet<string> ExclusiveKeys =
@@ -3743,22 +3076,10 @@ namespace BomberQoL
         private float _lastPadLog;
         private bool _comboLatched;
         private Vector2 _helpScroll;
-        private int _importTargetIndex;
-        private GUIStyle _tabSelectedStyle;
 
         private void Awake()
         {
             Instance = this;
-            string target = Plugin.CharacterImportTarget.Value;
-            for (int i = 0; i < ImportTargetKeys.Length; i++)
-            {
-                if (string.Equals(ImportTargetKeys[i], target,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    _importTargetIndex = i;
-                    break;
-                }
-            }
         }
 
         internal static void OpenFromMenu()
@@ -3784,7 +3105,6 @@ namespace BomberQoL
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
                 if (_tab == 3) return 15;
-                if (_tab == 4) return 3;
                 return 0;
             }
         }
@@ -3838,17 +3158,17 @@ namespace BomberQoL
 
             if (Input.GetKeyDown(KeyCode.Q) || PadButtonDown("L"))
             {
-                _tab = (_tab + 5) % 6;
+                _tab = (_tab + 4) % 5;
                 _row = 0;
             }
             if (Input.GetKeyDown(KeyCode.E) || PadButtonDown("R"))
             {
-                _tab = (_tab + 1) % 6;
+                _tab = (_tab + 1) % 5;
                 _row = 0;
             }
             if (Input.GetKeyDown(KeyCode.Tab))
             {
-                _tab = (_tab + 1) % 6;
+                _tab = (_tab + 1) % 5;
                 _row = 0;
             }
             HandleNavigation();
@@ -3982,7 +3302,7 @@ namespace BomberQoL
 
         private void ChangeRowValue(int delta)
         {
-            if (_tab == 5) return;
+            if (_tab == 4) return;
             if (_tab == 0)
             {
                 switch (_row)
@@ -4009,21 +3329,6 @@ namespace BomberQoL
                         break;
                     default:
                         StepLoadout(_row - 5, delta);
-                        break;
-                }
-                return;
-            }
-
-            if (_tab == 4)
-            {
-                switch (_row)
-                {
-                    case 0: Toggle(Plugin.CharacterImportEnabled); break;
-                    case 1:
-                        _importTargetIndex = (_importTargetIndex + delta +
-                            ImportTargetKeys.Length) % ImportTargetKeys.Length;
-                        Plugin.CharacterImportTarget.Value =
-                            ImportTargetKeys[_importTargetIndex];
                         break;
                 }
                 return;
@@ -4088,7 +3393,7 @@ namespace BomberQoL
 
         private void ActivateRow()
         {
-            if (_tab == 5) return;
+            if (_tab == 4) return;
             if (_tab == 0)
             {
                 if (_row == 14) { StartPractice(); return; }
@@ -4105,12 +3410,6 @@ namespace BomberQoL
             if (_tab == 3 && _row == 14)
             {
                 MainMenuOptionPatch.OpenOriginalOptions();
-                return;
-            }
-            if (_tab == 4 && _row == 2)
-            {
-                CharacterImporter.Reload();
-                Plugin.Log.LogInfo("Character import: reloaded");
                 return;
             }
             ChangeRowValue(1);
@@ -4146,7 +3445,7 @@ namespace BomberQoL
             bool pageUp = Input.GetKeyDown(KeyCode.PageUp);
             bool pageDown = Input.GetKeyDown(KeyCode.PageDown);
 
-            if (_tab == 5)
+            if (_tab == 4)
             {
                 if (up) _helpScroll.y = Mathf.Max(0f,
                     _helpScroll.y - 40f);
@@ -4673,59 +3972,6 @@ namespace BomberQoL
                 : "   A: toggle    B: close    L/R: tabs    X/Y+Up/Down: scroll");
         }
 
-        internal static readonly string[] ImportTargetKeys =
-        {
-            "white", "black", "blue", "red",
-            "yellow", "green", "pink", "lightblue"
-        };
-
-        private static readonly string[] ImportTargetLabels =
-        {
-            "White Bomber", "Black Bomber", "Blue Bomber", "Red Bomber",
-            "Yellow Bomber", "Green Bomber", "Pink Bomber",
-            "Light Blue Bomber"
-        };
-
-        private void DrawCharacters()
-        {
-            Summary("Imported model: " + CharacterImporter.FolderName +
-                "  |  Replace: " + ImportTargetLabels[
-                    Mathf.Clamp(_importTargetIndex, 0,
-                        ImportTargetLabels.Length - 1)] +
-                "  |  " + OnOff(Plugin.CharacterImportEnabled.Value));
-            DrawToggle(0, Plugin.CharacterImportEnabled,
-                "Use imported character model");
-            GUILayout.BeginHorizontal(RowStyle(1));
-            Color old = GUI.contentColor;
-            if (RowSelected(1)) GUI.contentColor = MarkerColor;
-            GUILayout.Label((RowSelected(1) ? ">> " : "   ") +
-                "Replace character: " + ImportTargetLabels[
-                    Mathf.Clamp(_importTargetIndex, 0,
-                        ImportTargetLabels.Length - 1)]);
-            GUI.contentColor = old;
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            NoteRow(1);
-            GUILayout.BeginVertical(RowStyle(2));
-            if (GUILayout.Button((RowSelected(2) ? ">> " : "   ") +
-                "Reload imported model", GUILayout.Height(30)))
-            {
-                CharacterImporter.Reload();
-                Plugin.Log.LogInfo("Character import: reloaded");
-            }
-            GUILayout.EndVertical();
-            NoteRow(2);
-
-            GUILayout.Space(8);
-            GUILayout.Label("Model folder: " + CharacterImporter.CharactersRoot);
-            GUILayout.Label("Place model.obj, .mtl and textures in a subfolder.");
-            GUILayout.Label("Optional config.txt: yaw=, pitch=, roll=, offsetx=, offsety=, offsetz=");
-            GUILayout.Label("Changes apply to the next battle or character preview.");
-            GUILayout.Label(RowSelected(2)
-                ? ">> A: reload    B: close    L/R: tabs"
-                : "   A: toggle / reload    B: close    L/R: tabs");
-        }
-
         private GUIStyle _helpStyle;
         private GUIStyle _helpTitle;
         private GUIStyle _helpHeading;
@@ -4796,17 +4042,6 @@ namespace BomberQoL
                 "AI data for them.", _helpStyle);
 
             GUILayout.Space(8);
-            GUILayout.Label("Characters", _helpHeading);
-            GUILayout.Label(
-                "Character import replaces a selected character's mesh with " +
-                "an external OBJ. Put model.obj, its .mtl and textures in " +
-                "BepInEx/plugins/BomberQoL/characters/<name>/. The plugin " +
-                "auto-weights the mesh to the game's 29-bone skeleton. Use " +
-                "the Replace character row to choose which character is " +
-                "swapped. Editing applies on the next battle or preview.",
-                _helpStyle);
-
-            GUILayout.Space(8);
             GUILayout.Label("Settings", _helpHeading);
             GUILayout.Label(
                 "Runtime launcher options: post-processing effects, fast " +
@@ -4870,37 +4105,28 @@ namespace BomberQoL
                 w - 32, h - 44));
 
             GUILayout.BeginHorizontal();
-            if (_tabSelectedStyle == null)
-            {
-                _tabSelectedStyle = new GUIStyle(GUI.skin.button);
-                _tabSelectedStyle.fontStyle = FontStyle.Bold;
-                _tabSelectedStyle.normal.background =
-                    MakeSolid(new Color(1f, 0.82f, 0.24f, 1f));
-                _tabSelectedStyle.hover.background =
-                    _tabSelectedStyle.normal.background;
-                _tabSelectedStyle.active.background =
-                    _tabSelectedStyle.normal.background;
-                _tabSelectedStyle.normal.textColor = Color.black;
-                _tabSelectedStyle.hover.textColor = Color.black;
-                _tabSelectedStyle.active.textColor = Color.black;
-            }
+            Color oldTabBg = GUI.backgroundColor;
+            Color oldTabFg = GUI.contentColor;
             string[] tabNames = { "Practice", "Randomizer",
-                "Multiplayer", "Settings", "Characters", "Help" };
+                "Multiplayer", "Settings", "Help" };
             for (int i = 0; i < tabNames.Length; i++)
             {
                 int tab = i;
+                if (_tab == tab)
+                {
+                    GUI.backgroundColor = MarkerColor;
+                    GUI.contentColor = Color.black;
+                }
                 string name = _tab == tab
                     ? ">> " + tabNames[tab] + " <<"
                     : tabNames[tab];
-                bool clicked = _tab == tab
-                    ? GUILayout.Button(name, _tabSelectedStyle,
-                        GUILayout.Height(30))
-                    : GUILayout.Button(name, GUILayout.Height(30));
-                if (clicked)
+                if (GUILayout.Button(name, GUILayout.Height(30)))
                 {
                     _tab = tab;
                     _row = 0;
                 }
+                GUI.backgroundColor = oldTabBg;
+                GUI.contentColor = oldTabFg;
             }
             GUILayout.FlexibleSpace();
             GUILayout.Label("L1/R1 or Q/E: tab");
@@ -4914,7 +4140,7 @@ namespace BomberQoL
                 _autoScrollPending = true;
             }
             _hasSelectedRow = false;
-            if (_tab == 5)
+            if (_tab == 4)
             {
                 DrawHelp();
             }
@@ -4933,10 +4159,8 @@ namespace BomberQoL
                     DrawRandomizer();
                 else if (_tab == 2)
                     DrawMultiplayer();
-                else if (_tab == 3)
-                    DrawSettings();
                 else
-                    DrawCharacters();
+                    DrawSettings();
                 GUILayout.EndScrollView();
 
                 if (_autoScrollPending && _hasSelectedRow)
