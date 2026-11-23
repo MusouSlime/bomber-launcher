@@ -85,6 +85,7 @@ namespace BomberQoL
         internal static ConfigEntry<string> CharacterSkinTexture;
         internal static ConfigEntry<bool> CharacterAccessoryEnabled;
         internal static ConfigEntry<string> CharacterAccessoryFolder;
+        internal static ConfigEntry<bool> CharacterAccessoryBlankBody;
         internal static ConfigEntry<bool> SkipGemContinue;
         internal static ConfigEntry<bool> MasterStatReset;
         internal static ConfigEntry<bool> ResetStatsPerStage;
@@ -220,7 +221,9 @@ namespace BomberQoL
             CharacterAccessoryEnabled = Config.Bind("CharacterAccessory", "Enabled", false,
                 "Attach a rigid OBJ part (cape, goggles, hat) to the target character.");
             CharacterAccessoryFolder = Config.Bind("CharacterAccessory", "Folder", "viewtifuljoe_cape",
-                "Folder under BepInEx/plugins/BomberQoL/accessories. Empty uses the first folder.");
+                "Folder (or comma-separated folders) under BepInEx/plugins/BomberQoL/accessories. Empty uses the first folder.");
+            CharacterAccessoryBlankBody = Config.Bind("CharacterAccessory", "BlankBody", false,
+                "Hide the target character's own meshes so only imported accessory parts remain.");
             SkipGemContinue = Config.Bind("Gameplay", "SkipGemContinue", true,
                 "On story game over, skip the gem continue dialog and return to the main menu.");
             MasterStatReset = Config.Bind("Gameplay", "MasterStatReset", true,
@@ -2026,20 +2029,41 @@ namespace BomberQoL
             GameObject go = ModelField.GetValue(model) as GameObject;
             if (go == null) return;
 
-            string folder = Plugin.CharacterAccessoryFolder.Value;
-            string dir = null;
-            if (!string.IsNullOrEmpty(folder))
+            if (Plugin.CharacterAccessoryBlankBody.Value)
             {
-                dir = Path.Combine(Root, folder);
+                Renderer[] hide = go.GetComponentsInChildren<Renderer>(true);
+                for (int i = 0; i < hide.Length; i++)
+                {
+                    if (hide[i] != null) hide[i].enabled = false;
+                }
+            }
+
+            string folders = Plugin.CharacterAccessoryFolder.Value;
+            string[] names;
+            if (!string.IsNullOrEmpty(folders))
+            {
+                names = folders.Split(new[] { ',' },
+                    StringSplitOptions.RemoveEmptyEntries);
             }
             else
             {
                 string[] dirs = Directory.Exists(Root)
                     ? Directory.GetDirectories(Root) : new string[0];
                 Array.Sort(dirs, StringComparer.OrdinalIgnoreCase);
-                if (dirs.Length > 0) dir = dirs[0];
+                names = new string[dirs.Length];
+                for (int i = 0; i < dirs.Length; i++)
+                    names[i] = Path.GetFileName(dirs[i]);
             }
-            if (dir == null || !Directory.Exists(dir)) return;
+            for (int i = 0; i < names.Length; i++)
+            {
+                string dir = Path.Combine(Root, names[i].Trim());
+                if (Directory.Exists(dir)) AttachOne(go, info, dir);
+            }
+        }
+
+        private static void AttachOne(GameObject go,
+            CharacterInfoDataTable.CharacterInfoData info, string dir)
+        {
             string obj = Path.Combine(dir, "model.obj");
             if (!File.Exists(obj))
             {
@@ -2048,7 +2072,6 @@ namespace BomberQoL
                 if (objs.Length == 0) return;
                 obj = objs[0];
             }
-
             Mesh mesh = LoadMesh(obj);
             if (mesh == null) return;
             string bone = "model";
@@ -2056,7 +2079,6 @@ namespace BomberQoL
             Vector3 offset = new Vector3(0f, 1.1f, -0.25f);
             Vector3 euler = Vector3.zero;
             ReadConfig(dir, ref bone, ref scale, ref offset, ref euler);
-
             Transform parent = go.transform;
             if (!string.IsNullOrEmpty(bone) &&
                 !string.Equals(bone, "model",
@@ -2065,7 +2087,6 @@ namespace BomberQoL
                 Transform found = FindBone(go.transform, bone);
                 if (found != null) parent = found;
             }
-
             GameObject part = new GameObject("BomberQoL_Accessory");
             part.transform.SetParent(parent, false);
             part.transform.localPosition = offset;
@@ -3604,7 +3625,7 @@ namespace BomberQoL
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
                 if (_tab == 3) return 15;
-                if (_tab == 4) return 4;
+                if (_tab == 4) return 5;
                 return 0;
             }
         }
@@ -3846,6 +3867,7 @@ namespace BomberQoL
                             SkinTargetKeys[_skinTargetIndex];
                         break;
                     case 3: Toggle(Plugin.CharacterAccessoryEnabled); break;
+                    case 4: Toggle(Plugin.CharacterAccessoryBlankBody); break;
                 }
                 return;
             }
@@ -4514,7 +4536,8 @@ namespace BomberQoL
             Summary("Skin: " + CharacterSkin.TextureName + "  |  " +
                 SkinTargetLabels[target] + "  |  " +
                 OnOff(Plugin.CharacterSkinEnabled.Value) + "  |  Part " +
-                OnOff(Plugin.CharacterAccessoryEnabled.Value));
+                OnOff(Plugin.CharacterAccessoryEnabled.Value) + "  |  Blank " +
+                OnOff(Plugin.CharacterAccessoryBlankBody.Value));
             DrawToggle(0, Plugin.CharacterSkinEnabled,
                 "Use custom character skin");
             GUILayout.BeginHorizontal(RowStyle(1));
@@ -4537,6 +4560,8 @@ namespace BomberQoL
             NoteRow(2);
             DrawToggle(3, Plugin.CharacterAccessoryEnabled,
                 "Attach imported part (" + CharacterAccessory.FolderName + ")");
+            DrawToggle(4, Plugin.CharacterAccessoryBlankBody,
+                "Blank base body (parts only)");
 
             GUILayout.Space(8);
             GUILayout.Label("Skins folder: " + CharacterSkin.SkinsRoot);
@@ -4628,7 +4653,10 @@ namespace BomberQoL
                 "Replace character row; changes apply on the next battle or " +
                 "character preview. The accessory toggle attaches a rigid " +
                 "OBJ part from BepInEx/plugins/BomberQoL/accessories/ to the " +
-                "character, such as the Joe cape.", _helpStyle);
+                "character, such as the Joe cape. Folder accepts a " +
+                "comma-separated list to combine parts. Blank base body hides " +
+                "the target character's own meshes so only imported parts " +
+                "remain.", _helpStyle);
 
             GUILayout.Space(8);
             GUILayout.Label("Settings", _helpHeading);

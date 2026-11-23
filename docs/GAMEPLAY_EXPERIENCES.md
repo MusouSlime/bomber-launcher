@@ -409,7 +409,8 @@ A rigid OBJ part can be attached to the character root or a named bone:
 ```ini
 [CharacterAccessory]
 Enabled = false
-Folder = viewtifuljoe_cape
+Folder = viewtifuljoe_cape,viewtifuljoe_goggles
+BlankBody = false
 ```
 
 `BepInEx/plugins/BomberQoL/accessories/<name>/` contains `model.obj`,
@@ -432,6 +433,10 @@ offsetz=-0.22
   double-sided automatically.
 - Parts are rigid: a cape will not flutter and a part authored in another
   character's pose may need rotation/scale tuning.
+- `Folder` accepts a comma-separated list to combine parts.
+- `BlankBody = true` hides the target character's own meshes, leaving the
+  player skeleton and animations plus the imported parts. This is the "dummy"
+  build mode: add or remove part folders without a Bomberman body.
 - The included Joe cape/goggles folders are experimental; the texture skin is
   the cleaner "new character" route.
 

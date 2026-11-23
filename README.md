@@ -27,7 +27,7 @@ artwork extracted from the game itself.
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
 | **Post-processing** | Motion blur, depth of field, bloom, vignette and film grain switches |
 | **Character Skins** | Recolor a character's existing model, pose and animations with a custom PNG |
-| **Accessory Parts** | Attach a rigid OBJ part (cape, goggles, hat) to a character bone |
+| **Accessory Parts** | Attach rigid OBJ parts to bones, with an optional blank base body for part-only builds |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
 
