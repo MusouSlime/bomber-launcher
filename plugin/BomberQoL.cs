@@ -76,6 +76,7 @@ namespace BomberQoL
         internal static ConfigEntry<bool> RandomCpuOpponent;
         internal static ConfigEntry<bool> CpuSpecialAbilities;
         internal static ConfigEntry<bool> PlatformExclusives;
+        internal static ConfigEntry<bool> MainMenuQoL;
         internal static ConfigEntry<bool> SkipGemContinue;
         internal static ConfigEntry<bool> MasterStatReset;
         internal static ConfigEntry<bool> ResetStatsPerStage;
@@ -196,6 +197,8 @@ namespace BomberQoL
                 "Let local battle CPUs use their A-button special ability when they have one.");
             PlatformExclusives = Config.Bind("Multiplayer", "PlatformExclusives", false,
                 "Make the built-in platform-exclusive character IDs usable (Master Chief, Ratchet, etc.).");
+            MainMenuQoL = Config.Bind("UI", "MainMenuQoL", true,
+                "Replace the main menu Other option with Bomber QoL and open the F9 overlay.");
             SkipGemContinue = Config.Bind("Gameplay", "SkipGemContinue", true,
                 "On story game over, skip the gem continue dialog and return to the main menu.");
             MasterStatReset = Config.Bind("Gameplay", "MasterStatReset", true,
@@ -298,6 +301,8 @@ namespace BomberQoL
             harmony.PatchAll(typeof(CpuSkillConditionPatch));
             harmony.PatchAll(typeof(PlatformUsableCharacterPatch));
             harmony.PatchAll(typeof(PlatformUsableBuiltinPatch));
+            harmony.PatchAll(typeof(MainMenuOptionPatch));
+            harmony.PatchAll(typeof(MainMenuLabelPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
             harmony.PatchAll(typeof(CustomBgmChangePatch));
             harmony.PatchAll(typeof(CustomBgmStopPatch));
@@ -389,6 +394,7 @@ namespace BomberQoL
             Randomizer.ApplyMoveSets();
             Randomizer.EnsureBombNormalSkills();
             PlatformCharacters.ApplyLocaleNames();
+            MainMenuQoLUtility.Apply();
             RandomRun.OnSceneLoaded(scene);
             ApplyAllPostFx();
             ApplyResultTweaks();
@@ -1817,6 +1823,64 @@ namespace BomberQoL
         }
     }
 
+    internal static class MainMenuQoLUtility
+    {
+        private static readonly FieldInfo LocaleDatasField =
+            AccessTools.Field(typeof(LocaleDataTable), "_localeDatas");
+        private static string _originalMenu;
+        private static string _originalCaption;
+        private static bool _captured;
+        private static bool _logged;
+
+        internal static void Apply()
+        {
+            if (LocaleDatasField == null) return;
+            LocaleManager lm = SingletonBase<LocaleManager>.getInstance();
+            if (lm == null) return;
+            LocaleDataTable table = lm.tbl;
+            if (table == null) return;
+            LocaleDataTable.LocaleData[] data =
+                LocaleDatasField.GetValue(table) as
+                    LocaleDataTable.LocaleData[];
+            if (data == null) return;
+            int menuIndex = (int)LocaleDef.MAINMENU.MENU_OTHER;
+            int captionIndex = (int)LocaleDef.MAINMENU.CAPTION_OTHER;
+            if (menuIndex < 0 || captionIndex < 0 ||
+                menuIndex >= data.Length || captionIndex >= data.Length)
+                return;
+
+            if (!_captured)
+            {
+                _originalMenu = data[menuIndex] == null
+                    ? null : data[menuIndex].val;
+                _originalCaption = data[captionIndex] == null
+                    ? null : data[captionIndex].val;
+                _captured = true;
+            }
+
+            if (!Plugin.MainMenuQoL.Value)
+            {
+                data[menuIndex] = new LocaleDataTable.LocaleData(
+                    _originalMenu ?? "Other");
+                data[captionIndex] = new LocaleDataTable.LocaleData(
+                    _originalCaption ?? string.Empty);
+                LocaleDatasField.SetValue(table, data);
+                return;
+            }
+
+            data[menuIndex] = new LocaleDataTable.LocaleData("Bomber QoL");
+            data[captionIndex] = new LocaleDataTable.LocaleData(
+                "Practice, randomizer, multiplayer and settings");
+            LocaleDatasField.SetValue(table, data);
+            if (!_logged)
+            {
+                _logged = true;
+                Plugin.Log.LogInfo(
+                    "Main menu: replaced Other with Bomber QoL");
+            }
+        }
+    }
+
     internal static class Pickups
     {
         private const string MarkName = "BomberQoL_ItemMark";
@@ -2800,6 +2864,7 @@ namespace BomberQoL
     public class PracticeMenu : MonoBehaviour
     {
         internal static bool Visible;
+        internal static PracticeMenu Instance;
 
         private static readonly string[] Difficulties =
             { "easy", "normal", "hard", "super" };
@@ -2825,6 +2890,21 @@ namespace BomberQoL
         private float _lastPadLog;
         private bool _comboLatched;
 
+        private void Awake()
+        {
+            Instance = this;
+        }
+
+        internal static void OpenFromMenu()
+        {
+            if (Instance != null) Instance.SetVisible(true);
+        }
+
+        internal static void CloseFromMenu()
+        {
+            if (Instance != null) Instance.SetVisible(false);
+        }
+
         private static int MaxStage(int world)
         {
             return world == 6 ? 2 : 10;
@@ -2836,7 +2916,8 @@ namespace BomberQoL
             {
                 if (_tab == 0) return 5;
                 if (_tab == 1) return 13;
-                return 4;
+                if (_tab == 2) return 4;
+                return 15;
             }
         }
 
@@ -2889,12 +2970,17 @@ namespace BomberQoL
 
             if (Input.GetKeyDown(KeyCode.Q) || PadButtonDown("L"))
             {
-                _tab = (_tab + 2) % 3;
+                _tab = (_tab + 3) % 4;
                 _row = 0;
             }
             if (Input.GetKeyDown(KeyCode.E) || PadButtonDown("R"))
             {
-                _tab = (_tab + 1) % 3;
+                _tab = (_tab + 1) % 4;
+                _row = 0;
+            }
+            if (Input.GetKeyDown(KeyCode.Tab))
+            {
+                _tab = (_tab + 1) % 4;
                 _row = 0;
             }
             HandleNavigation();
@@ -2907,8 +2993,28 @@ namespace BomberQoL
             Cursor.lockState = CursorLockMode.None;
         }
 
+        private static bool RawPadButtonDown(int button)
+        {
+            if (button < 0 || button > 19) return false;
+            if (Input.GetKeyDown((KeyCode)(330 + button))) return true;
+            for (int joy = 1; joy <= 8; joy++)
+            {
+                if (Input.GetKeyDown(
+                    (KeyCode)(350 + (joy - 1) * 20 + button)))
+                    return true;
+            }
+            return false;
+        }
+
         private static bool PadButtonDown(string name)
         {
+            int raw = -1;
+            if (name == "A") raw = 0;
+            else if (name == "B") raw = 1;
+            else if (name == "L") raw = 4;
+            else if (name == "R") raw = 5;
+            if (raw >= 0 && RawPadButtonDown(raw)) return true;
+
             InputAdapter adapter =
                 SingletonBaseWithGameObject<InputAdapter>.getInstance();
             if (adapter == null) return false;
@@ -2920,9 +3026,20 @@ namespace BomberQoL
         {
             InputAdapter adapter =
                 SingletonBaseWithGameObject<InputAdapter>.getInstance();
-            if (adapter == null) return 0f;
-            try { return adapter.GetAxis(name + "_1P"); }
-            catch { return 0f; }
+            if (adapter != null)
+            {
+                try
+                {
+                    float value = adapter.GetAxis(name + "_1P");
+                    if (Mathf.Abs(value) > 0.01f) return value;
+                }
+                catch { }
+            }
+            if (name == "HORIZONTAL")
+                return Input.GetAxisRaw("Horizontal");
+            if (name == "VERTICAL")
+                return Input.GetAxisRaw("Vertical");
+            return 0f;
         }
 
         private static void Toggle(ConfigEntry<bool> entry)
@@ -2932,6 +3049,25 @@ namespace BomberQoL
                 Randomizer.ApplyMoveSets(true);
             if (entry == Plugin.PlatformExclusives && entry.Value)
                 PlatformCharacters.ApplyLocaleNames();
+            if (entry == Plugin.FastResults)
+                Plugin.ApplyResultTweaks();
+            if (entry == Plugin.UnlockMaster)
+                Plugin.EnableMasterButton();
+            if (entry == Plugin.MainMenuQoL)
+                MainMenuQoLUtility.Apply();
+            MainMenuQoLUtility.Apply();
+        }
+
+        private static void ToggleInverted(ConfigEntry<bool> entry)
+        {
+            entry.Value = !entry.Value;
+            Plugin.ApplyAllPostFx();
+        }
+
+        private static void ToggleAutoSkipMovies()
+        {
+            Plugin.AutoSkipMovies.Value =
+                Plugin.AutoSkipMovies.Value > 0f ? 0f : 5f;
         }
 
         private static void ToggleDifficultyOdds()
@@ -2979,6 +3115,28 @@ namespace BomberQoL
                 return;
             }
 
+            if (_tab == 3)
+            {
+                switch (_row)
+                {
+                    case 0: ToggleInverted(Plugin.NoMotionBlur); break;
+                    case 1: ToggleInverted(Plugin.NoDepthOfField); break;
+                    case 2: ToggleInverted(Plugin.NoBloom); break;
+                    case 3: ToggleInverted(Plugin.NoVignette); break;
+                    case 4: ToggleInverted(Plugin.NoGrain); break;
+                    case 5: Toggle(Plugin.FastResults); break;
+                    case 6: Toggle(Plugin.UnlockMaster); break;
+                    case 7: Toggle(Plugin.SkipEnabled); break;
+                    case 8: Toggle(Plugin.AutoSkipLogos); break;
+                    case 9: ToggleAutoSkipMovies(); break;
+                    case 10: Toggle(Plugin.SoftResetEnabled); break;
+                    case 11: Toggle(Plugin.CustomBgmShuffle); break;
+                    case 12: Toggle(Plugin.CustomSfxShuffle); break;
+                    case 13: Toggle(Plugin.MainMenuQoL); break;
+                }
+                return;
+            }
+
             switch (_row)
             {
                 case 0:
@@ -3012,6 +3170,11 @@ namespace BomberQoL
             if (_tab == 1 && _row == 12)
             {
                 StartRun();
+                return;
+            }
+            if (_tab == 3 && _row == 14)
+            {
+                MainMenuOptionPatch.OpenOriginalOptions();
                 return;
             }
             ChangeRowValue(1);
@@ -3180,8 +3343,8 @@ namespace BomberQoL
             if (GUILayout.Button("Start Practice", GUILayout.Height(36)))
                 StartPractice();
             GUILayout.Label(_row == 4
-                ? "> Enter / A: start    B / Esc: close"
-                : "  Enter / A: start    B / Esc: close");
+                ? "> A: start    B: close    L/R: tabs"
+                : "  A: start    B: close    L/R: tabs");
         }
 
         private void DrawRandomizer()
@@ -3215,8 +3378,8 @@ namespace BomberQoL
             if (GUILayout.Button("Start Random Run", GUILayout.Height(36)))
                 StartRun();
             GUILayout.Label(_row == 12
-                ? "> Enter / A: start    B / Esc: close"
-                : "  Enter / A: start    B / Esc: close");
+                ? "> A: start    B: close    L/R: tabs"
+                : "  A: start    B: close    L/R: tabs");
         }
 
         private void DrawMultiplayer()
@@ -3236,7 +3399,68 @@ namespace BomberQoL
             GUILayout.Label("Platform exclusives: unlocks Master Chief/Ratchet/etc.");
             GUILayout.Label("They can be player characters; they have no NPC AI data.");
             GUILayout.Space(8);
-            GUILayout.Label("Enter / A: toggle    B / Esc: close");
+            GUILayout.Label("A: toggle    B: close    L/R: tabs");
+        }
+
+        private void DrawInvertedToggle(int row, ConfigEntry<bool> entry,
+            string label)
+        {
+            bool on = !entry.Value;
+            bool value = GUILayout.Toggle(on,
+                (_row == row ? "> " : "  ") + label);
+            if (value == on) return;
+            entry.Value = !value;
+            Plugin.ApplyAllPostFx();
+        }
+
+        private void DrawAutoSkipToggle(int row)
+        {
+            bool on = Plugin.AutoSkipMovies.Value > 0f;
+            bool value = GUILayout.Toggle(on,
+                (_row == row ? "> " : "  ") + "Auto-skip movies (5s)");
+            if (value == on) return;
+            Plugin.AutoSkipMovies.Value = value ? 5f : 0f;
+        }
+
+        private void DrawSettings()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.BeginVertical(GUILayout.Width(350));
+            DrawInvertedToggle(0, Plugin.NoMotionBlur, "Motion blur");
+            DrawInvertedToggle(1, Plugin.NoDepthOfField, "Depth of field");
+            DrawInvertedToggle(2, Plugin.NoBloom, "Bloom");
+            DrawInvertedToggle(3, Plugin.NoVignette, "Vignette");
+            DrawInvertedToggle(4, Plugin.NoGrain, "Film grain");
+            DrawToggle(5, Plugin.FastResults, "Fast results");
+            DrawToggle(6, Plugin.UnlockMaster, "Master difficulty");
+            GUILayout.EndVertical();
+            GUILayout.BeginVertical(GUILayout.Width(350));
+            DrawToggle(7, Plugin.SkipEnabled, "Skip movies");
+            DrawToggle(8, Plugin.AutoSkipLogos, "Auto-skip logos");
+            DrawAutoSkipToggle(9);
+            DrawToggle(10, Plugin.SoftResetEnabled, "Soft reset");
+            DrawToggle(11, Plugin.CustomBgmShuffle, "Shuffle BGM");
+            DrawToggle(12, Plugin.CustomSfxShuffle, "Shuffle SFX");
+            DrawToggle(13, Plugin.MainMenuQoL,
+                "Bomber QoL main-menu entry");
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(10);
+            string bgm = Plugin.CustomBgmFolder.Value;
+            string sfx = Plugin.CustomSfxFolder.Value;
+            GUILayout.Label("BGM folder: " + (string.IsNullOrEmpty(bgm)
+                ? "none"
+                : Path.GetFileName(bgm.TrimEnd('/', '\\'))));
+            GUILayout.Label("SFX folder: " + (string.IsNullOrEmpty(sfx)
+                ? "none"
+                : Path.GetFileName(sfx.TrimEnd('/', '\\'))));
+            GUILayout.Label("Folder paths, launch options, voices and backups remain in the launcher.");
+            GUILayout.Space(8);
+            if (GUILayout.Button((_row == 14 ? "> " : "  ") +
+                "Open original game options", GUILayout.Height(30)))
+                MainMenuOptionPatch.OpenOriginalOptions();
+            GUILayout.Label("A: toggle    B: close    L/R: tabs");
         }
 
         private void OnGUI()
@@ -3296,6 +3520,12 @@ namespace BomberQoL
                 _tab = 2;
                 _row = 0;
             }
+            if (GUILayout.Button(_tab == 3 ? "[ Settings ]" : "Settings",
+                GUILayout.Height(30)))
+            {
+                _tab = 3;
+                _row = 0;
+            }
             GUILayout.FlexibleSpace();
             GUILayout.Label("L1/R1 or Q/E: tab");
             GUILayout.EndHorizontal();
@@ -3305,8 +3535,10 @@ namespace BomberQoL
                 DrawPractice();
             else if (_tab == 1)
                 DrawRandomizer();
-            else
+            else if (_tab == 2)
                 DrawMultiplayer();
+            else
+                DrawSettings();
 
             GUILayout.EndArea();
             GUI.skin.label.normal.textColor = oldLabel;
@@ -3628,6 +3860,43 @@ namespace BomberQoL
                 return true;
             __result = true;
             return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(AbstractMainMenuScene), "moveToOption")]
+    internal static class MainMenuOptionPatch
+    {
+        private static AbstractMainMenuScene _scene;
+        private static bool _bypass;
+
+        private static bool Prefix(AbstractMainMenuScene __instance)
+        {
+            if (!Plugin.MainMenuQoL.Value) return true;
+            if (_bypass)
+            {
+                _bypass = false;
+                return true;
+            }
+            _scene = __instance;
+            PracticeMenu.OpenFromMenu();
+            return false;
+        }
+
+        internal static void OpenOriginalOptions()
+        {
+            if (_scene == null) return;
+            PracticeMenu.CloseFromMenu();
+            _bypass = true;
+            _scene.moveToOption();
+        }
+    }
+
+    [HarmonyPatch(typeof(AbstractMainMenuUI), "init")]
+    internal static class MainMenuLabelPatch
+    {
+        private static void Prefix()
+        {
+            MainMenuQoLUtility.Apply();
         }
     }
 

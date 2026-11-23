@@ -313,7 +313,7 @@ ResetStatsPerStage = true
   at the start of every stage. `Random` re-rolls, while Save keeps the current
   stats. `MasterStatReset` forces a default reset on Master.
 - **Practice tab** — the F9 menu starts on Beginner and has Practice,
-  Randomizer, and Multiplayer tabs. Practice selects world and stage directly, always resets to default
+  Randomizer, Multiplayer, and Settings tabs. Practice selects world and stage directly, always resets to default
   stats, keeps the normal character-select screen (it never randomizes
   characters), and can **Repeat stage when cleared**. `[Practice] RepeatStage`
   stores the toggle.
@@ -328,6 +328,15 @@ ResetStatsPerStage = true
   random CPU params=… com=… npcType=… aiType=…`, the candidate pool size, and
   how many CPU slots were randomized. This makes it clear whether the battle
   scene exposed COM slots and whether the AI-data filter found candidates.
+- **In-game QoL menu** — the main menu **Other** entry is replaced with
+  **Bomber QoL** and opens the same overlay as F9. `[UI] MainMenuQoL = false`
+  restores the original Other entry. The Settings tab contains the runtime
+  launcher toggles: motion blur, depth of field, bloom, vignette, grain, fast
+  results, Master difficulty, movie skipping, auto-skip, soft reset, and BGM/SFX
+  shuffle. The original game options remain available from the Settings tab.
+  Folder paths, launch-time options, voices, BepInEx install, and save backups
+  stay in the launcher. Controller navigation uses D-pad/left stick, A/B, and
+  L/R for tabs; raw joystick buttons are used as a fallback.
 
 Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random move sets,

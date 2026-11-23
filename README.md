@@ -115,8 +115,10 @@ The plugin adds:
   is kept intact. A fixed seed lives in
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
   into battle when random characters or a random run is active. The F9 menu has
-  **Practice**, **Randomizer**, and **Multiplayer** tabs, starts on **Beginner**,
-  and exposes the run settings as toggles. Practice has world/stage select, always starts with
+  **Practice**, **Randomizer**, **Multiplayer**, and **Settings** tabs, starts on
+  **Beginner**, and exposes the run settings as toggles. The main menu **Other**
+  entry is replaced with **Bomber QoL**, which opens the same menu; the original
+  game options remain available from the Settings tab. Practice has world/stage select, always starts with
   default stats, keeps the normal character-select screen, and has an optional
   **Repeat stage when cleared** switch. Randomizer is a full **Random Run**:
   10 random non-boss stages, then a random undefeated boss; repeat until all 13
@@ -127,7 +129,9 @@ The plugin adds:
   collected item's name pops up above the player. Character randomization only
   happens when **Random characters** is enabled in the Randomizer tab. The
   **Multiplayer** tab has Smarter Bots, Random CPU Opponent, CPU A-button
-  specials, and Platform Exclusives toggles.
+  specials, and Platform Exclusives toggles. The **Settings** tab exposes the
+  runtime launcher toggles (post-processing, results, skips, soft reset, BGM/SFX
+  shuffle) and keeps launch-time/file-picker actions in the launcher.
 - **Game-over continue** — story game over skips the gem continue/retry dialog
   and returns to the main menu. Config: `[Gameplay] SkipGemContinue`.
 - **Platform Exclusives** — unlocks the built-in platform-specific character
