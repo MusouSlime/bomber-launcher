@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Diagnostics;
 using System.IO;
-using System.Globalization;
 using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
@@ -83,8 +82,6 @@ namespace BomberQoL
         internal static ConfigEntry<bool> CharacterSkinEnabled;
         internal static ConfigEntry<string> CharacterSkinTarget;
         internal static ConfigEntry<string> CharacterSkinTexture;
-        internal static ConfigEntry<bool> CharacterAccessoryEnabled;
-        internal static ConfigEntry<string> CharacterAccessoryFolder;
         internal static ConfigEntry<bool> SkipGemContinue;
         internal static ConfigEntry<bool> MasterStatReset;
         internal static ConfigEntry<bool> ResetStatsPerStage;
@@ -217,10 +214,6 @@ namespace BomberQoL
                 "Character key whose texture is replaced (for example white, black, simon).");
             CharacterSkinTexture = Config.Bind("CharacterSkin", "Texture", "",
                 "PNG path. Empty uses the first PNG under BepInEx/plugins/BomberQoL/skins.");
-            CharacterAccessoryEnabled = Config.Bind("CharacterAccessory", "Enabled", false,
-                "Attach a rigid OBJ part (cape, goggles, hat) to the target character.");
-            CharacterAccessoryFolder = Config.Bind("CharacterAccessory", "Folder", "viewtifuljoe_cape",
-                "Folder under BepInEx/plugins/BomberQoL/accessories. Empty uses the first folder.");
             SkipGemContinue = Config.Bind("Gameplay", "SkipGemContinue", true,
                 "On story game over, skip the gem continue dialog and return to the main menu.");
             MasterStatReset = Config.Bind("Gameplay", "MasterStatReset", true,
@@ -328,7 +321,6 @@ namespace BomberQoL
             harmony.PatchAll(typeof(MainMenuOptionPatch));
             harmony.PatchAll(typeof(RandomEnemiesPatch));
             harmony.PatchAll(typeof(CharacterSkinCreatePatch));
-            harmony.PatchAll(typeof(CharacterAccessoryCreatePatch));
             harmony.PatchAll(typeof(EnemySpawnLogPatch));
             harmony.PatchAll(typeof(MainMenuLabelPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
@@ -1973,317 +1965,6 @@ namespace BomberQoL
         }
     }
 
-    [HarmonyPatch(typeof(Player.CharacterModel), "create")]
-    internal static class CharacterAccessoryCreatePatch
-    {
-        private static void Postfix(Player.CharacterModel __instance)
-        {
-            CharacterAccessory.Apply(__instance);
-        }
-    }
-
-    internal static class CharacterAccessory
-    {
-        private static readonly FieldInfo ModelField =
-            AccessTools.Field(typeof(Player.CharacterModel), "_model");
-        private static bool _logged;
-
-        internal static string Root
-        {
-            get
-            {
-                return Path.Combine(Path.Combine(Paths.PluginPath,
-                    "BomberQoL"), "accessories");
-            }
-        }
-
-        internal static string FolderName
-        {
-            get
-            {
-                string folder = Plugin.CharacterAccessoryFolder.Value;
-                return string.IsNullOrEmpty(folder) ? "first" : folder;
-            }
-        }
-
-        internal static void Apply(Player.CharacterModel model)
-        {
-            if (!Plugin.CharacterAccessoryEnabled.Value || model == null)
-                return;
-            CharacterDataManager cd =
-                SingletonBase<CharacterDataManager>.getInstance();
-            if (cd == null) return;
-            CharacterInfoDataTable.CharacterInfoData info =
-                cd.getCharacterInfo(model.characterId);
-            if (info == null) return;
-            string target = Plugin.CharacterSkinTarget.Value;
-            if (!string.IsNullOrEmpty(target) &&
-                !string.Equals(target, "all",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(info.charKey, target,
-                    StringComparison.OrdinalIgnoreCase))
-                return;
-            GameObject go = ModelField.GetValue(model) as GameObject;
-            if (go == null) return;
-
-            string folder = Plugin.CharacterAccessoryFolder.Value;
-            string dir = null;
-            if (!string.IsNullOrEmpty(folder))
-            {
-                dir = Path.Combine(Root, folder);
-            }
-            else
-            {
-                string[] dirs = Directory.Exists(Root)
-                    ? Directory.GetDirectories(Root) : new string[0];
-                Array.Sort(dirs, StringComparer.OrdinalIgnoreCase);
-                if (dirs.Length > 0) dir = dirs[0];
-            }
-            if (dir == null || !Directory.Exists(dir)) return;
-            string obj = Path.Combine(dir, "model.obj");
-            if (!File.Exists(obj))
-            {
-                string[] objs = Directory.GetFiles(dir, "*.obj",
-                    SearchOption.AllDirectories);
-                if (objs.Length == 0) return;
-                obj = objs[0];
-            }
-
-            Mesh mesh = LoadMesh(obj);
-            if (mesh == null) return;
-            string bone = "model";
-            float scale = 0.18f;
-            Vector3 offset = new Vector3(0f, 1.1f, -0.25f);
-            Vector3 euler = Vector3.zero;
-            ReadConfig(dir, ref bone, ref scale, ref offset, ref euler);
-
-            Transform parent = go.transform;
-            if (!string.IsNullOrEmpty(bone) &&
-                !string.Equals(bone, "model",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                Transform found = FindBone(go.transform, bone);
-                if (found != null) parent = found;
-            }
-
-            GameObject part = new GameObject("BomberQoL_Accessory");
-            part.transform.SetParent(parent, false);
-            part.transform.localPosition = offset;
-            part.transform.localRotation = Quaternion.Euler(euler);
-            part.transform.localScale = Vector3.one * scale;
-            MeshFilter mf = part.AddComponent<MeshFilter>();
-            mf.sharedMesh = mesh;
-            MeshRenderer mr = part.AddComponent<MeshRenderer>();
-            Material source = FindMaterial(go);
-            Material mat = source == null
-                ? new Material(Shader.Find("Diffuse"))
-                : new Material(source);
-            Texture2D tex = LoadTexture(dir);
-            if (tex != null)
-            {
-                mat.mainTexture = tex;
-                if (mat.HasProperty("_MainTex"))
-                    mat.SetTexture("_MainTex", tex);
-                if (mat.HasProperty("_BaseMap"))
-                    mat.SetTexture("_BaseMap", tex);
-            }
-            if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
-            mr.sharedMaterial = mat;
-            if (!_logged)
-            {
-                _logged = true;
-                Plugin.Log.LogInfo("Character accessory: " + info.charKey +
-                    " <- " + Path.GetFileName(dir) + " on " + bone);
-            }
-        }
-
-        private static void ReadConfig(string dir, ref string bone,
-            ref float scale, ref Vector3 offset, ref Vector3 euler)
-        {
-            string path = Path.Combine(dir, "config.txt");
-            if (!File.Exists(path)) return;
-            foreach (string raw in File.ReadAllLines(path))
-            {
-                string line = raw.Trim();
-                int eq = line.IndexOf('=');
-                if (eq <= 0) continue;
-                string key = line.Substring(0, eq).Trim().ToLowerInvariant();
-                string val = line.Substring(eq + 1).Trim();
-                float f;
-                if (key == "bone")
-                {
-                    bone = val;
-                    continue;
-                }
-                if (!float.TryParse(val, NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out f)) continue;
-                if (key == "scale") scale = f;
-                else if (key == "yaw") euler.y = f;
-                else if (key == "pitch") euler.x = f;
-                else if (key == "roll") euler.z = f;
-                else if (key == "offsetx") offset.x = f;
-                else if (key == "offsety") offset.y = f;
-                else if (key == "offsetz") offset.z = f;
-            }
-        }
-
-        private static Transform FindBone(Transform t, string name)
-        {
-            if (t.name == name) return t;
-            for (int i = 0; i < t.childCount; i++)
-            {
-                Transform found = FindBone(t.GetChild(i), name);
-                if (found != null) return found;
-            }
-            return null;
-        }
-
-        private static Material FindMaterial(GameObject go)
-        {
-            SkinnedMeshRenderer[] smrs =
-                go.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-            SkinnedMeshRenderer best = null;
-            for (int i = 0; i < smrs.Length; i++)
-            {
-                if (smrs[i] == null || smrs[i].sharedMesh == null) continue;
-                if (best == null || smrs[i].sharedMesh.vertexCount >
-                    best.sharedMesh.vertexCount)
-                    best = smrs[i];
-            }
-            return best == null ? null : best.sharedMaterial;
-        }
-
-        private static Texture2D LoadTexture(string dir)
-        {
-            string p = Path.Combine(dir, "texture.png");
-            if (!File.Exists(p))
-            {
-                string[] pngs = Directory.GetFiles(dir, "*.png",
-                    SearchOption.AllDirectories);
-                if (pngs.Length == 0) return null;
-                p = pngs[0];
-            }
-            try
-            {
-                byte[] bytes = File.ReadAllBytes(p);
-                Texture2D tex = new Texture2D(2, 2, TextureFormat.ARGB32,
-                    false);
-                if (!tex.LoadImage(bytes)) return null;
-                tex.wrapMode = TextureWrapMode.Clamp;
-                return tex;
-            }
-            catch { return null; }
-        }
-
-        private static Mesh LoadMesh(string path)
-        {
-            var positions = new List<Vector3>();
-            var uvs = new List<Vector2>();
-            var vertices = new List<Vector3>();
-            var texcoords = new List<Vector2>();
-            var map = new Dictionary<string, int>();
-            var tris = new List<int>();
-            foreach (string raw in File.ReadAllLines(path))
-            {
-                string line = raw.Trim();
-                if (line.StartsWith("v "))
-                {
-                    positions.Add(ParseVec3(line, 2));
-                }
-                else if (line.StartsWith("vt "))
-                {
-                    Vector3 v = ParseVec3(line, 3);
-                    uvs.Add(new Vector2(v.x, v.y));
-                }
-                else if (line.StartsWith("f "))
-                {
-                    string[] parts = line.Split(new[] { ' ' },
-                        StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length < 4) continue;
-                    int[] idx = new int[parts.Length - 1];
-                    for (int i = 1; i < parts.Length; i++)
-                    {
-                        string[] f = parts[i].Split('/');
-                        int pi = ParseIndex(f[0], positions.Count);
-                        int ti = f.Length > 1 && f[1].Length > 0
-                            ? ParseIndex(f[1], uvs.Count) : -1;
-                        string key = pi + "/" + ti;
-                        int vi;
-                        if (!map.TryGetValue(key, out vi))
-                        {
-                            vi = vertices.Count;
-                            map[key] = vi;
-                            vertices.Add(positions[pi]);
-                            texcoords.Add(ti >= 0 ? uvs[ti] : Vector2.zero);
-                        }
-                        idx[i - 1] = vi;
-                    }
-                    for (int i = 1; i < idx.Length - 1; i++)
-                    {
-                        tris.Add(idx[0]);
-                        tris.Add(idx[i]);
-                        tris.Add(idx[i + 1]);
-                    }
-                }
-            }
-            if (vertices.Count == 0) return null;
-            Vector3 min = vertices[0], max = vertices[0];
-            for (int i = 1; i < vertices.Count; i++)
-            {
-                min = Vector3.Min(min, vertices[i]);
-                max = Vector3.Max(max, vertices[i]);
-            }
-            Vector3 center = (min + max) * 0.5f;
-            for (int i = 0; i < vertices.Count; i++)
-                vertices[i] -= center;
-
-            int count = tris.Count;
-            for (int i = 0; i < count; i += 3)
-            {
-                tris.Add(tris[i]);
-                tris.Add(tris[i + 2]);
-                tris.Add(tris[i + 1]);
-            }
-            Mesh mesh = new Mesh();
-            mesh.name = "BomberQoL_Accessory";
-            mesh.vertices = vertices.ToArray();
-            mesh.uv = texcoords.ToArray();
-            mesh.triangles = tris.ToArray();
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
-            return mesh;
-        }
-
-        private static Vector3 ParseVec3(string line, int start)
-        {
-            string[] p = line.Split(new[] { ' ', '\t' },
-                StringSplitOptions.RemoveEmptyEntries);
-            float x = 0f, y = 0f, z = 0f;
-            if (p.Length > start)
-                float.TryParse(p[start], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out x);
-            if (p.Length > start + 1)
-                float.TryParse(p[start + 1], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out y);
-            if (p.Length > start + 2)
-                float.TryParse(p[start + 2], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out z);
-            return new Vector3(x, y, z);
-        }
-
-        private static int ParseIndex(string token, int count)
-        {
-            int idx;
-            if (!int.TryParse(token, NumberStyles.Integer,
-                    CultureInfo.InvariantCulture, out idx)) return 0;
-            if (idx < 0) idx = count + idx;
-            else idx -= 1;
-            if (idx < 0) idx = 0;
-            if (idx >= count) idx = count - 1;
-            return idx;
-        }
-    }
-
     internal static class PlatformCharacters
     {
         private static readonly HashSet<string> ExclusiveKeys =
@@ -3604,7 +3285,7 @@ namespace BomberQoL
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
                 if (_tab == 3) return 15;
-                if (_tab == 4) return 4;
+                if (_tab == 4) return 3;
                 return 0;
             }
         }
@@ -3845,7 +3526,6 @@ namespace BomberQoL
                         Plugin.CharacterSkinTarget.Value =
                             SkinTargetKeys[_skinTargetIndex];
                         break;
-                    case 3: Toggle(Plugin.CharacterAccessoryEnabled); break;
                 }
                 return;
             }
@@ -4511,10 +4191,9 @@ namespace BomberQoL
         {
             int target = Mathf.Clamp(_skinTargetIndex, 0,
                 SkinTargetLabels.Length - 1);
-            Summary("Skin: " + CharacterSkin.TextureName + "  |  " +
+            Summary("Skin: " + CharacterSkin.TextureName + "  |  Replace: " +
                 SkinTargetLabels[target] + "  |  " +
-                OnOff(Plugin.CharacterSkinEnabled.Value) + "  |  Part " +
-                OnOff(Plugin.CharacterAccessoryEnabled.Value));
+                OnOff(Plugin.CharacterSkinEnabled.Value));
             DrawToggle(0, Plugin.CharacterSkinEnabled,
                 "Use custom character skin");
             GUILayout.BeginHorizontal(RowStyle(1));
@@ -4535,8 +4214,6 @@ namespace BomberQoL
             }
             GUILayout.EndVertical();
             NoteRow(2);
-            DrawToggle(3, Plugin.CharacterAccessoryEnabled,
-                "Attach imported part (" + CharacterAccessory.FolderName + ")");
 
             GUILayout.Space(8);
             GUILayout.Label("Skins folder: " + CharacterSkin.SkinsRoot);
@@ -4626,9 +4303,7 @@ namespace BomberQoL
                 "BepInEx/plugins/BomberQoL/skins/ or set an exact path in " +
                 "[CharacterSkin] Texture. Choose the character with the " +
                 "Replace character row; changes apply on the next battle or " +
-                "character preview. The accessory toggle attaches a rigid " +
-                "OBJ part from BepInEx/plugins/BomberQoL/accessories/ to the " +
-                "character, such as the Joe cape.", _helpStyle);
+                "character preview.", _helpStyle);
 
             GUILayout.Space(8);
             GUILayout.Label("Settings", _helpHeading);

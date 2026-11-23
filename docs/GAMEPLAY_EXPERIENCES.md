@@ -402,39 +402,6 @@ Texture = /path/to/skin.png
 Changes apply on the next battle or character preview. Use the F9 **Skins**
 tab to toggle, choose the target character, or reload.
 
-### Accessory parts
-
-A rigid OBJ part can be attached to the character root or a named bone:
-
-```ini
-[CharacterAccessory]
-Enabled = false
-Folder = viewtifuljoe_cape
-```
-
-`BepInEx/plugins/BomberQoL/accessories/<name>/` contains `model.obj`,
-`texture.png` and an optional `config.txt`:
-
-```ini
-bone=model
-scale=0.18
-pitch=90
-roll=0
-yaw=0
-offsetx=0
-offsety=1.15
-offsetz=-0.22
-```
-
-- `bone=model` follows the character root; use `C_spine`, `C_head`, etc. for a
-  bone attachment.
-- The mesh is centered, scaled, rotated and offset; geometry is made
-  double-sided automatically.
-- Parts are rigid: a cape will not flutter and a part authored in another
-  character's pose may need rotation/scale tuning.
-- The included Joe cape/goggles folders are experimental; the texture skin is
-  the cleaner "new character" route.
-
 ## Story game over
 
 ```ini
