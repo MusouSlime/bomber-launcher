@@ -9,8 +9,9 @@ repository. Keep keys, NSPs and extracted content local.
 |---|---|
 | `Super-Bomberman-R-Switch-NSP-Base-Game.rar` | **Valid.** 1.9 GB NSP, title `01007AD00013E000`, v0 |
 | `Super-Bomberman-R-Switch-NSP-Update-2.2.rar` | **Valid.** 2.6 GB NSP, title `01007AD00013E800`, v720896 |
-| `SUPER BOMBERMAN R 2 Switch NSP Update v393216.rar` | **Valid update only.** 339 MB, title `0100B87017D94800`, v393216 |
-| `SUPER-BOMBERMAN-R-2-Switch-NSP-Base-Game.rar` | **0 bytes — incomplete.** SBR2 base is missing |
+| `SUPER BOMBERMAN R 2 Switch NSP Update v393216.rar` | **Valid update.** 339 MB, title `0100B87017D94800`, v393216 |
+| `SUPER-BOMBERMAN-R-2-Switch-NSP-Base-Game(1).rar` | **Valid.** 4.8 GB NSP, title `0100B87017D94000`, v0 |
+| `SUPER-BOMBERMAN-R-2-Switch-NSP-Base-Game.rar` | 0 bytes (superseded by the `(1)` download) |
 | `GameCube - Viewtiful Joe ... .zip` | Ignored for this scope |
 
 Keys are present at `~/.switch/prod.keys` and `~/.switch/title.keys`.
@@ -35,8 +36,15 @@ Keys are present at `~/.switch/prod.keys` and `~/.switch/title.keys`.
 - SBR1 update 2.2 uses **DeltaFragment NCAs**; the program NCA's RomFS is not
   directly readable with `nstool --basenca`. A delta-aware extractor
   (`hactool` / Ryujinx RomFS dump) is required to see the update-only assets.
-- **SBR2 update** program NCA also needs its base NCA for RomFS; the base NSP
-  is missing. Only ExeFS/Control/Meta are accessible from the update.
+- **SBR2 base** extracts cleanly: 4.8 GB RomFS.
+  - `Data/StreamingAssets/InAppAssets/Switch/` uses the same categories as the
+    PC `Win64` build (`chara`, `defines`, `map`, `costume`, `sounds`, ...).
+  - Unity **2020.3.36f1**, same as PC.
+  - Unlike PC, the Switch payload bundles are **plain `UnityFS`**, not
+    AES-header-encrypted. UnityPy loads `defines/common` (875 objects),
+    `chara/chara_001` (11,658 objects) and `common_battle` directly.
+- **SBR2 update** uses delta fragments; its RomFS needs a delta-aware extractor
+  (hactool/Ryujinx dump). The base alone is already moddable.
 - Ryujinx (Ryubing 1.3.3 Flatpak) is installed and has keys/firmware paths, so
   it is the practical test/install/dump environment.
 
@@ -50,8 +58,9 @@ Keys are present at `~/.switch/prod.keys` and `~/.switch/title.keys`.
 | Switch maps/stages → PC | Medium | Map/env/thumbnail bundles may be compatible; table IDs and scene flow need checks. |
 | **Full QoL plugin/F9 menu on Switch** | **Low** | Switch SBR1 is ARM64 IL2CPP (`Data/Managed/Metadata`), not a .NET `Assembly-CSharp.dll`. BepInEx 5 x86/x64 cannot run. Requires ARM64/IL2CPP hooks or a sysmodule. |
 | Simple cheat toggles on Switch | Medium | Atmosphere cheats can patch memory/values, but not complex menus, randomizers or save-scoped logic. |
-| SBR2 asset/data mods (Switch) | **Blocked** | Base NSP missing (0-byte RAR); update RomFS cannot be reconstructed without it. |
-| SBR2 PC mods → Switch | Blocked now | Needs base + same bundle/key comparison. SBR2 is Unity 2020 IL2CPP; PC tools exist, Switch key/format unknown. |
+| **SBR2 asset/data mods (Switch base)** | **High** | Base RomFS extracted; Switch bundles are plain Unity 2020.3.36f1 and load with UnityPy. |
+| SBR2 PC ↔ Switch data/assets | **High for base content** | Same Unity version and table schemas; Switch bundles are easier (no AES header). Update-only content needs delta extraction. |
+| SBR2 code mods | Low | IL2CPP ARM64; no BepInEx on Switch. |
 | Repack modified NSP | **Not recommended** | Requires NCA re-encryption/signing/tickets; LayeredFS is the standard, safer path. |
 
 ## Recommended approach
@@ -91,15 +100,15 @@ This is the most valuable cross-platform direction:
 
 The same route can bring other Switch-only maps, costumes or music to PC.
 
-### 3. SBR2
+### 3. SBR2 (now unblocked for base content)
 
-Blocked until a valid base NSP is available. Once obtained:
-
-- Extract base + update, compare `defines/common` and asset-bundle formats with
-  the PC build.
-- Check whether the PC AES header key works on Switch bundles.
-- Port the existing PC SBR2 data patches (EXP, maps, costumes) to LayeredFS, or
-  extract Switch-exclusive content to PC.
+- Base RomFS is extracted and loads with UnityPy; no AES decryption is needed
+  for Switch bundles.
+- Start with data/asset patches in `defines/common`, `chara`, `costume`, `map`
+  and `sounds`; build a LayeredFS pack under the SBR2 base/update title IDs.
+- Use `tools/sbr2_data_patch.py`/`sbr2_pack.py` as the basis, with the
+  decryption step bypassed for Switch bundles.
+- Extract the update with a delta-aware tool for update-only content.
 
 ### 4. Code features
 
