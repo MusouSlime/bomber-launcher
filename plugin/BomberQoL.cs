@@ -24,7 +24,7 @@ namespace BomberQoL
         Difficulty
     }
 
-    [BepInPlugin(GUID, "Bomber QoL", "0.6.6")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.7")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -61,6 +61,7 @@ namespace BomberQoL
         internal static ConfigEntry<int> PracticePenetration;
         internal static ConfigEntry<int> PracticeElasticity;
         internal static ConfigEntry<string> CustomBgmFolder;
+        internal static ConfigEntry<string> CustomBgmSource;
         internal static ConfigEntry<bool> CustomBgmPlaylist;
         internal static ConfigEntry<float> CustomBgmVolume;
         internal static ConfigEntry<bool> CustomBgmShuffle;
@@ -69,6 +70,7 @@ namespace BomberQoL
         internal static ConfigEntry<float> CustomSfxVolume;
         internal static ConfigEntry<bool> RandomStoryCharacters;
         internal static ConfigEntry<bool> RandomMoveSets;
+        internal static ConfigEntry<bool> RandomEnemies;
         internal static ConfigEntry<int> RandomizerSeed;
         internal static ConfigEntry<bool> SkipCharacterSelect;
         internal static ConfigEntry<bool> UnlockRoomAchievements;
@@ -166,7 +168,9 @@ namespace BomberQoL
             PracticeElasticity = Config.Bind("Practice", "StatsElasticity", 0,
                 "Custom practice elasticity (index 14).");
             CustomBgmFolder = Config.Bind("Audio", "CustomBgmFolder", "",
-                "Folder containing custom .ogg/.wav/.mp3 BGM files. Empty disables replacement.");
+                "Folder containing custom .ogg/.wav BGM files. Empty disables replacement. The launcher converts MP3/FLAC folders into this folder.");
+            CustomBgmSource = Config.Bind("Audio", "CustomBgmSource", "",
+                "Original music folder chosen in the launcher (for display).");
             CustomBgmPlaylist = Config.Bind("Audio", "CustomBgmPlaylist", false,
                 "If a BGM label has no matching file, cycle through the folder instead of using the original track.");
             CustomBgmVolume = Config.Bind("Audio", "CustomBgmVolume", 0.8f,
@@ -181,6 +185,8 @@ namespace BomberQoL
                 "Volume for custom sound effects (0.0 - 1.0).");
             RandomStoryCharacters = Config.Bind("Randomizer", "RandomStoryCharacters", false,
                 "Randomize the story character selection at each StageSetup.");
+            RandomEnemies = Config.Bind("Randomizer", "RandomEnemies", false,
+                "Randomize the enemy types that spawn on story/practice maps (uses each map's enemy palette).");
             RandomMoveSets = Config.Bind("Randomizer", "RandomMoveSets", false,
                 "Shuffle the A-button special ability on each character status; the normal B-button bomb stays intact.");
             RandomizerSeed = Config.Bind("Randomizer", "Seed", 0,
@@ -302,6 +308,7 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PlatformUsableCharacterPatch));
             harmony.PatchAll(typeof(PlatformUsableBuiltinPatch));
             harmony.PatchAll(typeof(MainMenuOptionPatch));
+            harmony.PatchAll(typeof(RandomEnemiesPatch));
             harmony.PatchAll(typeof(MainMenuLabelPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
             harmony.PatchAll(typeof(CustomBgmChangePatch));
@@ -391,7 +398,6 @@ namespace BomberQoL
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             Practice.OnSceneLoaded(scene);
-            Randomizer.ApplyMoveSets();
             Randomizer.EnsureBombNormalSkills();
             PlatformCharacters.ApplyLocaleNames();
             MainMenuQoLUtility.Apply();
@@ -1034,16 +1040,32 @@ namespace BomberQoL
             if (folder != _folder)
             {
                 _folder = folder;
-                string[] all = Directory.GetFiles(folder);
-                var list = new List<string>();
+                string[] all;
+                try
+                {
+                    all = Directory.GetFiles(folder, "*",
+                        SearchOption.AllDirectories);
+                }
+                catch
+                {
+                    all = Directory.GetFiles(folder);
+                }
+                var decodable = new List<string>();
+                var compressed = new List<string>();
                 for (int i = 0; i < all.Length; i++)
                 {
                     string ext = Path.GetExtension(all[i]).ToLowerInvariant();
-                    if (ext == ".ogg" || ext == ".wav" || ext == ".mp3")
-                        list.Add(all[i]);
+                    if (ext == ".ogg" || ext == ".wav")
+                        decodable.Add(all[i]);
+                    else if (ext == ".mp3")
+                        compressed.Add(all[i]);
                 }
-                list.Sort(StringComparer.OrdinalIgnoreCase);
-                _files = list.ToArray();
+                if (decodable.Count == 0) decodable = compressed;
+                decodable.Sort(StringComparer.OrdinalIgnoreCase);
+                _files = decodable.ToArray();
+                Plugin.Log.LogInfo("Custom SFX: " + _files.Length +
+                    " files (" + decodable.Count + " direct, " +
+                    compressed.Count + " mp3) in " + folder);
             }
             if (_files == null || _files.Length == 0) return null;
 
@@ -1303,17 +1325,39 @@ namespace BomberQoL
             if (folder != _folder)
             {
                 _folder = folder;
-                string[] all = Directory.GetFiles(folder);
-                var list = new List<string>();
+                string[] all;
+                try
+                {
+                    all = Directory.GetFiles(folder, "*",
+                        SearchOption.AllDirectories);
+                }
+                catch
+                {
+                    all = Directory.GetFiles(folder);
+                }
+                var decodable = new List<string>();
+                var compressed = new List<string>();
                 for (int i = 0; i < all.Length; i++)
                 {
                     string ext = Path.GetExtension(all[i]).ToLowerInvariant();
-                    if (ext == ".ogg" || ext == ".wav" || ext == ".mp3")
-                        list.Add(all[i]);
+                    if (ext == ".ogg" || ext == ".wav")
+                        decodable.Add(all[i]);
+                    else if (ext == ".mp3" || ext == ".flac" ||
+                             ext == ".m4a" || ext == ".opus")
+                        compressed.Add(all[i]);
                 }
-                list.Sort(StringComparer.OrdinalIgnoreCase);
-                _files = list.ToArray();
+                decodable.Sort(StringComparer.OrdinalIgnoreCase);
+                _files = decodable.ToArray();
                 _playlistIndex = 0;
+                _bag = null;
+                _bagPos = 0;
+                Plugin.Log.LogInfo("Custom BGM: " + _files.Length +
+                    " playable tracks, " + compressed.Count +
+                    " compressed files skipped in " + folder);
+                if (compressed.Count > 0)
+                    Plugin.Log.LogWarning(
+                        "Custom BGM: MP3/FLAC files need conversion; " +
+                        "choose the folder in the launcher to build the OGG cache.");
             }
             if (_files == null || _files.Length == 0) return null;
 
@@ -1336,14 +1380,40 @@ namespace BomberQoL
             return file;
         }
 
+        private readonly System.Random _rng = new System.Random(
+            unchecked(Environment.TickCount * 397) ^
+            Guid.NewGuid().GetHashCode());
+        private int[] _bag;
+        private int _bagPos;
         private int _lastRandom = -1;
+
+        private void ShuffleBag()
+        {
+            int n = _files.Length;
+            if (_bag == null || _bag.Length != n) _bag = new int[n];
+            for (int i = 0; i < n; i++) _bag[i] = i;
+            for (int i = n - 1; i > 0; i--)
+            {
+                int j = _rng.Next(i + 1);
+                int t = _bag[i];
+                _bag[i] = _bag[j];
+                _bag[j] = t;
+            }
+            _bagPos = 0;
+            if (n > 1 && _bag[0] == _lastRandom)
+            {
+                int t = _bag[0];
+                _bag[0] = _bag[n - 1];
+                _bag[n - 1] = t;
+            }
+        }
 
         private string RandomFile()
         {
             if (_files == null || _files.Length == 0) return null;
             if (_files.Length == 1) return _files[0];
-            int idx = UnityEngine.Random.Range(0, _files.Length);
-            if (idx == _lastRandom) idx = (idx + 1) % _files.Length;
+            if (_bag == null || _bagPos >= _bag.Length) ShuffleBag();
+            int idx = _bag[_bagPos++];
             _lastRandom = idx;
             return _files[idx];
         }
@@ -2889,6 +2959,7 @@ namespace BomberQoL
         private float _comboHeld;
         private float _lastPadLog;
         private bool _comboLatched;
+        private Vector2 _helpScroll;
 
         private void Awake()
         {
@@ -2917,7 +2988,8 @@ namespace BomberQoL
                 if (_tab == 0) return 5;
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
-                return 15;
+                if (_tab == 3) return 15;
+                return 0;
             }
         }
 
@@ -2970,17 +3042,17 @@ namespace BomberQoL
 
             if (Input.GetKeyDown(KeyCode.Q) || PadButtonDown("L"))
             {
-                _tab = (_tab + 3) % 4;
+                _tab = (_tab + 4) % 5;
                 _row = 0;
             }
             if (Input.GetKeyDown(KeyCode.E) || PadButtonDown("R"))
             {
-                _tab = (_tab + 1) % 4;
+                _tab = (_tab + 1) % 5;
                 _row = 0;
             }
             if (Input.GetKeyDown(KeyCode.Tab))
             {
-                _tab = (_tab + 1) % 4;
+                _tab = (_tab + 1) % 5;
                 _row = 0;
             }
             HandleNavigation();
@@ -3045,8 +3117,6 @@ namespace BomberQoL
         private static void Toggle(ConfigEntry<bool> entry)
         {
             entry.Value = !entry.Value;
-            if (entry == Plugin.RandomMoveSets && entry.Value)
-                Randomizer.ApplyMoveSets(true);
             if (entry == Plugin.PlatformExclusives && entry.Value)
                 PlatformCharacters.ApplyLocaleNames();
             if (entry == Plugin.FastResults)
@@ -3080,6 +3150,7 @@ namespace BomberQoL
 
         private void ChangeRowValue(int delta)
         {
+            if (_tab == 4) return;
             if (_tab == 0)
             {
                 switch (_row)
@@ -3152,7 +3223,7 @@ namespace BomberQoL
                 case 4: Toggle(Plugin.PickupToast); break;
                 case 5: ToggleDifficultyOdds(); break;
                 case 6: Toggle(Plugin.RandomStoryCharacters); break;
-                case 7: Toggle(Plugin.RandomMoveSets); break;
+                case 7: Toggle(Plugin.RandomEnemies); break;
                 case 8: Toggle(Plugin.SkipCharacterSelect); break;
                 case 9: Toggle(Plugin.ResetStatsPerStage); break;
                 case 10: Toggle(Plugin.MasterStatReset); break;
@@ -3162,6 +3233,7 @@ namespace BomberQoL
 
         private void ActivateRow()
         {
+            if (_tab == 4) return;
             if (_tab == 0 && _row == 4)
             {
                 StartPractice();
@@ -3204,9 +3276,20 @@ namespace BomberQoL
             _upHeld = ay > 0.5f;
             _downHeld = ay < -0.5f;
 
-            if (left || right) ChangeRowValue(left ? -1 : 1);
-            if (up) _row = (_row + RowCount - 1) % RowCount;
-            if (down) _row = (_row + 1) % RowCount;
+            if (_tab == 4)
+            {
+                if (up) _helpScroll.y = Mathf.Max(0f,
+                    _helpScroll.y - 40f);
+                if (down) _helpScroll.y += 40f;
+            }
+            else
+            {
+                if (left || right) ChangeRowValue(left ? -1 : 1);
+                if (up && RowCount > 0)
+                    _row = (_row + RowCount - 1) % RowCount;
+                if (down && RowCount > 0)
+                    _row = (_row + 1) % RowCount;
+            }
 
             bool accept = Input.GetKeyDown(KeyCode.Return) ||
                 Input.GetKeyDown(KeyCode.KeypadEnter) ||
@@ -3253,48 +3336,135 @@ namespace BomberQoL
             }
         }
 
+        private GUIStyle _rowSelectedStyle;
+        private GUIStyle _rowNormalStyle;
+        private Texture2D _rowSelectedTex;
+        private Texture2D _rowNormalTex;
+
+        private static readonly Color MarkerColor =
+            new Color(1f, 0.84f, 0.25f, 1f);
+
+        private static Texture2D MakeSolid(Color color)
+        {
+            Texture2D tex = new Texture2D(1, 1);
+            tex.SetPixel(0, 0, color);
+            tex.Apply();
+            tex.hideFlags = HideFlags.HideAndDontSave;
+            return tex;
+        }
+
+        private GUIStyle RowStyle(int row)
+        {
+            if (_rowSelectedStyle == null)
+            {
+                _rowSelectedTex = MakeSolid(
+                    new Color(0.99f, 0.78f, 0.18f, 0.32f));
+                _rowNormalTex = MakeSolid(new Color(0f, 0f, 0f, 0f));
+                _rowSelectedStyle = new GUIStyle();
+                _rowSelectedStyle.normal.background = _rowSelectedTex;
+                _rowSelectedStyle.padding = new RectOffset(6, 6, 3, 3);
+                _rowSelectedStyle.margin = new RectOffset(0, 0, 1, 1);
+                _rowNormalStyle = new GUIStyle();
+                _rowNormalStyle.normal.background = _rowNormalTex;
+                _rowNormalStyle.padding = new RectOffset(6, 6, 3, 3);
+                _rowNormalStyle.margin = new RectOffset(0, 0, 1, 1);
+            }
+            return row == _row ? _rowSelectedStyle : _rowNormalStyle;
+        }
+
+        private void BeginRow(int row)
+        {
+            GUILayout.BeginHorizontal(RowStyle(row));
+        }
+
+        private void EndRow()
+        {
+            GUILayout.EndHorizontal();
+        }
+
+        private bool RowSelected(int row)
+        {
+            return row == _row;
+        }
+
+        private void ValueButton(int row, int value, int current,
+            string text, float width, Action action)
+        {
+            Color bg = GUI.backgroundColor;
+            Color fg = GUI.contentColor;
+            if (value == current)
+            {
+                GUI.backgroundColor = MarkerColor;
+                GUI.contentColor = Color.black;
+            }
+            else if (RowSelected(row))
+            {
+                GUI.contentColor = MarkerColor;
+            }
+            if (GUILayout.Button(text, GUILayout.Width(width),
+                GUILayout.Height(26)))
+                action();
+            GUI.backgroundColor = bg;
+            GUI.contentColor = fg;
+        }
+
         private void DrawDifficulty()
         {
-            GUILayout.Label((_row == 0 ? "> " : "  ") + "Difficulty");
+            GUILayout.BeginVertical(RowStyle(0));
+            GUILayout.Label((RowSelected(0) ? ">> " : "   ") +
+                "Difficulty");
             GUILayout.BeginHorizontal();
             for (int i = 0; i < DiffLabels.Length; i++)
             {
-                if (GUILayout.Button(DiffLabels[i],
-                    GUILayout.Width(100), GUILayout.Height(26)))
-                    _difficulty = i;
+                int idx = i;
+                ValueButton(0, idx, _difficulty, DiffLabels[idx], 100f,
+                    delegate { _difficulty = idx; });
             }
             GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
         }
 
         private void DrawStats()
         {
-            GUILayout.Label((_row == 1 ? "> " : "  ") + "Stats");
+            GUILayout.BeginVertical(RowStyle(1));
+            GUILayout.Label((RowSelected(1) ? ">> " : "   ") + "Stats");
             GUILayout.BeginHorizontal();
             for (int i = 0; i < StatLabels.Length; i++)
             {
-                if (GUILayout.Button(StatLabels[i],
-                    GUILayout.Width(90), GUILayout.Height(26)))
-                    _stats = i;
+                int idx = i;
+                ValueButton(1, idx, _stats, StatLabels[idx], 90f,
+                    delegate { _stats = idx; });
             }
             GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
         }
 
         private void DrawToggle(int row, ConfigEntry<bool> entry, string label)
         {
+            GUILayout.BeginHorizontal(RowStyle(row));
+            Color old = GUI.contentColor;
+            if (RowSelected(row)) GUI.contentColor = MarkerColor;
             bool value = GUILayout.Toggle(entry.Value,
-                (_row == row ? "> " : "  ") + label);
+                (RowSelected(row) ? ">> " : "   ") + label);
+            GUI.contentColor = old;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
             if (value == entry.Value) return;
             entry.Value = value;
-            if (entry == Plugin.RandomMoveSets && value)
-                Randomizer.ApplyMoveSets();
         }
 
         private void DrawDifficultyOddsToggle(int row)
         {
+            GUILayout.BeginHorizontal(RowStyle(row));
+            Color old = GUI.contentColor;
+            if (RowSelected(row)) GUI.contentColor = MarkerColor;
             bool on = Plugin.RandomPickupPool.Value == PickupPoolMode.Difficulty;
             bool value = GUILayout.Toggle(on,
-                (_row == row ? "> " : "  ") +
+                (RowSelected(row) ? ">> " : "   ") +
                 "Difficulty-based odds");
+            GUI.contentColor = old;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
             if (value == on) return;
             Plugin.RandomPickupPool.Value = value
                 ? PickupPoolMode.Difficulty
@@ -3305,46 +3475,52 @@ namespace BomberQoL
         {
             DrawDifficulty();
 
-            GUILayout.Label((_row == 1 ? "> " : "  ") + "World");
+            GUILayout.BeginVertical(RowStyle(1));
+            GUILayout.Label((RowSelected(1) ? ">> " : "   ") + "World");
             GUILayout.BeginHorizontal();
             for (int i = 1; i <= 7; i++)
             {
-                if (GUILayout.Button(i.ToString(),
-                    GUILayout.Width(56), GUILayout.Height(26)))
-                {
-                    _world = i;
-                    ClampStage();
-                }
+                int world = i;
+                ValueButton(1, world, _world, world.ToString(), 56f,
+                    delegate { _world = world; ClampStage(); });
             }
             GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
 
-            GUILayout.Label((_row == 2 ? "> " : "  ") + "Stage");
+            GUILayout.BeginVertical(RowStyle(2));
+            GUILayout.Label((RowSelected(2) ? ">> " : "   ") + "Stage");
             GUILayout.BeginHorizontal();
             for (int i = 1; i <= MaxStage(_world); i++)
             {
-                if (GUILayout.Button(i.ToString(),
-                    GUILayout.Width(48), GUILayout.Height(26)))
-                    _stage = i;
+                int stage = i;
+                ValueButton(2, stage, _stage, stage.ToString(), 48f,
+                    delegate { _stage = stage; });
             }
             GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
 
-            GUILayout.Space(8);
+            GUILayout.Space(4);
+            GUILayout.BeginHorizontal(RowStyle(3));
+            Color oldColor = GUI.contentColor;
+            if (RowSelected(3)) GUI.contentColor = MarkerColor;
             bool repeat = GUILayout.Toggle(Plugin.PracticeRepeatStage.Value,
-                (_row == 3 ? "> " : "  ") +
+                (RowSelected(3) ? ">> " : "   ") +
                 "Repeat this stage when cleared");
+            GUI.contentColor = oldColor;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
             if (repeat != Plugin.PracticeRepeatStage.Value)
                 Plugin.PracticeRepeatStage.Value = repeat;
 
             GUILayout.Space(10);
-            GUILayout.Label("Practice always starts with default stats.");
-            GUILayout.Label("Beginner all positive.  Expert 50/50.  " +
-                "Master: 50/50 + stat reset.");
-            GUILayout.Label("Story saves suppressed.  Practice starts one stage.");
-            if (GUILayout.Button("Start Practice", GUILayout.Height(36)))
+            GUILayout.BeginVertical(RowStyle(4));
+            if (GUILayout.Button((RowSelected(4) ? ">> " : "   ") +
+                "Start Practice", GUILayout.Height(36)))
                 StartPractice();
-            GUILayout.Label(_row == 4
-                ? "> A: start    B: close    L/R: tabs"
-                : "  A: start    B: close    L/R: tabs");
+            GUILayout.EndVertical();
+            GUILayout.Label(RowSelected(4)
+                ? ">> A: start    B: close    L/R: tabs"
+                : "   A: start    B: close    L/R: tabs");
         }
 
         private void DrawRandomizer()
@@ -3360,7 +3536,7 @@ namespace BomberQoL
             DrawToggle(4, Plugin.PickupToast, "Pickup name popup");
             DrawDifficultyOddsToggle(5);
             DrawToggle(6, Plugin.RandomStoryCharacters, "Random characters");
-            DrawToggle(7, Plugin.RandomMoveSets, "Random A-button specials");
+            DrawToggle(7, Plugin.RandomEnemies, "Random enemies");
             GUILayout.EndVertical();
             GUILayout.BeginVertical(GUILayout.Width(350));
             DrawToggle(8, Plugin.SkipCharacterSelect, "Skip character select");
@@ -3375,11 +3551,14 @@ namespace BomberQoL
                 "Finish all bosses; world 7 last.");
             GUILayout.Label("Beginner all positive.  Veteran 25%.  " +
                 "Expert: 50/50.  Master: 50/50 + reset.");
-            if (GUILayout.Button("Start Random Run", GUILayout.Height(36)))
+            GUILayout.BeginVertical(RowStyle(12));
+            if (GUILayout.Button((RowSelected(12) ? ">> " : "   ") +
+                "Start Random Run", GUILayout.Height(36)))
                 StartRun();
-            GUILayout.Label(_row == 12
-                ? "> A: start    B: close    L/R: tabs"
-                : "  A: start    B: close    L/R: tabs");
+            GUILayout.EndVertical();
+            GUILayout.Label(RowSelected(12)
+                ? ">> A: start    B: close    L/R: tabs"
+                : "   A: start    B: close    L/R: tabs");
         }
 
         private void DrawMultiplayer()
@@ -3392,12 +3571,6 @@ namespace BomberQoL
                 "CPU A-button special abilities");
             DrawToggle(3, Plugin.PlatformExclusives,
                 "Platform exclusives");
-            GUILayout.Space(12);
-            GUILayout.Label("Smarter bots: longer search range and faster retargeting.");
-            GUILayout.Label("Random CPU: randomises COM character slots each battle.");
-            GUILayout.Label("CPU specials: CPUs use their A-button ability when available.");
-            GUILayout.Label("Platform exclusives: unlocks Master Chief/Ratchet/etc.");
-            GUILayout.Label("They can be player characters; they have no NPC AI data.");
             GUILayout.Space(8);
             GUILayout.Label("A: toggle    B: close    L/R: tabs");
         }
@@ -3405,9 +3578,15 @@ namespace BomberQoL
         private void DrawInvertedToggle(int row, ConfigEntry<bool> entry,
             string label)
         {
+            GUILayout.BeginHorizontal(RowStyle(row));
+            Color old = GUI.contentColor;
+            if (RowSelected(row)) GUI.contentColor = MarkerColor;
             bool on = !entry.Value;
             bool value = GUILayout.Toggle(on,
-                (_row == row ? "> " : "  ") + label);
+                (RowSelected(row) ? ">> " : "   ") + label);
+            GUI.contentColor = old;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
             if (value == on) return;
             entry.Value = !value;
             Plugin.ApplyAllPostFx();
@@ -3415,9 +3594,16 @@ namespace BomberQoL
 
         private void DrawAutoSkipToggle(int row)
         {
+            GUILayout.BeginHorizontal(RowStyle(row));
+            Color old = GUI.contentColor;
+            if (RowSelected(row)) GUI.contentColor = MarkerColor;
             bool on = Plugin.AutoSkipMovies.Value > 0f;
             bool value = GUILayout.Toggle(on,
-                (_row == row ? "> " : "  ") + "Auto-skip movies (5s)");
+                (RowSelected(row) ? ">> " : "   ") +
+                "Auto-skip movies (5s)");
+            GUI.contentColor = old;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
             if (value == on) return;
             Plugin.AutoSkipMovies.Value = value ? 5f : 0f;
         }
@@ -3448,19 +3634,112 @@ namespace BomberQoL
 
             GUILayout.Space(10);
             string bgm = Plugin.CustomBgmFolder.Value;
+            string bgmSource = Plugin.CustomBgmSource.Value;
             string sfx = Plugin.CustomSfxFolder.Value;
-            GUILayout.Label("BGM folder: " + (string.IsNullOrEmpty(bgm)
-                ? "none"
-                : Path.GetFileName(bgm.TrimEnd('/', '\\'))));
+            GUILayout.Label("BGM source: " + (string.IsNullOrEmpty(bgmSource)
+                ? (string.IsNullOrEmpty(bgm)
+                    ? "none"
+                    : Path.GetFileName(bgm.TrimEnd('/', '\\')))
+                : Path.GetFileName(bgmSource.TrimEnd('/', '\\'))));
+            GUILayout.Label("BGM cache: " + (string.IsNullOrEmpty(bgm)
+                ? "none" : bgm));
             GUILayout.Label("SFX folder: " + (string.IsNullOrEmpty(sfx)
                 ? "none"
                 : Path.GetFileName(sfx.TrimEnd('/', '\\'))));
-            GUILayout.Label("Folder paths, launch options, voices and backups remain in the launcher.");
             GUILayout.Space(8);
-            if (GUILayout.Button((_row == 14 ? "> " : "  ") +
+            GUILayout.BeginVertical(RowStyle(14));
+            if (GUILayout.Button((RowSelected(14) ? ">> " : "   ") +
                 "Open original game options", GUILayout.Height(30)))
                 MainMenuOptionPatch.OpenOriginalOptions();
-            GUILayout.Label("A: toggle    B: close    L/R: tabs");
+            GUILayout.EndVertical();
+            GUILayout.Label(RowSelected(14)
+                ? ">> A: open    B: close    L/R: tabs"
+                : "   A: toggle    B: close    L/R: tabs");
+        }
+
+        private GUIStyle _helpStyle;
+        private GUIStyle _helpTitle;
+        private GUIStyle _helpHeading;
+
+        private void DrawHelp()
+        {
+            if (_helpStyle == null)
+            {
+                _helpStyle = new GUIStyle(GUI.skin.label);
+                _helpStyle.wordWrap = true;
+                _helpTitle = new GUIStyle(_helpStyle);
+                _helpTitle.fontStyle = FontStyle.Bold;
+                _helpTitle.fontSize = 14;
+                _helpTitle.normal.textColor = MarkerColor;
+                _helpHeading = new GUIStyle(_helpStyle);
+                _helpHeading.fontStyle = FontStyle.Bold;
+                _helpHeading.normal.textColor = MarkerColor;
+            }
+            _helpScroll = GUILayout.BeginScrollView(_helpScroll, false, true);
+
+            GUILayout.Label("Bomber QoL", _helpTitle);
+            GUILayout.Label(
+                "D-pad / left stick: move    Left / Right: change value\n" +
+                "A: toggle or open    B: close    L/R, Q/E or Tab: switch tabs\n" +
+                "Up / Down on this page scrolls the text.", _helpStyle);
+
+            GUILayout.Space(8);
+            GUILayout.Label("Practice", _helpHeading);
+            GUILayout.Label(
+                "Pick a difficulty, world and stage and start one stage with " +
+                "default stats. Story saves are suppressed, so practice does " +
+                "not advance the real story. Optional repeat restarts the same " +
+                "stage when cleared.", _helpStyle);
+
+            GUILayout.Space(8);
+            GUILayout.Label("Randomizer", _helpHeading);
+            GUILayout.Label(
+                "Random characters rerolls the character select at every stage " +
+                "setup. Random enemies shuffles the enemy types that spawn on " +
+                "each story/practice map using that map's own enemy palette. " +
+                "Pickup options change what drops and how it is shown.", _helpStyle);
+            GUILayout.Label(
+                "Start Random Run builds a run of 10 random non-boss stages, " +
+                "then a random undefeated boss. Every boss defeat starts " +
+                "another 10-stage block. All 13 boss battles must be beaten; " +
+                "world 7's final boss is always last.", _helpStyle);
+            GUILayout.Label(
+                "Pickup odds by difficulty: Beginner all positive, Veteran " +
+                "25%, Expert 50/50, Master 50/50 with a per-stage stat reset.",
+                _helpStyle);
+
+            GUILayout.Space(8);
+            GUILayout.Label("Multiplayer", _helpHeading);
+            GUILayout.Label(
+                "Local battle only. Smarter bots search farther and retarget " +
+                "faster. Random CPU randomises COM character slots each " +
+                "battle. CPU specials let CPUs use their A-button ability. " +
+                "Platform exclusives unlock Master Chief, Ratchet and the " +
+                "other built-in platform IDs; they are player-selectable but " +
+                "cannot be CPU opponents because the Steam build has no NPC " +
+                "AI data for them.", _helpStyle);
+
+            GUILayout.Space(8);
+            GUILayout.Label("Settings", _helpHeading);
+            GUILayout.Label(
+                "Runtime launcher options: post-processing effects, fast " +
+                "results, Master difficulty, movie skipping, soft reset, " +
+                "BGM/SFX shuffle and the Bomber QoL main-menu entry. The " +
+                "original game options are still available from this tab.",
+                _helpStyle);
+            GUILayout.Label(
+                "BGM folders are converted to an OGG cache by the launcher. " +
+                "Folder pickers, launch options, voice selection, BepInEx " +
+                "install and save backups stay in the launcher.", _helpStyle);
+
+            GUILayout.Space(8);
+            GUILayout.Label("Notes", _helpHeading);
+            GUILayout.Label(
+                "B is always the normal bomb; A is the character special. " +
+                "Achievements are earned normally; the only helper is the " +
+                "dead online-room unlock in the launcher.", _helpStyle);
+
+            GUILayout.EndScrollView();
         }
 
         private void OnGUI()
@@ -3502,29 +3781,28 @@ namespace BomberQoL
                 w - 32, h - 44));
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(_tab == 0 ? "[ Practice ]" : "Practice",
-                GUILayout.Height(30)))
+            Color oldTabBg = GUI.backgroundColor;
+            Color oldTabFg = GUI.contentColor;
+            string[] tabNames = { "Practice", "Randomizer",
+                "Multiplayer", "Settings", "Help" };
+            for (int i = 0; i < tabNames.Length; i++)
             {
-                _tab = 0;
-                _row = 0;
-            }
-            if (GUILayout.Button(_tab == 1 ? "[ Randomizer ]" : "Randomizer",
-                GUILayout.Height(30)))
-            {
-                _tab = 1;
-                _row = 0;
-            }
-            if (GUILayout.Button(_tab == 2 ? "[ Multiplayer ]" : "Multiplayer",
-                GUILayout.Height(30)))
-            {
-                _tab = 2;
-                _row = 0;
-            }
-            if (GUILayout.Button(_tab == 3 ? "[ Settings ]" : "Settings",
-                GUILayout.Height(30)))
-            {
-                _tab = 3;
-                _row = 0;
+                int tab = i;
+                if (_tab == tab)
+                {
+                    GUI.backgroundColor = MarkerColor;
+                    GUI.contentColor = Color.black;
+                }
+                string name = _tab == tab
+                    ? ">> " + tabNames[tab] + " <<"
+                    : tabNames[tab];
+                if (GUILayout.Button(name, GUILayout.Height(30)))
+                {
+                    _tab = tab;
+                    _row = 0;
+                }
+                GUI.backgroundColor = oldTabBg;
+                GUI.contentColor = oldTabFg;
             }
             GUILayout.FlexibleSpace();
             GUILayout.Label("L1/R1 or Q/E: tab");
@@ -3537,12 +3815,42 @@ namespace BomberQoL
                 DrawRandomizer();
             else if (_tab == 2)
                 DrawMultiplayer();
-            else
+            else if (_tab == 3)
                 DrawSettings();
+            else
+                DrawHelp();
 
             GUILayout.EndArea();
             GUI.skin.label.normal.textColor = oldLabel;
             GUI.skin.toggle.normal.textColor = oldToggle;
+        }
+    }
+
+    [HarmonyPatch(typeof(AbstractBattleSceneBase), "endLoadMapData")]
+    internal static class RandomEnemiesPatch
+    {
+        private static readonly System.Random Rng = new System.Random();
+        private static readonly FieldInfo MapField =
+            AccessTools.Field(typeof(AbstractBattleSceneBase), "_mapData");
+
+        private static void Postfix(AbstractBattleSceneBase __instance)
+        {
+            if (!Plugin.RandomEnemies.Value) return;
+            if (__instance == null) return;
+            if (SceneManager.GetActiveScene().name != "StoryBattle")
+                return;
+            RuntimeMapData map = MapField.GetValue(__instance) as RuntimeMapData;
+            if (map == null) return;
+            string[] pool = map.useEnemyList;
+            RuntimeMapData.EnemyStartPointData[] points =
+                map.enemyStartPointDatas;
+            if (pool == null || pool.Length == 0 ||
+                points == null || points.Length == 0)
+                return;
+            for (int i = 0; i < points.Length; i++)
+                points[i].name = pool[Rng.Next(pool.Length)];
+            Plugin.Log.LogInfo("Random enemies: " + points.Length +
+                " spawns from " + pool.Length + " map types");
         }
     }
 

@@ -65,7 +65,7 @@ public class MainForm : Form
     private LinkLabel _sfxChoose = null!;
     private LinkLabel _sfxClearLink = null!;
     private readonly CheckBox _randomChars = new();
-    private readonly CheckBox _randomMoves = new();
+    private readonly CheckBox _randomEnemies = new();
     private readonly CheckBox _skipChars = new();
     private readonly CheckBox _smartBots = new();
     private readonly CheckBox _randomCpu = new();
@@ -201,8 +201,8 @@ public class MainForm : Form
         AddRow(basic, "Random Story Characters",
             "Random character selection at each StageSetup", _randomChars);
         Separator(basic);
-        AddRow(basic, "Random Move Sets",
-            "Shuffle A-button special abilities; normal bomb stays intact", _randomMoves);
+        AddRow(basic, "Random Enemies",
+            "Shuffle the enemy types that spawn on each story map", _randomEnemies);
         Separator(basic);
         AddRow(basic, "Skip Character Select",
             "Jump into battle when random characters/random run is active", _skipChars);
@@ -307,7 +307,7 @@ public class MainForm : Form
         _shuffleBgm.CheckedChanged += (_, _) => SavePlugin("Audio", "CustomBgmShuffle", _shuffleBgm.Checked);
         _shuffleSfx.CheckedChanged += (_, _) => SavePlugin("Audio", "CustomSfxShuffle", _shuffleSfx.Checked);
         _randomChars.CheckedChanged += (_, _) => SavePlugin("Randomizer", "RandomStoryCharacters", _randomChars.Checked);
-        _randomMoves.CheckedChanged += (_, _) => SavePlugin("Randomizer", "RandomMoveSets", _randomMoves.Checked);
+        _randomEnemies.CheckedChanged += (_, _) => SavePlugin("Randomizer", "RandomEnemies", _randomEnemies.Checked);
         _skipChars.CheckedChanged += (_, _) => SavePlugin("Randomizer", "SkipCharacterSelect", _skipChars.Checked);
         _smartBots.CheckedChanged += (_, _) => SavePlugin("Bots", "SmarterBots", _smartBots.Checked);
         _randomCpu.CheckedChanged += (_, _) => SavePlugin("Multiplayer", "RandomCpuOpponent", _randomCpu.Checked);
@@ -584,8 +584,8 @@ public class MainForm : Form
                     UpdateAudioFolderLinks();
                     _randomChars.Checked =
                         Core.GetPluginOption(_game, "Randomizer", "RandomStoryCharacters", "false") == "true";
-                    _randomMoves.Checked =
-                        Core.GetPluginOption(_game, "Randomizer", "RandomMoveSets", "false") == "true";
+                    _randomEnemies.Checked =
+                        Core.GetPluginOption(_game, "Randomizer", "RandomEnemies", "false") == "true";
                     _skipChars.Checked =
                         Core.GetPluginOption(_game, "Randomizer", "SkipCharacterSelect", "true") == "true";
                     _smartBots.Checked =
@@ -713,22 +713,56 @@ public class MainForm : Form
         RefreshState();
     }
 
-    private void ChooseBgmFolder()
+    private async void ChooseBgmFolder()
     {
         if (_game == null || !Core.PluginInstalled(_game)) return;
+        if (!NeedClosed()) return;
         string current = Core.GetPluginOption(_game, "Audio",
-            "CustomBgmFolder", "").Trim();
+            "CustomBgmSource", "").Trim();
+        if (string.IsNullOrEmpty(current))
+            current = Core.GetPluginOption(_game, "Audio",
+                "CustomBgmFolder", "").Trim();
         using var dlg = new FolderBrowserDialog
         {
-            Description = "Select a folder of .ogg/.wav/.mp3 BGM tracks",
+            Description = "Select a folder of music (MP3/OGG/FLAC/WAV)",
             UseDescriptionForTitle = true,
         };
         if (!string.IsNullOrEmpty(current) && Directory.Exists(current))
             dlg.SelectedPath = current;
-        if (dlg.ShowDialog(this) == DialogResult.OK)
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        string source = dlg.SelectedPath;
+        Cursor = Cursors.WaitCursor;
+        _bgmChoose.Enabled = false;
+        try
         {
-            Guard(() => Core.SetPluginValue(_game!, "Audio",
-                "CustomBgmFolder", dlg.SelectedPath));
+            var result = await Task.Run(() => BgmConverter.Convert(source));
+            Guard(() =>
+            {
+                Core.SetPluginValue(_game!, "Audio", "CustomBgmFolder",
+                    result.Dest);
+                Core.SetPluginValue(_game!, "Audio", "CustomBgmSource",
+                    source);
+            });
+            string message = $"BGM ready: {result.Converted} tracks.";
+            if (result.Skipped > 0)
+                message += $" {result.Skipped} files skipped.";
+            message += "\n\nRestart the game to hear the new music.";
+            MessageBox.Show(this, message, AppName,
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this,
+                "BGM conversion failed: " + ex.Message +
+                "\n\nInstall ffmpeg (or place ffmpeg.exe next to the " +
+                "launcher) to convert MP3/FLAC files.",
+                AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            Cursor = Cursors.Default;
+            _bgmChoose.Enabled = true;
             RefreshState();
         }
     }
@@ -736,8 +770,13 @@ public class MainForm : Form
     private void ClearBgmFolder()
     {
         if (_game == null || !Core.PluginInstalled(_game)) return;
-        Guard(() => Core.SetPluginValue(_game!, "Audio",
-            "CustomBgmFolder", ""));
+        if (!NeedClosed()) return;
+        Guard(() =>
+        {
+            Core.SetPluginValue(_game!, "Audio", "CustomBgmFolder", "");
+            Core.SetPluginValue(_game!, "Audio", "CustomBgmSource", "");
+        });
+        try { Directory.Delete(BgmConverter.CacheDir, true); } catch { }
         RefreshState();
     }
 
@@ -754,8 +793,12 @@ public class MainForm : Form
         }
         _bgmChoose.Enabled = true;
         _sfxChoose.Enabled = true;
-        SetFolderLink(_bgmChoose, _bgmClearLink,
-            Core.GetPluginOption(_game!, "Audio", "CustomBgmFolder", "").Trim());
+        string bgmSource = Core.GetPluginOption(_game!, "Audio",
+            "CustomBgmSource", "").Trim();
+        if (string.IsNullOrEmpty(bgmSource))
+            bgmSource = Core.GetPluginOption(_game!, "Audio",
+                "CustomBgmFolder", "").Trim();
+        SetFolderLink(_bgmChoose, _bgmClearLink, bgmSource);
         SetFolderLink(_sfxChoose, _sfxClearLink,
             Core.GetPluginOption(_game!, "Audio", "CustomSfxFolder", "").Trim());
     }

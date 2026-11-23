@@ -11,7 +11,9 @@ import shutil
 import struct
 import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import OrderedDict
 from pathlib import Path
 
@@ -64,6 +66,102 @@ if not (ART / "hero.png").exists() and not os.environ.get("BOMBER_ASSETS"):
     ART = (PORTABLE / "art") if PORTABLE else (HOME / ".local/share/bomber-launcher/assets")
 HAVE_ART = (ART / "hero.png").exists()
 CONFIG_PATH = (PORTABLE / "config.json") if PORTABLE else (HOME / ".config" / "bomber-launcher" / "config.json")
+AUDIO_CACHE_NAME = "bgm_cache"
+
+
+def _bgm_cache_dir():
+    base = PORTABLE if PORTABLE else (HOME / ".local/share/bomber-launcher")
+    return base / AUDIO_CACHE_NAME
+
+
+def _safe_track_name(stem):
+    cleaned = "".join(
+        c if c not in '/\\:*?"<>|' else "_" for c in stem).strip()
+    return cleaned or "track"
+
+
+def convert_bgm_folder(source, progress=None):
+    """Flatten a music folder into OGG/WAV files the plugin can decode."""
+    source = Path(source).resolve()
+    dest = _bgm_cache_dir().resolve()
+    if source == dest:
+        files = [p for p in dest.rglob("*")
+                 if p.is_file() and p.suffix.lower() in (".ogg", ".wav")]
+        if progress:
+            progress(len(files), len(files))
+        return dest, len(files), 0
+    if dest.exists():
+        shutil.rmtree(dest, ignore_errors=True)
+    dest.mkdir(parents=True, exist_ok=True)
+    exts = (".ogg", ".wav", ".mp3", ".flac", ".m4a", ".aac", ".opus",
+            ".wma")
+    files = []
+    for path in source.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in exts:
+            continue
+        try:
+            if dest == path or dest in path.parents:
+                continue
+        except Exception:
+            pass
+        files.append(path)
+    if not files:
+        raise RuntimeError("No audio files found in that folder")
+    files.sort(key=lambda p: str(p).lower())
+    used = set()
+    jobs = []
+    for src in files:
+        ext = src.suffix.lower()
+        out_ext = ext if ext in (".ogg", ".wav") else ".ogg"
+        stem = _safe_track_name(src.stem)
+        name = stem + out_ext
+        n = 2
+        while name.lower() in used:
+            name = f"{stem}_{n}{out_ext}"
+            n += 1
+        used.add(name.lower())
+        jobs.append((src, out_ext, dest / name))
+
+    ffmpeg = shutil.which("ffmpeg")
+    total = len(jobs)
+    errors = []
+
+    def work(job):
+        src, ext, out = job
+        if ext in (".ogg", ".wav"):
+            shutil.copy2(src, out)
+            return
+        if not ffmpeg:
+            raise RuntimeError("ffmpeg not found")
+        result = subprocess.run(
+            [ffmpeg, "-y", "-loglevel", "error", "-i", str(src), "-vn",
+             "-c:a", "libvorbis", "-q:a", "4", str(out)],
+            capture_output=True, text=True)
+        if result.returncode != 0:
+            lines = (result.stderr or result.stdout).strip().splitlines()
+            raise RuntimeError(lines[-1] if lines else "ffmpeg failed")
+
+    workers = max(1, min(8, os.cpu_count() or 2))
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(work, job) for job in jobs]
+        for future in as_completed(futures):
+            done += 1
+            try:
+                future.result()
+            except Exception as e:
+                errors.append(f"{len(errors) + 1}: {e}")
+            if progress:
+                try:
+                    progress(done, total)
+                except Exception:
+                    pass
+    converted = total - len(errors)
+    if converted == 0:
+        raise RuntimeError(errors[0] if errors else "No tracks converted")
+    return dest, converted, len(errors)
+
+
 
 DLL_REL = Path("SuperBombermanR_Data/Managed/Assembly-CSharp.dll")
 BIN_REL = Path("SuperBombermanR_Data/StreamingAssets/bin")
@@ -706,6 +804,7 @@ class BomberWindow(Adw.ApplicationWindow):
         audio = self._card()
         self._bgm_chooser = None
         self._sfx_chooser = None
+        self._converting = False
         self.bgm_btn = Gtk.Button(label="Choose…")
         self.bgm_btn.set_valign(Gtk.Align.CENTER)
         self.bgm_btn.connect("clicked", self.on_bgm_folder)
@@ -718,7 +817,7 @@ class BomberWindow(Adw.ApplicationWindow):
         bgm_box.append(self.bgm_clear)
         audio.append(self._row(
             "avatar_white.png", "Custom BGM Folder",
-            "Folder of .ogg/.wav/.mp3 tracks; empty keeps the original BGM",
+            "Music folder (MP3/OGG/FLAC/WAV); converted to an OGG cache",
             bgm_box))
         audio.append(self._separator())
 
@@ -764,12 +863,12 @@ class BomberWindow(Adw.ApplicationWindow):
             "Random character selection at each StageSetup",
             self.rand_chars_sw))
         rnd.append(self._separator())
-        self.rand_moves_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
-        self.rand_moves_sw.connect("notify::active", self.on_random_moves)
+        self.rand_enemies_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.rand_enemies_sw.connect("notify::active", self.on_random_enemies)
         rnd.append(self._row(
-            "avatar_pink.png", "Random Move Sets",
-            "Shuffle A-button special abilities; the normal bomb stays intact",
-            self.rand_moves_sw))
+            "avatar_green.png", "Random Enemies",
+            "Shuffle the enemy types that spawn on each story map",
+            self.rand_enemies_sw))
         rnd.append(self._separator())
         self.skip_chars_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.skip_chars_sw.connect("notify::active", self.on_skip_chars)
@@ -1129,8 +1228,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Audio", {}).get("CustomSfxShuffle", "true").lower() == "true")
                     self.rand_chars_sw.set_active(
                         cfg.get("Randomizer", {}).get("RandomStoryCharacters", "false").lower() == "true")
-                    self.rand_moves_sw.set_active(
-                        cfg.get("Randomizer", {}).get("RandomMoveSets", "false").lower() == "true")
+                    self.rand_enemies_sw.set_active(
+                        cfg.get("Randomizer", {}).get("RandomEnemies", "false").lower() == "true")
                     self.skip_chars_sw.set_active(
                         cfg.get("Randomizer", {}).get("SkipCharacterSelect", "true").lower() == "true")
                     self.smart_bots_sw.set_active(
@@ -1231,10 +1330,19 @@ class BomberWindow(Adw.ApplicationWindow):
             btn.set_tooltip_text("No folder selected")
             clear.set_sensitive(False)
 
+    def _audio_source_folder(self, key, source_key):
+        if not self.mods:
+            return ""
+        try:
+            cfg = self.mods.plugin_config().get("Audio", {})
+            return (cfg.get(source_key) or cfg.get(key) or "").strip()
+        except Exception:
+            return ""
+
     def _update_audio_labels(self):
         self._set_folder_button(
             self.bgm_btn, self.bgm_clear,
-            self._audio_folder("CustomBgmFolder"))
+            self._audio_source_folder("CustomBgmFolder", "CustomBgmSource"))
         self._set_folder_button(
             self.sfx_btn, self.sfx_clear,
             self._audio_folder("CustomSfxFolder"))
@@ -1257,9 +1365,16 @@ class BomberWindow(Adw.ApplicationWindow):
         if not self.mods or not self.mods.plugin_installed():
             self.toast("BomberQoL plugin not installed")
             return
+        if game_running():
+            self.toast("Close the game first")
+            return
+        if self._converting:
+            self.toast("BGM conversion already running")
+            return
+        current = self._audio_source_folder(
+            "CustomBgmFolder", "CustomBgmSource")
         self._bgm_chooser = self._open_folder_chooser(
-            "Custom BGM folder", self._audio_folder("CustomBgmFolder"),
-            self._bgm_folder_response)
+            "Custom BGM folder", current, self._bgm_folder_response)
 
     def _bgm_folder_response(self, chooser, response):
         self._bgm_chooser = None
@@ -1267,21 +1382,64 @@ class BomberWindow(Adw.ApplicationWindow):
             f = chooser.get_file()
             path = f.get_path() if f else None
             if path:
-                try:
-                    self.mods.set_plugin_value(
-                        "Audio", "CustomBgmFolder", path)
-                    self._update_audio_labels()
-                    self.toast(f"Custom BGM folder: {path}")
-                except Exception as e:
-                    self.toast(str(e))
+                self._start_bgm_conversion(path)
         chooser.destroy()
+
+    def _start_bgm_conversion(self, source):
+        if self._converting:
+            return
+        if game_running():
+            self.toast("Close the game first")
+            return
+        self._converting = True
+        self.bgm_btn.set_sensitive(False)
+        self.toast("Converting BGM to OGG — this can take a while")
+
+        def report(done, total):
+            GLib.idle_add(self.bgm_btn.set_label,
+                          f"Converting… {done}/{total}")
+
+        def work():
+            try:
+                dest, converted, skipped = convert_bgm_folder(source, report)
+                GLib.idle_add(self._bgm_conversion_done, str(dest),
+                              str(source), converted, skipped, None)
+            except Exception as e:
+                GLib.idle_add(self._bgm_conversion_done, None,
+                              str(source), 0, 0, str(e))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _bgm_conversion_done(self, dest, source, converted, skipped, error):
+        self._converting = False
+        self.bgm_btn.set_sensitive(True)
+        self._update_audio_labels()
+        if error:
+            self.toast("BGM conversion failed: " + error)
+            return False
+        try:
+            self.mods.set_plugin_value("Audio", "CustomBgmFolder", dest)
+            self.mods.set_plugin_value("Audio", "CustomBgmSource", source)
+            self._update_audio_labels()
+            message = f"BGM ready: {converted} tracks"
+            if skipped:
+                message += f", {skipped} skipped"
+            self.toast(message + " — restart the game")
+        except Exception as e:
+            self.toast(str(e))
+        return False
 
     def on_bgm_clear(self, _btn):
         if not self.mods or not self.mods.plugin_installed():
             self.toast("BomberQoL plugin not installed")
             return
+        if game_running():
+            self.toast("Close the game first")
+            return
         try:
             self.mods.set_plugin_value("Audio", "CustomBgmFolder", "")
+            self.mods.set_plugin_value("Audio", "CustomBgmSource", "")
+            shutil.rmtree(_bgm_cache_dir(), ignore_errors=True)
             self._update_audio_labels()
             self.toast("Custom BGM folder cleared")
         except Exception as e:
@@ -1324,8 +1482,8 @@ class BomberWindow(Adw.ApplicationWindow):
     def on_random_chars(self, row, _pspec):
         self._plugin_write("Randomizer", "RandomStoryCharacters", row.get_active())
 
-    def on_random_moves(self, row, _pspec):
-        self._plugin_write("Randomizer", "RandomMoveSets", row.get_active())
+    def on_random_enemies(self, row, _pspec):
+        self._plugin_write("Randomizer", "RandomEnemies", row.get_active())
 
     def on_skip_chars(self, row, _pspec):
         self._plugin_write("Randomizer", "SkipCharacterSelect", row.get_active())

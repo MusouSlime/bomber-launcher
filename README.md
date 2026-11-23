@@ -17,9 +17,9 @@ artwork extracted from the game itself.
 | **Skip Boot Intro** | Replaces the two ~4-minute opening MP4s with a 1-second clip |
 | **Master Difficulty** | BepInEx plugin: activates the hidden Master option in the difficulty menu |
 | **Aspect Ratio** | Windowed borderless at Native, 16:9, 16:10, 21:9 or 4:3 |
-| **Custom BGM Folder** | Play .ogg/.wav/.mp3 files from a folder instead of the game BGM |
+| **Custom BGM Folder** | Play music from a folder; MP3/FLAC are converted into a local OGG cache |
 | **Custom SFX Folder + Shuffle** | Replace or shuffle sound effects by label |
-| **Randomizer** | Random story characters and shuffled character move sets |
+| **Randomizer** | Random story characters and random enemy types |
 | **Room Achievement Helper** | One-shot unlock for the three dead online room achievements |
 | **Multiplayer** | Smarter bots, random CPU characters, CPU specials, and platform-exclusive IDs |
 | **Skip Cutscenes** | BepInEx plugin: Space or a configurable controller button (A/Cross by default) |
@@ -104,19 +104,21 @@ The plugin adds:
   fits the chosen shape inside the desktop (with bars if needed) and passes the
   matching `-screen-width/-screen-height` to Unity.
 - **Custom BGM / SFX shuffle** — choose folders in the launcher. BGM files are
-  matched by label (`BGM_sys_title_01.ogg`, `snd_bgm_btl_stg_01.wav`, …);
+  flattened into a local OGG cache (MP3, FLAC, M4A, OPUS and WMA are converted
+  with ffmpeg); `.ogg`/`.wav` are copied as-is. BGM files are matched by label
+  (`BGM_sys_title_01.ogg`, `snd_bgm_btl_stg_01.wav`, …);
   `CustomBgmShuffle` randomizes unmatched tracks. SFX files are matched by
   sound label (`SE_btl_cmn_08.ogg`, or variants `SE_btl_cmn_08_1.ogg`);
   `CustomSfxShuffle` randomizes variants. The folder rows show the selected
-  folder name and include a **Clear** action. Config lives under `[Audio]`.
+  source folder and include a **Clear** action. Config lives under `[Audio]`.
 - **Randomizer** — **Random Story Characters** rerolls the character select at
-  every `StageSetup`; **Random Move Sets** shuffles the A-button special ability
-  on every character status entry once per launch; the normal B-button bomb
-  is kept intact. A fixed seed lives in
+  every `StageSetup`; **Random Enemies** shuffles the enemy types that spawn on
+  each story/practice map using that map's own enemy palette, so all models and
+  sounds are already loaded. A fixed seed lives in
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
   into battle when random characters or a random run is active. The F9 menu has
-  **Practice**, **Randomizer**, **Multiplayer**, and **Settings** tabs, starts on
-  **Beginner**, and exposes the run settings as toggles. The main menu **Other**
+  **Practice**, **Randomizer**, **Multiplayer**, **Settings**, and **Help** tabs,
+  starts on **Beginner**, and exposes the run settings as toggles. The main menu **Other**
   entry is replaced with **Bomber QoL**, which opens the same menu; the original
   game options remain available from the Settings tab. Practice has world/stage select, always starts with
   default stats, keeps the normal character-select screen, and has an optional

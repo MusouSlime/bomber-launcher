@@ -232,7 +232,8 @@ Choose a folder in either launcher or set:
 
 ```ini
 [Audio]
-CustomBgmFolder = /path/to/music
+CustomBgmFolder = /path/to/ogg-cache
+CustomBgmSource = /path/to/music
 CustomBgmShuffle = true
 CustomBgmVolume = 0.8
 CustomSfxFolder = /path/to/sfx
@@ -240,9 +241,16 @@ CustomSfxShuffle = true
 CustomSfxVolume = 0.8
 ```
 
-Supported files: `.ogg`, `.wav`, `.mp3`. The plugin hooks
-`SoundManager.playAsBGM` / `changeBGM` and plays matching files through a
-persistent `AudioSource`:
+Unity's `WWW` loader in this build only decodes OGG/WAV reliably, so the
+launcher converts the chosen music folder into a flat OGG cache with ffmpeg
+(MP3, FLAC, M4A, AAC, OPUS and WMA) and copies `.ogg`/`.wav` unchanged.
+Conversion runs in parallel and remembers the original folder in
+`CustomBgmSource`; **Clear** deletes the cache. Folder scanning is recursive,
+so album subfolders work. If the plugin is pointed directly at a folder that
+only has MP3s it logs a skip warning instead of failing every track.
+
+The plugin hooks `SoundManager.playAsBGM` / `changeBGM` and plays matching
+files through a persistent `AudioSource`:
 
 - Exact label match: `BGM_sys_title_01.ogg`, `snd_bgm_btl_stg_01.wav`, etc.
   The label is the game’s BGM name without extension.
@@ -258,7 +266,10 @@ persistent `AudioSource`:
 - The path is converted from `/home/...` to `Z:\home\...` automatically under
   Proton.
 
-The folder picker is in **Audio → Custom BGM Folder** in both launchers.
+The folder picker is in **Audio → Custom BGM Folder** in both launchers. It
+must be used while the game is closed; the resulting cache lives under the
+launcher's data folder (next to a portable build, or under
+`~/.local/share/bomber-launcher`). Restart the game after converting.
 
 ## Randomizer / roguelike base
 
@@ -267,7 +278,7 @@ Plugin 0.5.3 adds two independent switches under `[Randomizer]`:
 ```ini
 [Randomizer]
 RandomStoryCharacters = false
-RandomMoveSets = false
+RandomEnemies = false
 Seed = 0
 SkipCharacterSelect = true
 RandomPickups = true
@@ -282,11 +293,13 @@ ResetStatsPerStage = true
   entries from `CharacterDataManager.getCharacterInfoFromSorted()` and writes
   their `CharacterID` into `StoryData.characterDatas` before
   `setFromSaveDataToBattleParams` builds `MoveSceneParam`. P1/P2 are distinct.
-- **RandomMoveSets** — once per launch, walks
-  `CharacterStatusDataTable` and assigns random `Player.SKILL_TYPE` values to
-  the A-button `_specialSkillType` slot. The normal B-button bomb slot stays
-  `NORMAL_BOMB`, so bomb placement is never lost. Skill assets/icons stay at
-  their original paths, so visuals may not match the rolled ability.
+- **RandomEnemies** — after `AbstractBattleSceneBase.endLoadMapData`, each
+  `RuntimeMapData.enemyStartPointDatas[i].name` is replaced with a random entry
+  from the same map's `useEnemyList`. The map's enemy models/SE packs were
+  already queued for loading, so this only changes which regular enemy type
+  appears at each spawn point. Bosses are separate and unaffected. Applies to
+  `StoryBattle` (including practice). The move-set shuffle is currently
+  removed from the UI while it is being evaluated.
 - **Seed** — a non-zero value makes both rolls reproducible; 0 uses
   `Environment.TickCount`.
 - **SkipCharacterSelect** — when random characters (or a random run) are
@@ -313,7 +326,7 @@ ResetStatsPerStage = true
   at the start of every stage. `Random` re-rolls, while Save keeps the current
   stats. `MasterStatReset` forces a default reset on Master.
 - **Practice tab** — the F9 menu starts on Beginner and has Practice,
-  Randomizer, Multiplayer, and Settings tabs. Practice selects world and stage directly, always resets to default
+  Randomizer, Multiplayer, Settings, and Help tabs. The selected row is highlighted in gold and the active tab is filled gold. Practice selects world and stage directly, always resets to default
   stats, keeps the normal character-select screen (it never randomizes
   characters), and can **Repeat stage when cleared**. `[Practice] RepeatStage`
   stores the toggle.
@@ -339,7 +352,7 @@ ResetStatsPerStage = true
   L/R for tabs; raw joystick buttons are used as a fallback.
 
 Both are exposed as launcher toggles. Practice saves remain suppressed, so this
-is a safe base for a roguelike run: random characters, random move sets,
+is a safe base for a roguelike run: random characters, random enemies,
 practice stage jumps and no real-save writes.
 
 ## Story game over
