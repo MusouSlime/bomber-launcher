@@ -119,6 +119,63 @@ instrumentation. Realistic alternatives:
 - A native ARM64 patch for small, well-defined changes.
 - Keep the full launcher/plugin on PC.
 
+## Feature portability matrix
+
+Switch has no BepInEx. Anything that runs in the PC plugin's C# code needs an
+ARM64/IL2CPP reimplementation. Asset and data-table features are portable via
+LayeredFS.
+
+### Portable (asset/data only)
+
+| Launcher/plugin feature | How it ports |
+|---|---|
+| Character palette skins | Replace `Texture2D` in `chara_pack_*` / `chara` bundles |
+| Custom character models | Bake a rigged mesh/material into a chara bundle (no runtime auto-weights) |
+| Custom BGM / SFX | Replace audio clips in `sound/bgm` / `sounds` bundles |
+| Intro skip | Replace the intro movie asset with a blank clip |
+| Publisher logo removal | Replace logo textures/UI assets where state removal is not required |
+| Language / Japanese voices | Edit save language byte or use the game's language menu; voice packs are already on the cart |
+| Max/Caesar unlock | Data/progression edit if not already unlocked by the update |
+| Master difficulty data | Edit difficulty/story tables; menu toggle may still be code-gated |
+| EXP / shop / story balance | Edit `StoryCampExpTable_*`, shop and story tables |
+| Static map remixes | Replace `map/data` bundles |
+| Pickup/item table edits | Edit `defines/common` data tables (fixed layout, not random) |
+| Player icons / topknots | Replace icon/acce assets or edit unlock tables |
+| Post-FX removal | Edit the post-processing profile assets (static, not a runtime toggle) |
+| Save backups | External homebrew (JKSV/Checkpoint), not an NSP mod |
+| Custom skin/asset cross-port | Copy bundles between PC and Switch where the Unity version/format matches |
+
+### Possible with save editing or Atmosphere cheats
+
+| Feature | Limit |
+|---|---|
+| Unlock characters/topknots/cassettes | Save flags, not the PC plugin's live menu |
+| Gems / currency / story progress | Save edits |
+| Max stats / lives / timer | Atmosphere cheats; no persistent menu |
+| Stage jump / practice-like setup | Cheat/save hack; no F9 practice UI |
+| Random run | Not realistically; could pre-bake a fixed sequence |
+
+### Not portable without code work
+
+| Feature | Why |
+|---|---|
+| F9 overlay / Settings menu | C# IMGUI + plugin lifecycle |
+| Practice mode, stage select, repeat | Scene-flow code |
+| Random Run | `StoryUtility.initToNext` + state machine |
+| Random characters / enemies / pickups per run | Runtime hooks and RNG |
+| Skip character select / gem continue | UI/scene code |
+| Per-stage/Master stat reset | Player status code |
+| CPU A-button specials / smarter bots | NPC AI code |
+| Faster result screens / soft reset | Timing and scene code |
+| Borderless / aspect ratio | PC launch flags; Switch uses native modes |
+| Launcher install/config/art/audio tools | PC-only launcher |
+| Online-room achievement helper | PC/Steam-specific |
+
+**Recommendation:** treat the Switch release as an **asset/data mod pack**
+(skins, audio, movies, maps, balance, unlocks), and keep the full F9
+randomizer/practice suite on PC. SBR2 follows the same rule, with plain
+UnityFS bundles making asset edits easier but no code plugin support.
+
 ## Legal/distribution
 
 - Never commit NSPs, keys, or extracted game assets.
