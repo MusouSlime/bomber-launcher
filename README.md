@@ -115,8 +115,8 @@ The plugin adds:
   is kept intact. A fixed seed lives in
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
   into battle when random characters or a random run is active. The F9 menu has
-  **Practice** and **Randomizer** tabs, starts on **Beginner**, and exposes the
-  run settings as toggles. Practice has world/stage select, always starts with
+  **Practice**, **Randomizer**, and **Multiplayer** tabs, starts on **Beginner**,
+  and exposes the run settings as toggles. Practice has world/stage select, always starts with
   default stats, keeps the normal character-select screen, and has an optional
   **Repeat stage when cleared** switch. Randomizer is a full **Random Run**:
   10 random non-boss stages, then a random undefeated boss; repeat until all 13
@@ -125,7 +125,9 @@ The plugin adds:
   difficulty (Beginner all positive, Veteran 25% negative, Expert 50/50, Master
   50/50 plus a stat reset), hidden pickups use a neutral blank icon, and the
   collected item's name pops up above the player. Character randomization only
-  happens when **Random characters** is enabled in the Randomizer tab.
+  happens when **Random characters** is enabled in the Randomizer tab. The
+  **Multiplayer** tab has Smarter Bots, Random CPU Opponent, and CPU A-button
+  specials toggles.
 - **Game-over continue** — story game over skips the gem continue/retry dialog
   and returns to the main menu. Config: `[Gameplay] SkipGemContinue`.
 - **Smarter Bots** — raises local-battle NPC search range to at least 10 tiles

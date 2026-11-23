@@ -189,7 +189,7 @@ namespace BomberQoL
                 "One-shot: call TrophyManager.FuncCreateRoom 100x on the next launch to unlock Room Creator/Master/Champ.");
             SmarterBots = Config.Bind("Bots", "SmarterBots", false,
                 "Increase NPC search range and target re-evaluation speed for local battle bots.");
-            RandomCpuOpponent = Config.Bind("Multiplayer", "RandomCpuOpponent", false,
+            RandomCpuOpponent = Config.Bind("Multiplayer", "RandomCpuOpponent", true,
                 "Randomize the character used by CPU slots in local battle.");
             CpuSpecialAbilities = Config.Bind("Multiplayer", "CpuSpecialAbilities", true,
                 "Let local battle CPUs use their A-button special ability when they have one.");
@@ -2708,7 +2708,12 @@ namespace BomberQoL
 
         private int RowCount
         {
-            get { return _tab == 0 ? 5 : 13; }
+            get
+            {
+                if (_tab == 0) return 5;
+                if (_tab == 1) return 13;
+                return 3;
+            }
         }
 
         private void ClampStage()
@@ -2760,12 +2765,12 @@ namespace BomberQoL
 
             if (Input.GetKeyDown(KeyCode.Q) || PadButtonDown("L"))
             {
-                _tab = 0;
+                _tab = (_tab + 2) % 3;
                 _row = 0;
             }
             if (Input.GetKeyDown(KeyCode.E) || PadButtonDown("R"))
             {
-                _tab = 1;
+                _tab = (_tab + 1) % 3;
                 _row = 0;
             }
             HandleNavigation();
@@ -2832,6 +2837,17 @@ namespace BomberQoL
                     case 3:
                         Toggle(Plugin.PracticeRepeatStage);
                         break;
+                }
+                return;
+            }
+
+            if (_tab == 2)
+            {
+                switch (_row)
+                {
+                    case 0: Toggle(Plugin.SmarterBots); break;
+                    case 1: Toggle(Plugin.RandomCpuOpponent); break;
+                    case 2: Toggle(Plugin.CpuSpecialAbilities); break;
                 }
                 return;
             }
@@ -3076,6 +3092,22 @@ namespace BomberQoL
                 : "  Enter / A: start    B / Esc: close");
         }
 
+        private void DrawMultiplayer()
+        {
+            GUILayout.Label("Local battle only.");
+            GUILayout.Space(6);
+            DrawToggle(0, Plugin.SmarterBots, "Smarter bots");
+            DrawToggle(1, Plugin.RandomCpuOpponent, "Random CPU opponent");
+            DrawToggle(2, Plugin.CpuSpecialAbilities,
+                "CPU A-button special abilities");
+            GUILayout.Space(12);
+            GUILayout.Label("Smarter bots: longer search range and faster retargeting.");
+            GUILayout.Label("Random CPU: randomises COM character slots each battle.");
+            GUILayout.Label("CPU specials: CPUs use their A-button ability when available.");
+            GUILayout.Space(8);
+            GUILayout.Label("Enter / A: toggle    B / Esc: close");
+        }
+
         private void OnGUI()
         {
             if (!_visible) return;
@@ -3127,6 +3159,12 @@ namespace BomberQoL
                 _tab = 1;
                 _row = 0;
             }
+            if (GUILayout.Button(_tab == 2 ? "[ Multiplayer ]" : "Multiplayer",
+                GUILayout.Height(30)))
+            {
+                _tab = 2;
+                _row = 0;
+            }
             GUILayout.FlexibleSpace();
             GUILayout.Label("L1/R1 or Q/E: tab");
             GUILayout.EndHorizontal();
@@ -3134,8 +3172,10 @@ namespace BomberQoL
             GUILayout.Space(6);
             if (_tab == 0)
                 DrawPractice();
-            else
+            else if (_tab == 1)
                 DrawRandomizer();
+            else
+                DrawMultiplayer();
 
             GUILayout.EndArea();
             GUI.skin.label.normal.textColor = oldLabel;
@@ -3185,7 +3225,12 @@ namespace BomberQoL
                 SingletonBase<CharacterDataManager>.getInstance();
             if (gs == null || cd == null) return;
             MoveSceneParam.CharacterParam[] chars = gs.param.characterParams;
-            if (chars == null) return;
+            if (chars == null)
+            {
+                Plugin.Log.LogWarning(
+                    "Multiplayer: random CPU skipped (no characterParams)");
+                return;
+            }
 
             int total = cd.getTotalCharacterCount();
             if (total <= 0) return;
@@ -3200,6 +3245,16 @@ namespace BomberQoL
             if (aiTypes != null && npcType >= 0 && npcType < aiTypes.Length)
                 aiType = aiTypes[npcType];
 
+            int comCount = 0;
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (chars[i].controlType == BattleDef.CONTROL_TYPE.COM)
+                    comCount++;
+            }
+            Plugin.Log.LogInfo("Multiplayer: random CPU params=" +
+                chars.Length + " com=" + comCount + " npcType=" + npcType +
+                " aiType=" + aiType);
+
             var pool = new List<CharacterInfoDataTable.CharacterInfoData>();
             for (int i = 0; i < total; i++)
             {
@@ -3211,6 +3266,29 @@ namespace BomberQoL
                     continue;
                 pool.Add(info);
             }
+            if (pool.Count == 0)
+            {
+                for (int i = 0; i < total; i++)
+                {
+                    CharacterInfoDataTable.CharacterInfoData info =
+                        cd.getCharacterInfoFromSorted(i);
+                    if (info == null || !cd.isUsableCharacter(info))
+                        continue;
+                    if (HasAnyAi(cd, info)) pool.Add(info);
+                }
+            }
+            if (pool.Count == 0)
+            {
+                for (int i = 0; i < total; i++)
+                {
+                    CharacterInfoDataTable.CharacterInfoData info =
+                        cd.getCharacterInfoFromSorted(i);
+                    if (info == null) continue;
+                    if (HasAnyAi(cd, info)) pool.Add(info);
+                }
+            }
+            Plugin.Log.LogInfo("Multiplayer: random CPU pool=" +
+                pool.Count);
             if (pool.Count == 0) return;
 
             var used = new HashSet<int>();
@@ -3256,6 +3334,22 @@ namespace BomberQoL
                 Plugin.Log.LogInfo("Multiplayer: randomized " + count +
                     " CPU character slots");
             }
+            else
+            {
+                Plugin.Log.LogWarning(
+                    "Multiplayer: no CPU slots randomized");
+            }
+        }
+
+        private static bool HasAnyAi(CharacterDataManager cd,
+            CharacterInfoDataTable.CharacterInfoData info)
+        {
+            return cd.getCharacterNpcAiInfo(info.charKey,
+                       CharacterDataManager.NPC_AI_TYPE.WEAK) != null ||
+                   cd.getCharacterNpcAiInfo(info.charKey,
+                       CharacterDataManager.NPC_AI_TYPE.NORMAL) != null ||
+                   cd.getCharacterNpcAiInfo(info.charKey,
+                       CharacterDataManager.NPC_AI_TYPE.STRONG) != null;
         }
 
         private static int CharacterKey(

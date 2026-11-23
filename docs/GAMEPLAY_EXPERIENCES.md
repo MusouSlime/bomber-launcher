@@ -312,17 +312,22 @@ ResetStatsPerStage = true
 - **Stats per stage** — `ResetStatsPerStage` re-applies the selected stats preset
   at the start of every stage. `Random` re-rolls, while Save keeps the current
   stats. `MasterStatReset` forces a default reset on Master.
-- **Practice tab** — the F9 menu starts on Beginner and has Practice/Randomizer
-  tabs. Practice selects world and stage directly, always resets to default
+- **Practice tab** — the F9 menu starts on Beginner and has Practice,
+  Randomizer, and Multiplayer tabs. Practice selects world and stage directly, always resets to default
   stats, keeps the normal character-select screen (it never randomizes
   characters), and can **Repeat stage when cleared**. `[Practice] RepeatStage`
   stores the toggle.
 - **F9 toggles** — the Randomizer tab toggles random pickups, blank icons,
-  pickup-name popups, difficulty-based odds, random characters, random move
-  sets, character-select skip, per-stage stat reset, Master stat reset, and gem
-  continue skip. Toggles write the matching BepInEx config values. Character
-  randomization is opt-in through the **Random characters** toggle; Practice
-  never uses it.
+  pickup-name popups, difficulty-based odds, random characters, random A-button
+  specials, character-select skip, per-stage stat reset, Master stat reset, and
+  gem continue skip. The Multiplayer tab toggles Smarter Bots, Random CPU
+  Opponent, and CPU A-button specials. Toggles write the matching BepInEx
+  config values. Character randomization is opt-in through the **Random
+  characters** toggle; Practice never uses it.
+- **Random CPU diagnostics** — when enabled, the log reports `Multiplayer:
+  random CPU params=… com=… npcType=… aiType=…`, the candidate pool size, and
+  how many CPU slots were randomized. This makes it clear whether the battle
+  scene exposed COM slots and whether the AI-data filter found candidates.
 
 Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random move sets,
@@ -358,7 +363,7 @@ reliable formats.
 SmarterBots = false
 
 [Multiplayer]
-RandomCpuOpponent = false
+RandomCpuOpponent = true
 CpuSpecialAbilities = true
 ```
 
