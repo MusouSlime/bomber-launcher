@@ -7,6 +7,7 @@ All artwork is extracted from the game itself (see tools/extract_ui_assets.py).
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -1429,6 +1430,28 @@ class BomberWindow(Adw.ApplicationWindow):
             self.toast(f"Launch failed: {e}")
 
     def desktop_size(self):
+        # Proton runs through Xwayland. GDK on Wayland reports the logical
+        # monitor size (for example 1280x720 at scale 2), but Unity treats the
+        # -screen-width/height values as physical pixels and creates a small
+        # window. Ask the X server for the real Xwayland screen size instead.
+        try:
+            r = subprocess.run(["xdotool", "getdisplaygeometry"],
+                               capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                parts = r.stdout.split()
+                if len(parts) == 2:
+                    return int(parts[0]), int(parts[1])
+        except Exception:
+            pass
+        try:
+            r = subprocess.run(["xrandr", "--current"],
+                               capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                m = re.search(r"current\s+(\d+)\s*x\s*(\d+)", r.stdout)
+                if m:
+                    return int(m.group(1)), int(m.group(2))
+        except Exception:
+            pass
         try:
             display = Gdk.Display.get_default()
             mon = display.get_monitors().get_item(0)

@@ -24,7 +24,7 @@ namespace BomberQoL
         Difficulty
     }
 
-    [BepInPlugin(GUID, "Bomber QoL", "0.6.7")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.8")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -4065,8 +4065,10 @@ namespace BomberQoL
             GUI.depth = -1000;
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
-            int w = Mathf.Min(780, Screen.width - 20);
-            int h = Mathf.Min(600, Screen.height - 20);
+            // Use the whole screen so long tabs are never clipped. The
+            // scroll views still handle overflow on small displays.
+            int w = Mathf.Max(320, Screen.width - 8);
+            int h = Mathf.Max(240, Screen.height - 8);
             Rect r = new Rect((Screen.width - w) / 2,
                 (Screen.height - h) / 2, w, h);
             Color old = GUI.color;
