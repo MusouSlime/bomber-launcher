@@ -26,6 +26,7 @@ artwork extracted from the game itself.
 | **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to fully relaunch the game |
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
 | **Post-processing** | Motion blur, depth of field, bloom, vignette and film grain switches |
+| **Low-End Mode** | 30 FPS cap, no post-FX, shadows off, half textures, reduced lights/LOD |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
 

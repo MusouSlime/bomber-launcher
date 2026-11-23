@@ -24,7 +24,7 @@ namespace BomberQoL
         Difficulty
     }
 
-    [BepInPlugin(GUID, "Bomber QoL", "0.6.8")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.9")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -95,6 +95,10 @@ namespace BomberQoL
         internal static ConfigEntry<bool> NoBloom;
         internal static ConfigEntry<bool> NoVignette;
         internal static ConfigEntry<bool> NoGrain;
+        internal static ConfigEntry<bool> LowEnd;
+        internal static ConfigEntry<int> LowEndFps;
+        internal static ConfigEntry<bool> LowEndHalfTextures;
+        internal static ConfigEntry<bool> LowEndShadowsOff;
         internal static KeyCode SkipKey = KeyCode.Space;
         internal static KeyCode SoftResetKey = KeyCode.F10;
         internal static KeyCode PracticeMenuKey = KeyCode.F9;
@@ -238,6 +242,14 @@ namespace BomberQoL
                 "Disable the vignette.");
             NoGrain = Config.Bind("Graphics", "DisableGrain", false,
                 "Disable film grain.");
+            LowEnd = Config.Bind("Performance", "LowEnd", false,
+                "Low-end performance mode: 30 FPS, no post-FX, shadows off, half textures, reduced lights/LOD.");
+            LowEndFps = Config.Bind("Performance", "TargetFps", 30,
+                "Frame-rate cap for low-end mode. 0 disables the cap.");
+            LowEndHalfTextures = Config.Bind("Performance", "HalfTextures", true,
+                "Use half-resolution textures in low-end mode.");
+            LowEndShadowsOff = Config.Bind("Performance", "ShadowsOff", true,
+                "Disable shadows in low-end mode.");
 
             try
             {
@@ -394,6 +406,7 @@ namespace BomberQoL
 
         private void Start()
         {
+            ApplyPerformance();
             ApplyAllPostFx();
             ApplyResultTweaks();
         }
@@ -405,6 +418,7 @@ namespace BomberQoL
             PlatformCharacters.ApplyLocaleNames();
             MainMenuQoLUtility.Apply();
             RandomRun.OnSceneLoaded(scene);
+            ApplyPerformance();
             ApplyAllPostFx();
             ApplyResultTweaks();
             EnableMasterButton();
@@ -526,6 +540,90 @@ namespace BomberQoL
             mn.selectOnUp = hard;
             mn.selectOnDown = easy;
             master.navigation = mn;
+        }
+
+        private static bool _perfCaptured;
+        private static int _defFps;
+        private static int _defVSync;
+        private static int _defAA;
+        private static int _defTexLimit;
+        private static int _defPixelLights;
+        private static float _defLod;
+        private static int _defParticles;
+        private static int _defMaxLod;
+        private static ShadowQuality _defShadows;
+        private static float _defShadowDistance;
+        private static AnisotropicFiltering _defAniso;
+        private static bool _defSoft;
+        private static bool _defReflection;
+        private static bool _perfLogged;
+
+        internal static void ApplyPerformance()
+        {
+            if (!_perfCaptured)
+            {
+                _perfCaptured = true;
+                _defFps = Application.targetFrameRate;
+                _defVSync = QualitySettings.vSyncCount;
+                _defAA = QualitySettings.antiAliasing;
+                _defTexLimit = QualitySettings.masterTextureLimit;
+                _defPixelLights = QualitySettings.pixelLightCount;
+                _defLod = QualitySettings.lodBias;
+                _defParticles = QualitySettings.particleRaycastBudget;
+                _defMaxLod = QualitySettings.maximumLODLevel;
+                _defShadows = QualitySettings.shadows;
+                _defShadowDistance = QualitySettings.shadowDistance;
+                _defAniso = QualitySettings.anisotropicFiltering;
+                _defSoft = QualitySettings.softParticles;
+                _defReflection = QualitySettings.realtimeReflectionProbes;
+            }
+            if (LowEnd.Value)
+            {
+                int fps = LowEndFps.Value;
+                Application.targetFrameRate = fps > 0 ? fps : -1;
+                QualitySettings.vSyncCount = 0;
+                QualitySettings.antiAliasing = 0;
+                QualitySettings.masterTextureLimit =
+                    LowEndHalfTextures.Value ? 1 : 0;
+                QualitySettings.pixelLightCount = 1;
+                QualitySettings.lodBias = 0.6f;
+                QualitySettings.particleRaycastBudget = 64;
+                QualitySettings.maximumLODLevel = 1;
+                QualitySettings.shadows = LowEndShadowsOff.Value
+                    ? ShadowQuality.Disable : _defShadows;
+                QualitySettings.shadowDistance = LowEndShadowsOff.Value
+                    ? 0f : _defShadowDistance;
+                QualitySettings.anisotropicFiltering =
+                    AnisotropicFiltering.Disable;
+                QualitySettings.softParticles = false;
+                QualitySettings.realtimeReflectionProbes = false;
+                if (!_perfLogged)
+                {
+                    _perfLogged = true;
+                    Log.LogInfo("Low-end mode: " +
+                        (fps > 0 ? fps + " FPS" : "uncapped") +
+                        ", shadows " + (LowEndShadowsOff.Value
+                            ? "off" : "default") +
+                        ", half textures " +
+                        (LowEndHalfTextures.Value ? "on" : "off"));
+                }
+            }
+            else
+            {
+                Application.targetFrameRate = _defFps;
+                QualitySettings.vSyncCount = _defVSync;
+                QualitySettings.antiAliasing = _defAA;
+                QualitySettings.masterTextureLimit = _defTexLimit;
+                QualitySettings.pixelLightCount = _defPixelLights;
+                QualitySettings.lodBias = _defLod;
+                QualitySettings.particleRaycastBudget = _defParticles;
+                QualitySettings.maximumLODLevel = _defMaxLod;
+                QualitySettings.shadows = _defShadows;
+                QualitySettings.shadowDistance = _defShadowDistance;
+                QualitySettings.anisotropicFiltering = _defAniso;
+                QualitySettings.softParticles = _defSoft;
+                QualitySettings.realtimeReflectionProbes = _defReflection;
+            }
         }
 
         internal static void ApplyAllPostFx()
@@ -3104,7 +3202,7 @@ namespace BomberQoL
                 if (_tab == 0) return 15;
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
-                if (_tab == 3) return 15;
+                if (_tab == 3) return 17;
                 return 0;
             }
         }
@@ -3278,6 +3376,8 @@ namespace BomberQoL
                 Plugin.EnableMasterButton();
             if (entry == Plugin.MainMenuQoL)
                 MainMenuQoLUtility.Apply();
+            if (entry == Plugin.LowEnd)
+                Plugin.ApplyPerformance();
         }
 
         private static void ToggleInverted(ConfigEntry<bool> entry)
@@ -3364,6 +3464,12 @@ namespace BomberQoL
                     case 11: Toggle(Plugin.CustomBgmShuffle); break;
                     case 12: Toggle(Plugin.CustomSfxShuffle); break;
                     case 13: Toggle(Plugin.MainMenuQoL); break;
+                    case 15: Toggle(Plugin.LowEnd); break;
+                    case 16:
+                        Plugin.LowEndFps.Value =
+                            Plugin.LowEndFps.Value <= 30 ? 60 : 30;
+                        Plugin.ApplyPerformance();
+                        break;
                 }
                 return;
             }
@@ -3733,6 +3839,7 @@ namespace BomberQoL
             NoteRow(row);
             if (value == entry.Value) return;
             entry.Value = value;
+            if (entry == Plugin.LowEnd) Plugin.ApplyPerformance();
         }
 
         private void DrawDifficultyOddsToggle(int row)
@@ -3918,12 +4025,31 @@ namespace BomberQoL
             Plugin.AutoSkipMovies.Value = value ? 5f : 0f;
         }
 
+        private void DrawLowEndFps(int row)
+        {
+            GUILayout.BeginHorizontal(RowStyle(row));
+            Color old = GUI.contentColor;
+            if (RowSelected(row)) GUI.contentColor = MarkerColor;
+            bool on = Plugin.LowEndFps.Value <= 30;
+            bool value = GUILayout.Toggle(on,
+                (RowSelected(row) ? ">> " : "   ") +
+                "30 FPS cap (low-end)");
+            GUI.contentColor = old;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            NoteRow(row);
+            if (value == on) return;
+            Plugin.LowEndFps.Value = value ? 30 : 60;
+            Plugin.ApplyPerformance();
+        }
+
         private void DrawSettings()
         {
             Summary("Selected: BGM shuffle " +
                 OnOff(Plugin.CustomBgmShuffle.Value) + "  |  SFX shuffle " +
                 OnOff(Plugin.CustomSfxShuffle.Value) + "  |  Main-menu entry " +
-                OnOff(Plugin.MainMenuQoL.Value));
+                OnOff(Plugin.MainMenuQoL.Value) + "  |  Low-end " +
+                OnOff(Plugin.LowEnd.Value));
             GUILayout.BeginHorizontal();
             GUILayout.BeginVertical(GUILayout.Width(350));
             DrawInvertedToggle(0, Plugin.NoMotionBlur, "Motion blur");
@@ -3946,7 +4072,12 @@ namespace BomberQoL
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();
 
-            GUILayout.Space(10);
+            GUILayout.Space(6);
+            DrawToggle(15, Plugin.LowEnd,
+                "Low-end mode (no post-FX, shadows off)");
+            DrawLowEndFps(16);
+
+            GUILayout.Space(8);
             string bgm = Plugin.CustomBgmFolder.Value;
             string bgmSource = Plugin.CustomBgmSource.Value;
             string sfx = Plugin.CustomSfxFolder.Value;
@@ -4046,9 +4177,10 @@ namespace BomberQoL
             GUILayout.Label(
                 "Runtime launcher options: post-processing effects, fast " +
                 "results, Master difficulty, movie skipping, soft reset, " +
-                "BGM/SFX shuffle and the Bomber QoL main-menu entry. The " +
-                "original game options are still available from this tab.",
-                _helpStyle);
+                "BGM/SFX shuffle, the Bomber QoL main-menu entry and " +
+                "low-end mode (30 FPS cap, no post-FX, shadows off, half " +
+                "textures, reduced lights/LOD). The original game options " +
+                "are still available from this tab.", _helpStyle);
             GUILayout.Label(
                 "BGM folders are converted to an OGG cache by the launcher. " +
                 "Folder pickers, launch options, voice selection, BepInEx " +
@@ -4921,15 +5053,16 @@ namespace BomberQoL
                 _logged = true;
             }
 
-            if (Plugin.NoMotionBlur.Value && p.motionBlur != null)
+            bool low = Plugin.LowEnd.Value;
+            if ((low || Plugin.NoMotionBlur.Value) && p.motionBlur != null)
                 p.motionBlur.enabled = false;
-            if (Plugin.NoDepthOfField.Value && p.depthOfField != null)
+            if ((low || Plugin.NoDepthOfField.Value) && p.depthOfField != null)
                 p.depthOfField.enabled = false;
-            if (Plugin.NoBloom.Value && p.bloom != null)
+            if ((low || Plugin.NoBloom.Value) && p.bloom != null)
                 p.bloom.enabled = false;
-            if (Plugin.NoVignette.Value && p.vignette != null)
+            if ((low || Plugin.NoVignette.Value) && p.vignette != null)
                 p.vignette.enabled = false;
-            if (Plugin.NoGrain.Value && p.grain != null)
+            if ((low || Plugin.NoGrain.Value) && p.grain != null)
                 p.grain.enabled = false;
         }
     }

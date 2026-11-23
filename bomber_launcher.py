@@ -1026,6 +1026,14 @@ class BomberWindow(Adw.ApplicationWindow):
                              self.grain_sw))
         env.append(self._separator())
 
+        self.low_end_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.low_end_sw.connect("notify::active", self.on_low_end)
+        env.append(self._row(
+            "avatar_blue.png", "Low-End Mode",
+            "30 FPS, no post-FX, shadows off, half textures",
+            self.low_end_sw))
+        env.append(self._separator())
+
         self.fast_results_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.fast_results_sw.connect("notify::active", self.on_fast_results)
         env.append(self._row(
@@ -1324,13 +1332,14 @@ class BomberWindow(Adw.ApplicationWindow):
         for w in (self.skip_movies_sw, self.pad_dd, self.logos_sw,
                   self.autoskip_sw, self.master_sw, self.mblur_sw,
                   self.dof_sw, self.bloom_sw, self.vignette_sw,
-                  self.grain_sw, self.fast_results_sw):
+                  self.grain_sw, self.low_end_sw,
+                  self.fast_results_sw):
             w.set_sensitive(plugin and not running)
         if not plugin:
             for w in (self.skip_movies_sw, self.logos_sw, self.autoskip_sw,
                       self.master_sw, self.mblur_sw, self.dof_sw,
                       self.bloom_sw, self.vignette_sw, self.grain_sw,
-                      self.fast_results_sw):
+                      self.low_end_sw, self.fast_results_sw):
                 w.set_active(False)
 
         if self.mods:
@@ -1401,6 +1410,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg["Graphics"].get("DisableVignette", "false").lower() != "true")
                     self.grain_sw.set_active(
                         cfg["Graphics"].get("DisableGrain", "false").lower() != "true")
+                    self.low_end_sw.set_active(
+                        cfg.get("Performance", {}).get("LowEnd", "false").lower() == "true")
                 except Exception:
                     pass
         self._loading = False
@@ -1754,6 +1765,20 @@ class BomberWindow(Adw.ApplicationWindow):
             self.toast(str(e))
         self.refresh()
 
+    def on_low_end(self, row, _pspec):
+        if self._loading or not self.mods or not self.mods.plugin_installed():
+            return
+        active = row.get_active()
+        try:
+            self.mods.set_plugin_option("Performance", "LowEnd", active)
+            if active:
+                self.mods.set_plugin_value("Performance", "TargetFps", "30")
+            self.toast("Low-end mode " + ("on" if active else "off") +
+                       " — applies next launch")
+        except Exception as e:
+            self.toast(str(e))
+        self.refresh()
+
     def on_fast_results(self, row, _pspec):
         self._plugin_write("Results", "FastResults", row.get_active())
 
@@ -1926,9 +1951,33 @@ def check():
     return 0
 
 
+def apply_preset(name):
+    game = find_game_dir()
+    if not game:
+        print("game not found")
+        return 1
+    mods = Mods(game)
+    if name in ("low-end", "lowend", "low"):
+        mods.set_plugin_option("Performance", "LowEnd", True)
+        mods.set_plugin_value("Performance", "TargetFps", "30")
+        print("Low-end mode enabled for", game)
+        return 0
+    if name in ("balanced", "default"):
+        mods.set_plugin_option("Performance", "LowEnd", False)
+        print("Low-end mode disabled for", game)
+        return 0
+    print("unknown preset:", name)
+    return 1
+
+
 def main():
     if "--check" in sys.argv:
         raise SystemExit(check())
+    if "--low-end" in sys.argv or "--lowend" in sys.argv:
+        raise SystemExit(apply_preset("low-end"))
+    for arg in sys.argv[1:]:
+        if arg.startswith("--preset="):
+            raise SystemExit(apply_preset(arg.split("=", 1)[1]))
     if "--extract-art" in sys.argv:
         import traceback
         global ART

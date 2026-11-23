@@ -378,6 +378,43 @@ Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random enemies,
 practice stage jumps and no real-save writes.
 
+## Low-end PC mode
+
+For weak GPUs, integrated graphics, Steam Deck, Proton/Wine, Winlator and other
+PC-port layers, enable **Low-End Mode** in the launcher's Environment section
+or the F9 Settings tab:
+
+```ini
+[Performance]
+LowEnd = true
+TargetFps = 30
+HalfTextures = true
+ShadowsOff = true
+```
+
+It applies at startup and on scene loads:
+
+- 30 FPS cap (or 60; `TargetFps = 0` uncaps)
+- VSync off
+- anti-aliasing off
+- shadows off and shadow distance 0
+- half-resolution textures
+- 1 pixel light
+- lower LOD bias and maximum LOD level
+- reduced particle raycast budget
+- no soft particles or realtime reflection probes
+- all post-processing effects forced off
+
+The launcher exposes a **Low-End Mode** switch and a headless preset:
+
+```bash
+python3 bomber_launcher.py --low-end
+./BomberLauncher.exe --low-end
+```
+
+This is a performance/settings profile for the existing PC build, not a
+separate game build. It does not change game files.
+
 ## Story game over
 
 ```ini
