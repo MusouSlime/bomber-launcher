@@ -19,7 +19,7 @@ the installed Steam files.
 | NPC AI rows | 18 per table (`normal`/`strong`/`weak`) | only the 18 base characters |
 | Grand Prix AI rows | 32 per rule | team/leader AI for battle rules |
 | Multiplayer maps | 60 builtin + 0 DLC | `map/data/map_data_pack_vs4_*`, env + thumbnail packs present |
-| Story maps | 70 (7 worlds × 10; world 6 has 2) | plus 13 boss encounters |
+| Story maps | 62 (worlds 1–5 and 7 have 10 each; world 6 has 2) | plus 13 boss encounters |
 | Character packs on disk | `chara_pack_01`–`04` | all four present |
 | Accessory packs on disk | `acce/acce_cat_001`… | present |
 
