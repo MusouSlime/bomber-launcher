@@ -3194,14 +3194,51 @@ namespace BomberQoL
             int raw = -1;
             if (name == "A") raw = 0;
             else if (name == "B") raw = 1;
+            else if (name == "X") raw = 2;
+            else if (name == "Y") raw = 3;
             else if (name == "L") raw = 4;
             else if (name == "R") raw = 5;
+            else if (name == "SELECT") raw = 6;
+            else if (name == "START") raw = 7;
             if (raw >= 0 && RawPadButtonDown(raw)) return true;
 
             InputAdapter adapter =
                 SingletonBaseWithGameObject<InputAdapter>.getInstance();
             if (adapter == null) return false;
             try { return adapter.GetButtonDown(name + "_1P"); }
+            catch { return false; }
+        }
+
+        private static bool RawPadButtonHeld(int button)
+        {
+            if (button < 0 || button > 19) return false;
+            if (Input.GetKey((KeyCode)(330 + button))) return true;
+            for (int joy = 1; joy <= 8; joy++)
+            {
+                if (Input.GetKey(
+                    (KeyCode)(350 + (joy - 1) * 20 + button)))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool PadButtonHeld(string name)
+        {
+            int raw = -1;
+            if (name == "A") raw = 0;
+            else if (name == "B") raw = 1;
+            else if (name == "X") raw = 2;
+            else if (name == "Y") raw = 3;
+            else if (name == "L") raw = 4;
+            else if (name == "R") raw = 5;
+            else if (name == "SELECT") raw = 6;
+            else if (name == "START") raw = 7;
+            if (raw >= 0 && RawPadButtonHeld(raw)) return true;
+
+            InputAdapter adapter =
+                SingletonBaseWithGameObject<InputAdapter>.getInstance();
+            if (adapter == null) return false;
+            try { return adapter.GetButton(name + "_1P"); }
             catch { return false; }
         }
 
@@ -3397,11 +3434,29 @@ namespace BomberQoL
             _upHeld = ay > 0.5f;
             _downHeld = ay < -0.5f;
 
+            bool scrollMode = PadButtonHeld("X") || PadButtonHeld("Y") ||
+                Input.GetKey(KeyCode.LeftShift) ||
+                Input.GetKey(KeyCode.RightShift);
+            bool pageUp = Input.GetKeyDown(KeyCode.PageUp);
+            bool pageDown = Input.GetKeyDown(KeyCode.PageDown);
+
             if (_tab == 4)
             {
                 if (up) _helpScroll.y = Mathf.Max(0f,
                     _helpScroll.y - 40f);
                 if (down) _helpScroll.y += 40f;
+                if (pageUp) _helpScroll.y = Mathf.Max(0f,
+                    _helpScroll.y - 200f);
+                if (pageDown) _helpScroll.y += 200f;
+            }
+            else if (scrollMode)
+            {
+                Vector2 scroll = _tabScroll[_tab];
+                if (up) scroll.y = Mathf.Max(0f, scroll.y - 40f);
+                if (down) scroll.y += 40f;
+                if (pageUp) scroll.y = Mathf.Max(0f, scroll.y - 200f);
+                if (pageDown) scroll.y += 200f;
+                _tabScroll[_tab] = scroll;
             }
             else
             {
@@ -3760,8 +3815,8 @@ namespace BomberQoL
             GUILayout.EndVertical();
             NoteRow(14);
             GUILayout.Label(RowSelected(14)
-                ? ">> A: start / change    B: close    L/R: tabs"
-                : "   A: start / change    B: close    L/R: tabs");
+                ? ">> A: start / change    B: close    L/R: tabs    X/Y+Up/Down: scroll"
+                : "   A: start / change    B: close    L/R: tabs    X/Y+Up/Down: scroll");
         }
 
         private void DrawRandomizer()
@@ -3802,8 +3857,8 @@ namespace BomberQoL
             GUILayout.EndVertical();
             NoteRow(12);
             GUILayout.Label(RowSelected(12)
-                ? ">> A: start    B: close    L/R: tabs"
-                : "   A: start    B: close    L/R: tabs");
+                ? ">> A: start    B: close    L/R: tabs    X/Y+Up/Down: scroll"
+                : "   A: start    B: close    L/R: tabs    X/Y+Up/Down: scroll");
         }
 
         private void DrawMultiplayer()
@@ -3820,7 +3875,7 @@ namespace BomberQoL
             DrawToggle(3, Plugin.PlatformExclusives,
                 "Platform exclusives");
             GUILayout.Space(8);
-            GUILayout.Label("A: toggle    B: close    L/R: tabs");
+            GUILayout.Label("A: toggle    B: close    L/R: tabs    X/Y+Up/Down: scroll");
         }
 
         private void DrawInvertedToggle(int row, ConfigEntry<bool> entry,
@@ -3908,8 +3963,8 @@ namespace BomberQoL
             GUILayout.EndVertical();
             NoteRow(14);
             GUILayout.Label(RowSelected(14)
-                ? ">> A: open    B: close    L/R: tabs"
-                : "   A: toggle    B: close    L/R: tabs");
+                ? ">> A: open    B: close    L/R: tabs    X/Y+Up/Down: scroll"
+                : "   A: toggle    B: close    L/R: tabs    X/Y+Up/Down: scroll");
         }
 
         private GUIStyle _helpStyle;
@@ -3936,7 +3991,9 @@ namespace BomberQoL
             GUILayout.Label(
                 "D-pad / left stick: move    Left / Right: change value\n" +
                 "A: toggle or open    B: close    L/R, Q/E or Tab: switch tabs\n" +
-                "Up / Down on this page scrolls the text.", _helpStyle);
+                "X/Y + Up/Down or Shift+Up/Down: scroll the current tab\n" +
+                "PageUp / PageDown: scroll a page. This page scrolls with " +
+                "Up/Down alone.", _helpStyle);
 
             GUILayout.Space(8);
             GUILayout.Label("Practice", _helpHeading);

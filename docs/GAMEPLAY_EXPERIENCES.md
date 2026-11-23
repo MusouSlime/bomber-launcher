@@ -363,7 +363,9 @@ ResetStatsPerStage = true
   shuffle. The original game options remain available from the Settings tab.
   Folder paths, launch-time options, voices, BepInEx install, and save backups
   stay in the launcher. Controller navigation uses D-pad/left stick, A/B, and
-  L/R for tabs; raw joystick buttons are used as a fallback.
+  L/R for tabs; raw joystick buttons are used as a fallback. Tabs have a scroll
+  view that follows the selected row, and **X/Y + Up/Down** (or Shift+Up/Down,
+  PageUp/PageDown) scrolls the current tab manually.
 
 Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random enemies,
