@@ -313,6 +313,11 @@ ResetStatsPerStage = true
   World 7's final boss is always last. After each boss the next 10-stage block
   begins. `StoryUtility.initToNext` is overridden only while the active scene is
   `StoryBattle`, so StageSetup/WorldMap transitions still behave normally.
+- **Session scoping** — randomizer effects (random characters, random
+  enemies, random pickups, blank icons, pickup toasts, character-select skip,
+  gem-continue skip) only run while a **Random Run** is active. Practice uses
+  its own stats/loadout/repeat settings and ends its session when the stage
+  resolves or the player returns to the world map/menu.
 - **Random pickups** — `RandomPickups` moves map-fixed powerups (except keys and
   crystals) into random breakable blocks and sets `RandomPickupCount` random
   items per stage. `RandomPickupPool` controls the weighted pool:
