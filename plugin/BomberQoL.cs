@@ -293,6 +293,8 @@ namespace BomberQoL
             Log.LogInfo("Practice combo: " + combo +
                 " hold " + PracticeMenuPadHold.Value + "s (buttons 4=L1,5=R1,2=X)");
 
+            Practice.InitCustomStats();
+
             var harmony = new Harmony(GUID);
             harmony.PatchAll(typeof(PostFxPatch));
             harmony.PatchAll(typeof(InputAdapterSkipPatch));
@@ -309,6 +311,7 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PlatformUsableBuiltinPatch));
             harmony.PatchAll(typeof(MainMenuOptionPatch));
             harmony.PatchAll(typeof(RandomEnemiesPatch));
+            harmony.PatchAll(typeof(EnemySpawnLogPatch));
             harmony.PatchAll(typeof(MainMenuLabelPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
             harmony.PatchAll(typeof(CustomBgmChangePatch));
@@ -2728,18 +2731,38 @@ namespace BomberQoL
         private static readonly int[] StatIndices = { 1, 4, 6, 8, 9, 10, 11, 12, 14 };
         private static readonly int[] MaxStats = { 5, 5, 4, 1, 1, 1, 1, 1, 1 };
 
-        private static void SetDefaultStats(
-            SaveDataManager.StoryData storyData)
+        internal static readonly int[] CustomStats = new int[9];
+
+        internal static void InitCustomStats()
         {
-            for (int c = 0; c < storyData.characterDatas.Length; c++)
+            CustomStats[0] = Mathf.Clamp(Plugin.PracticeFire.Value, 0, 9);
+            CustomStats[1] = Mathf.Clamp(Plugin.PracticeBomb.Value, 0, 9);
+            CustomStats[2] = Mathf.Clamp(Plugin.PracticeSpeed.Value, 0, 9);
+            CustomStats[3] = Mathf.Clamp(Plugin.PracticePunch.Value, 0, 1);
+            CustomStats[4] = Mathf.Clamp(Plugin.PracticeGlove.Value, 0, 1);
+            CustomStats[5] = Mathf.Clamp(Plugin.PracticeKick.Value, 0, 1);
+            CustomStats[6] = Mathf.Clamp(Plugin.PracticeRemote.Value, 0, 1);
+            CustomStats[7] = Mathf.Clamp(Plugin.PracticePenetration.Value, 0, 1);
+            CustomStats[8] = Mathf.Clamp(Plugin.PracticeElasticity.Value, 0, 1);
+        }
+
+        internal static void SetCustomStat(int index, int value)
+        {
+            if (index < 0 || index >= CustomStats.Length) return;
+            int max = index >= 3 ? 1 : 9;
+            value = Mathf.Clamp(value, 0, max);
+            CustomStats[index] = value;
+            switch (index)
             {
-                byte[] items = storyData.characterDatas[c].items;
-                if (items == null) continue;
-                // ItemTypedef.TYPE: 1 = FIRE_UP, 4 = BOMB_UP,
-                // 6 = SPEED_UP. A zeroed item array means zero bombs.
-                if (items.Length > 1) items[1] = 1;
-                if (items.Length > 4) items[4] = 1;
-                if (items.Length > 6) items[6] = 1;
+                case 0: Plugin.PracticeFire.Value = value; break;
+                case 1: Plugin.PracticeBomb.Value = value; break;
+                case 2: Plugin.PracticeSpeed.Value = value; break;
+                case 3: Plugin.PracticePunch.Value = value; break;
+                case 4: Plugin.PracticeGlove.Value = value; break;
+                case 5: Plugin.PracticeKick.Value = value; break;
+                case 6: Plugin.PracticeRemote.Value = value; break;
+                case 7: Plugin.PracticePenetration.Value = value; break;
+                case 8: Plugin.PracticeElasticity.Value = value; break;
             }
         }
 
@@ -2755,16 +2778,13 @@ namespace BomberQoL
                 mode = 1;
             }
             storyData.resetStoryPlayParams();
-            if (mode == 1)
-            {
-                SetDefaultStats(storyData);
-                Plugin.Log.LogInfo("Practice stats mode: default" +
-                    (masterReset ? " (Master reset)" : ""));
-                return;
-            }
 
             int[] values;
-            if (mode == 2)
+            if (mode == 1)
+            {
+                values = new int[StatIndices.Length];
+            }
+            else if (mode == 2)
             {
                 values = MaxStats;
             }
@@ -2779,36 +2799,33 @@ namespace BomberQoL
             }
             else
             {
-                values = new[]
-                {
-                    Plugin.PracticeFire.Value,
-                    Plugin.PracticeBomb.Value,
-                    Plugin.PracticeSpeed.Value,
-                    Plugin.PracticePunch.Value,
-                    Plugin.PracticeGlove.Value,
-                    Plugin.PracticeKick.Value,
-                    Plugin.PracticeRemote.Value,
-                    Plugin.PracticePenetration.Value,
-                    Plugin.PracticeElasticity.Value
-                };
+                values = (int[])CustomStats.Clone();
             }
 
+            // CharacterData.items is a list of ItemTypedef.TYPE ids in
+            // pickup order, terminated by a zero byte. It is not a
+            // per-item count table.
             for (int c = 0; c < storyData.characterDatas.Length; c++)
             {
                 byte[] items = storyData.characterDatas[c].items;
                 if (items == null) continue;
-                for (int i = 0; i < StatIndices.Length; i++)
+                for (int i = 0; i < items.Length; i++) items[i] = 0;
+                int pos = 0;
+                for (int i = 0; i < StatIndices.Length &&
+                     pos < items.Length; i++)
                 {
-                    int idx = StatIndices[i];
-                    if (idx < 0 || idx >= items.Length) continue;
-                    int v = values[i];
-                    if (v < 0) v = 0;
-                    if (v > 9) v = 9;
-                    items[idx] = (byte)v;
+                    int count = Mathf.Clamp(values[i], 0, 9);
+                    for (int n = 0; n < count && pos < items.Length; n++)
+                        items[pos++] = (byte)StatIndices[i];
                 }
             }
             Plugin.Log.LogInfo("Practice stats mode: " +
-                (mode == 2 ? "max" : mode == 4 ? "random" : "custom"));
+                (mode == 1 ? "default" :
+                 mode == 2 ? "max" :
+                 mode == 4 ? "random" : "custom") +
+                (masterReset ? " (Master reset)" : "") +
+                " F+" + values[0] + " B+" + values[1] +
+                " S+" + values[2]);
         }
 
         internal static void ApplyRunStats(SaveDataManager.StoryData storyData)
@@ -3005,7 +3022,7 @@ namespace BomberQoL
         {
             get
             {
-                if (_tab == 0) return 6;
+                if (_tab == 0) return 15;
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
                 if (_tab == 3) return 15;
@@ -3179,15 +3196,23 @@ namespace BomberQoL
                             DiffLabels.Length - 1);
                         break;
                     case 1:
+                        _practiceStats = Mathf.Clamp(
+                            _practiceStats + delta, 0,
+                            StatLabels.Length - 1);
+                        break;
+                    case 2:
                         _world = Mathf.Clamp(_world + delta, 1, 7);
                         ClampStage();
                         break;
-                    case 2:
+                    case 3:
                         _stage = Mathf.Clamp(_stage + delta, 1,
                             MaxStage(_world));
                         break;
-                    case 3:
+                    case 4:
                         Toggle(Plugin.PracticeRepeatStage);
+                        break;
+                    default:
+                        StepLoadout(_row - 5, delta);
                         break;
                 }
                 return;
@@ -3255,8 +3280,11 @@ namespace BomberQoL
             if (_tab == 4) return;
             if (_tab == 0)
             {
-                if (_row == 5) { StartPractice(); return; }
+                if (_row == 14) { StartPractice(); return; }
                 if (_row <= 3) return; // value rows: use Left/Right
+                if (_row == 4) { Toggle(Plugin.PracticeRepeatStage); return; }
+                StepLoadout(_row - 5, 1);
+                return;
             }
             if (_tab == 1)
             {
@@ -3359,6 +3387,22 @@ namespace BomberQoL
         private GUIStyle _rowNormalStyle;
         private Texture2D _rowSelectedTex;
         private Texture2D _rowNormalTex;
+        private readonly Vector2[] _tabScroll = new Vector2[5];
+        private Rect _selectedRowRect;
+        private bool _hasSelectedRow;
+        private Rect _scrollViewRect;
+        private bool _autoScrollPending;
+        private int _autoScrollRow = -1;
+        private int _autoScrollTab = -1;
+
+        private void NoteRow(int row)
+        {
+            if (row != _row) return;
+            Rect rect = GUILayoutUtility.GetLastRect();
+            if (rect.height <= 0f) return;
+            _selectedRowRect = rect;
+            _hasSelectedRow = true;
+        }
 
         private static readonly Color MarkerColor =
             new Color(1f, 0.84f, 0.25f, 1f);
@@ -3447,6 +3491,68 @@ namespace BomberQoL
             GUILayout.Space(4);
         }
 
+        private static readonly string[] LoadoutLabels =
+        {
+            "Firepower", "Bombs", "Speed", "Punch", "Power Glove",
+            "Kick", "Remote", "Penetration", "Elasticity"
+        };
+
+        private void SetLoadout(int index, int value)
+        {
+            Practice.SetCustomStat(index, value);
+            _practiceStats = 3;
+        }
+
+        private void StepLoadout(int index, int delta)
+        {
+            if (index < 0 || index >= LoadoutLabels.Length) return;
+            if (index >= 3)
+            {
+                SetLoadout(index,
+                    Practice.CustomStats[index] != 0 ? 0 : 1);
+                return;
+            }
+            int value = Practice.CustomStats[index] + delta;
+            if (value < 0) value = 9;
+            if (value > 9) value = 0;
+            SetLoadout(index, value);
+        }
+
+        private void DrawLoadoutRow(int row, int index)
+        {
+            string label = LoadoutLabels[index];
+            if (index >= 3)
+            {
+                GUILayout.BeginHorizontal(RowStyle(row));
+                Color old = GUI.contentColor;
+                if (RowSelected(row)) GUI.contentColor = MarkerColor;
+                bool on = Practice.CustomStats[index] != 0;
+                bool value = GUILayout.Toggle(on,
+                    (RowSelected(row) ? ">> " : "   ") + label);
+                GUI.contentColor = old;
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+                NoteRow(row);
+                if (value != on) SetLoadout(index, value ? 1 : 0);
+                return;
+            }
+            GUILayout.BeginHorizontal(RowStyle(row));
+            Color oldColor = GUI.contentColor;
+            if (RowSelected(row)) GUI.contentColor = MarkerColor;
+            GUILayout.Label((RowSelected(row) ? ">> " : "   ") + label,
+                GUILayout.Width(180));
+            GUI.contentColor = oldColor;
+            if (GUILayout.Button("-", GUILayout.Width(30)))
+                StepLoadout(index, -1);
+            GUILayout.Label(Practice.CustomStats[index].ToString(),
+                GUILayout.Width(30));
+            if (GUILayout.Button("+", GUILayout.Width(30)))
+                StepLoadout(index, 1);
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            NoteRow(row);
+        }
+
         private void DrawDifficulty()
         {
             GUILayout.BeginVertical(RowStyle(0));
@@ -3461,6 +3567,7 @@ namespace BomberQoL
             }
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
+            NoteRow(0);
         }
 
         private void DrawStats(int current, Action<int> set)
@@ -3476,6 +3583,7 @@ namespace BomberQoL
             }
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
+            NoteRow(1);
         }
 
         private void DrawToggle(int row, ConfigEntry<bool> entry, string label)
@@ -3488,6 +3596,7 @@ namespace BomberQoL
             GUI.contentColor = old;
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+            NoteRow(row);
             if (value == entry.Value) return;
             entry.Value = value;
         }
@@ -3504,6 +3613,7 @@ namespace BomberQoL
             GUI.contentColor = old;
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+            NoteRow(row);
             if (value == on) return;
             Plugin.RandomPickupPool.Value = value
                 ? PickupPoolMode.Difficulty
@@ -3514,7 +3624,11 @@ namespace BomberQoL
         {
             Summary("Selected: " + DiffLabels[_difficulty] + "  |  World " +
                 _world + "  |  Stage " + _stage + "  |  Stats " +
-                StatLabels[_practiceStats] + "  |  Repeat " +
+                StatLabels[_practiceStats] + "  |  " +
+                "F+" + Practice.CustomStats[0] +
+                " B+" + Practice.CustomStats[1] +
+                " S+" + Practice.CustomStats[2] +
+                "  |  Repeat " +
                 OnOff(Plugin.PracticeRepeatStage.Value));
             DrawDifficulty();
             DrawStats(_practiceStats, delegate(int v) { _practiceStats = v; });
@@ -3530,6 +3644,7 @@ namespace BomberQoL
             }
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
+            NoteRow(2);
 
             GUILayout.BeginVertical(RowStyle(3));
             GUILayout.Label((RowSelected(3) ? ">> " : "   ") + "Stage");
@@ -3542,6 +3657,7 @@ namespace BomberQoL
             }
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
+            NoteRow(3);
 
             GUILayout.Space(4);
             GUILayout.BeginHorizontal(RowStyle(4));
@@ -3553,18 +3669,25 @@ namespace BomberQoL
             GUI.contentColor = oldColor;
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+            NoteRow(4);
             if (repeat != Plugin.PracticeRepeatStage.Value)
                 Plugin.PracticeRepeatStage.Value = repeat;
 
-            GUILayout.Space(10);
-            GUILayout.BeginVertical(RowStyle(5));
-            if (GUILayout.Button((RowSelected(5) ? ">> " : "   ") +
+            GUILayout.Space(8);
+            GUILayout.Label("Starting items (bonus on top of the character's base stats)");
+            for (int i = 0; i < LoadoutLabels.Length; i++)
+                DrawLoadoutRow(5 + i, i);
+
+            GUILayout.Space(8);
+            GUILayout.BeginVertical(RowStyle(14));
+            if (GUILayout.Button((RowSelected(14) ? ">> " : "   ") +
                 "Start Practice", GUILayout.Height(36)))
                 StartPractice();
             GUILayout.EndVertical();
-            GUILayout.Label(RowSelected(5)
-                ? ">> A: start    B: close    L/R: tabs"
-                : "   A: start    B: close    L/R: tabs");
+            NoteRow(14);
+            GUILayout.Label(RowSelected(14)
+                ? ">> A: start / change    B: close    L/R: tabs"
+                : "   A: start / change    B: close    L/R: tabs");
         }
 
         private void DrawRandomizer()
@@ -3603,6 +3726,7 @@ namespace BomberQoL
                 "Start Random Run", GUILayout.Height(36)))
                 StartRun();
             GUILayout.EndVertical();
+            NoteRow(12);
             GUILayout.Label(RowSelected(12)
                 ? ">> A: start    B: close    L/R: tabs"
                 : "   A: start    B: close    L/R: tabs");
@@ -3637,6 +3761,7 @@ namespace BomberQoL
             GUI.contentColor = old;
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+            NoteRow(row);
             if (value == on) return;
             entry.Value = !value;
             Plugin.ApplyAllPostFx();
@@ -3654,6 +3779,7 @@ namespace BomberQoL
             GUI.contentColor = old;
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+            NoteRow(row);
             if (value == on) return;
             Plugin.AutoSkipMovies.Value = value ? 5f : 0f;
         }
@@ -3706,6 +3832,7 @@ namespace BomberQoL
                 "Open original game options", GUILayout.Height(30)))
                 MainMenuOptionPatch.OpenOriginalOptions();
             GUILayout.EndVertical();
+            NoteRow(14);
             GUILayout.Label(RowSelected(14)
                 ? ">> A: open    B: close    L/R: tabs"
                 : "   A: toggle    B: close    L/R: tabs");
@@ -3742,10 +3869,13 @@ namespace BomberQoL
             GUILayout.Label(
                 "Pick a difficulty, world and stage and start one stage with " +
                 "the Stats preset chosen on the Practice tab (Default by " +
-                "default). Story saves are suppressed, so practice does not " +
-                "advance the real story. Optional repeat restarts the same " +
-                "stage when cleared and re-applies the preset each time.",
-                _helpStyle);
+                "default). The Starting items block edits the Custom preset: " +
+                "Fire/Bombs/Speed add item levels on top of the character's " +
+                "base stats, and the ability rows add Punch, Power Glove, " +
+                "Kick, Remote, Penetration or Elasticity. Editing any value " +
+                "switches Stats to Custom. Story saves are suppressed, and " +
+                "Optional repeat restarts the same stage and re-applies the " +
+                "preset each time.", _helpStyle);
 
             GUILayout.Space(8);
             GUILayout.Label("Randomizer", _helpHeading);
@@ -3865,16 +3995,54 @@ namespace BomberQoL
             GUILayout.EndHorizontal();
 
             GUILayout.Space(6);
-            if (_tab == 0)
-                DrawPractice();
-            else if (_tab == 1)
-                DrawRandomizer();
-            else if (_tab == 2)
-                DrawMultiplayer();
-            else if (_tab == 3)
-                DrawSettings();
-            else
+            if (_autoScrollTab != _tab || _autoScrollRow != _row)
+            {
+                _autoScrollTab = _tab;
+                _autoScrollRow = _row;
+                _autoScrollPending = true;
+            }
+            _hasSelectedRow = false;
+            if (_tab == 4)
+            {
                 DrawHelp();
+            }
+            else
+            {
+                _tabScroll[_tab] = GUILayout.BeginScrollView(
+                    _tabScroll[_tab], false, true);
+                Rect viewRect = GUILayoutUtility.GetLastRect();
+                if (viewRect.height <= 0f)
+                    viewRect = new Rect(r.x + 16, r.y + 64,
+                        w - 32, h - 80);
+                _scrollViewRect = viewRect;
+                if (_tab == 0)
+                    DrawPractice();
+                else if (_tab == 1)
+                    DrawRandomizer();
+                else if (_tab == 2)
+                    DrawMultiplayer();
+                else
+                    DrawSettings();
+                GUILayout.EndScrollView();
+
+                if (_autoScrollPending && _hasSelectedRow)
+                {
+                    float delta = 0f;
+                    if (_selectedRowRect.y < _scrollViewRect.y + 2f)
+                        delta = _selectedRowRect.y - _scrollViewRect.y - 2f;
+                    else if (_selectedRowRect.yMax >
+                             _scrollViewRect.yMax - 2f)
+                        delta = _selectedRowRect.yMax -
+                            _scrollViewRect.yMax + 2f;
+                    if (delta != 0f)
+                    {
+                        Vector2 scroll = _tabScroll[_tab];
+                        scroll.y = Mathf.Max(0f, scroll.y + delta);
+                        _tabScroll[_tab] = scroll;
+                    }
+                    _autoScrollPending = false;
+                }
+            }
 
             GUILayout.EndArea();
             GUI.skin.label.normal.textColor = oldLabel;
@@ -3889,6 +4057,30 @@ namespace BomberQoL
         private static readonly FieldInfo MapField =
             AccessTools.Field(typeof(AbstractBattleSceneBase), "_mapData");
 
+        internal static string[] Pool;
+        internal static bool Active;
+
+        internal static string[] BuildPool(string[] names)
+        {
+            if (names == null) return null;
+            var unique = new List<string>();
+            for (int i = 0; i < names.Length; i++)
+            {
+                string name = names[i];
+                if (string.IsNullOrEmpty(name)) continue;
+                if (!unique.Contains(name)) unique.Add(name);
+            }
+            return unique.ToArray();
+        }
+
+        internal static void Randomize(RuntimeMapData.EnemyStartPointData[] points)
+        {
+            if (!Plugin.RandomEnemies.Value || !Active) return;
+            if (Pool == null || Pool.Length == 0) return;
+            for (int i = 0; i < points.Length; i++)
+                points[i].name = Pool[Rng.Next(Pool.Length)];
+        }
+
         private static void Postfix(AbstractBattleSceneBase __instance)
         {
             if (!Plugin.RandomEnemies.Value) return;
@@ -3897,16 +4089,49 @@ namespace BomberQoL
                 return;
             RuntimeMapData map = MapField.GetValue(__instance) as RuntimeMapData;
             if (map == null) return;
-            string[] pool = map.useEnemyList;
+            Pool = BuildPool(map.useEnemyList);
             RuntimeMapData.EnemyStartPointData[] points =
                 map.enemyStartPointDatas;
-            if (pool == null || pool.Length == 0 ||
+            if (Pool == null || Pool.Length == 0 ||
                 points == null || points.Length == 0)
+            {
+                Active = false;
                 return;
-            for (int i = 0; i < points.Length; i++)
-                points[i].name = pool[Rng.Next(pool.Length)];
+            }
+            Active = true;
+            if (Pool.Length == 1)
+                Plugin.Log.LogWarning("Random enemies: this map only lists one " +
+                    "enemy type (" + Pool[0] + "), so nothing can vary");
+            Randomize(points);
             Plugin.Log.LogInfo("Random enemies: " + points.Length +
-                " spawns from " + pool.Length + " map types");
+                " spawns, unique pool " + Pool.Length + " [" +
+                string.Join(", ", Pool) + "]");
+        }
+    }
+
+    [HarmonyPatch(typeof(EnemyController), "create",
+        new Type[] { typeof(RuntimeMapData.EnemyStartPointData[]),
+            typeof(float) })]
+    internal static class EnemySpawnLogPatch
+    {
+        private static void Prefix(RuntimeMapData.EnemyStartPointData[] __0)
+        {
+            if (!Plugin.RandomEnemies.Value) return;
+            if (__0 == null || __0.Length == 0) return;
+            RandomEnemiesPatch.Randomize(__0);
+            var counts = new Dictionary<string, int>();
+            for (int i = 0; i < __0.Length; i++)
+            {
+                string name = __0[i].name;
+                int count;
+                counts.TryGetValue(name, out count);
+                counts[name] = count + 1;
+            }
+            string summary = "";
+            foreach (KeyValuePair<string, int> pair in counts)
+                summary += pair.Key + " x" + pair.Value + " ";
+            Plugin.Log.LogInfo("Enemy spawn: " + __0.Length + " -> " +
+                summary.Trim());
         }
     }
 

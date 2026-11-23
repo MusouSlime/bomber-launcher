@@ -116,7 +116,10 @@ The plugin adds:
   each story/practice map using that map's own enemy palette, so all models and
   sounds are already loaded. A fixed seed lives in
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
-  into battle when random characters or a random run is active. The F9 menu has
+  into battle when random characters or a random run is active. Practice has a
+  **Starting items** editor for the Custom preset: Fire/Bombs/Speed levels plus
+  Punch, Power Glove, Kick, Remote, Penetration and Elasticity. Editing any
+  entry switches Stats to Custom. The F9 menu has
   **Practice**, **Randomizer**, **Multiplayer**, **Settings**, and **Help** tabs,
   starts on **Beginner**, and exposes the run settings as toggles. The main menu **Other**
   entry is replaced with **Bomber QoL**, which opens the same menu; the original

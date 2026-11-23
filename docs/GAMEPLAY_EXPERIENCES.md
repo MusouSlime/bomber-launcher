@@ -298,8 +298,10 @@ ResetStatsPerStage = true
   from the same map's `useEnemyList`. The map's enemy models/SE packs were
   already queued for loading, so this only changes which regular enemy type
   appears at each spawn point. Bosses are separate and unaffected. Applies to
-  `StoryBattle` (including practice). The move-set shuffle is currently
-  removed from the UI while it is being evaluated.
+  `StoryBattle` (including practice). The list is deduplicated and re-rolled
+  again immediately before `EnemyController.create`, so the spawner cannot
+  read stale names. Logs show the unique pool and the actual spawn counts; a
+  map with only one listed enemy type logs that nothing can vary.
 - **Seed** — a non-zero value makes both rolls reproducible; 0 uses
   `Environment.TickCount`.
 - **SkipCharacterSelect** — when random characters (or a random run) are
@@ -325,21 +327,26 @@ ResetStatsPerStage = true
 - **Stats per stage** — `ResetStatsPerStage` re-applies the selected stats preset
   at the start of every stage. `Random` re-rolls, while Save keeps the current
   stats. `MasterStatReset` makes Master re-apply the selected preset every
-  stage; with Save selected it falls back to Default. The Default preset is
-  Fire 1 / Bomb 1 / Speed 1, so bombs always remain usable.
+  stage; with Save selected it falls back to Default. Default adds no items,
+  so the character's base stats apply (most characters start at Fire 2 /
+  Bomb 1). `CharacterData.items` is a list of `ItemTypedef.TYPE` ids, not a
+  count table, and the plugin writes it that way.
 - **Practice tab** — the F9 menu starts on Beginner and has Practice,
   Randomizer, Multiplayer, Settings, and Help tabs. The selected row is highlighted in gold and the active tab is filled gold; each tab shows a
   Selected line with the current difficulty, stats preset and stage. Practice
   and Random Run keep separate Stats selections, so changing one does not
-  change the other. Practice selects world and stage directly, re-applies its
-  selected stats preset (Default by default) on every start and repeat, keeps
-  the normal character-select screen (it never randomizes characters), and can
-  **Repeat stage when cleared**. `[Practice] RepeatStage`
-  stores the toggle.
+  change the other. A **Starting items** block edits the Custom preset
+  directly: Fire/Bombs/Speed are bonus levels on top of the character's base,
+  and the ability rows grant Punch, Power Glove, Kick, Remote, Penetration or
+  Elasticity. Editing any entry switches Stats to Custom and persists through
+  the `[Practice] Stats*` keys. Practice selects world and stage directly,
+  re-applies its selected preset on every start and repeat, keeps the normal
+  character-select screen (it never randomizes characters), and can **Repeat
+  stage when cleared**. `[Practice] RepeatStage` stores the toggle.
 - **F9 toggles** — the Randomizer tab toggles random pickups, blank icons,
-  pickup-name popups, difficulty-based odds, random characters, random A-button
-  specials, character-select skip, per-stage stat reset, Master stat reset, and
-  gem continue skip. The Multiplayer tab toggles Smarter Bots, Random CPU
+  pickup-name popups, difficulty-based odds, random characters, random enemies,
+  character-select skip, per-stage stat reset, Master stat reset, and gem
+  continue skip. The Multiplayer tab toggles Smarter Bots, Random CPU
   Opponent, and CPU A-button specials. Toggles write the matching BepInEx
   config values. Character randomization is opt-in through the **Random
   characters** toggle; Practice never uses it.
