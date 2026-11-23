@@ -23,9 +23,12 @@ the installed Steam files.
 | Character packs on disk | `chara_pack_01`–`04` | all four present |
 | Accessory packs on disk | `acce/acce_cat_001`… | present |
 
-## 1. More characters and skins
+## 1. Characters and skins
 
-### 1A. Unlock all selectable characters
+**Unlock-all is rejected as a cheat.** The chosen direction is importing custom
+models/skins instead of bypassing the game's unlock progression.
+
+### 1A. Unlock all selectable characters (rejected)
 
 **What exists:** 51 builtin + 10 DLC rows. Ten platform IDs are already enabled.
 The remaining rows are gated by `CharacterDataManager.isUsableCharacterInternal`
@@ -200,8 +203,9 @@ balanced mode with rewards and UI.
 
 ## Recommended sequence
 
-1. **0.7 — Character & skin unlock** (1A + 1B, optional 1C): highest value,
-   lowest risk, reuses the platform-ID machinery.
+1. **0.7 — Character import framework**: runtime loader for a T-posed OBJ or
+   rigged model, auto-weights to the game's 29-bone skeleton, texture/material
+   support, and a Blender prep/export script. No unlock-all cheat.
 2. **0.7.x — Test pass + localization** for every unlocked row, plus a Windows
    artwork extraction parity item.
 3. **0.8 — Arena prototype** (Approach A): one arena intermission every N
@@ -213,11 +217,11 @@ balanced mode with rewards and UI.
 
 ## Decisions needed
 
-1. Character scope: builtin only, builtin + DLC, or everything including
-   cassettes and topknots? Exclude `golem`/NPC-only rows?
-2. Cassettes: expose all 32 as selectable skins, or curate a subset?
-3. Topknots: unlock all 305, or a smaller curated set?
+1. Import format: OBJ + PNG with runtime auto-weights (simplest), or rigged
+   FBX/GLB exported through a Blender helper (better deformation)?
+2. Which character slot should an imported model replace: White Bomber, any
+   selected character, or all humanoid players?
+3. Should imported models be player-only, or also used for local-battle CPUs?
 4. Arena integration: intermission (recommended), separate Arena Run, or mixed
    stage pool?
-5. CPU use for DLC/platform characters: player-only (current) or reuse base AI?
-6. Priority: characters first, arenas first, or both in one release?
+5. Priority: character importing first, arenas first, or both in one release?
