@@ -2815,6 +2815,7 @@ namespace BomberQoL
         {
             if (storyData == null) return;
             if (!RandomRun.Active && !Active) return;
+            if (Active && !RandomRun.Active) _statsApplied = false;
             bool perStage = Plugin.ResetStatsPerStage.Value ||
                 !RandomRun.Active ||
                 (RunDifficulty == "super" && Plugin.MasterStatReset.Value);
@@ -2966,7 +2967,8 @@ namespace BomberQoL
         private CursorLockMode _prevLockMode;
         private int _tab;
         private int _difficulty;
-        private int _stats = 1;
+        private int _practiceStats = 1;
+        private int _runStats = 1;
         private int _world = 1;
         private int _stage = 1;
         private int _row;
@@ -3003,7 +3005,7 @@ namespace BomberQoL
         {
             get
             {
-                if (_tab == 0) return 5;
+                if (_tab == 0) return 6;
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
                 if (_tab == 3) return 15;
@@ -3232,8 +3234,8 @@ namespace BomberQoL
                         DiffLabels.Length - 1);
                     break;
                 case 1:
-                    _stats = Mathf.Clamp(_stats + delta, 0,
-                        StatLabels.Length - 1);
+                    _practiceStats = Mathf.Clamp(
+                        _practiceStats + delta, 0, StatLabels.Length - 1);
                     break;
                 case 2: Toggle(Plugin.RandomPickups); break;
                 case 3: Toggle(Plugin.HidePickupIcons); break;
@@ -3253,8 +3255,8 @@ namespace BomberQoL
             if (_tab == 4) return;
             if (_tab == 0)
             {
-                if (_row == 4) { StartPractice(); return; }
-                if (_row <= 2) return; // value rows: use Left/Right
+                if (_row == 5) { StartPractice(); return; }
+                if (_row <= 3) return; // value rows: use Left/Right
             }
             if (_tab == 1)
             {
@@ -3321,14 +3323,14 @@ namespace BomberQoL
         {
             if (Practice.StartPractice(_world, _stage,
                 Difficulties[_difficulty],
-                Plugin.PracticeRepeatStage.Value, _stats))
+                Plugin.PracticeRepeatStage.Value, _practiceStats))
                 SetVisible(false);
         }
 
         private void StartRun()
         {
             if (Practice.StartRandomRun(
-                Difficulties[_difficulty], _stats))
+                Difficulties[_difficulty], _runStats))
                 SetVisible(false);
         }
 
@@ -3461,7 +3463,7 @@ namespace BomberQoL
             GUILayout.EndVertical();
         }
 
-        private void DrawStats()
+        private void DrawStats(int current, Action<int> set)
         {
             GUILayout.BeginVertical(RowStyle(1));
             GUILayout.Label((RowSelected(1) ? ">> " : "   ") + "Stats");
@@ -3469,8 +3471,8 @@ namespace BomberQoL
             for (int i = 0; i < StatLabels.Length; i++)
             {
                 int idx = i;
-                ValueButton(1, idx, _stats, StatLabels[idx], 90f,
-                    delegate { _stats = idx; });
+                ValueButton(1, idx, current, StatLabels[idx], 90f,
+                    delegate { set(idx); });
             }
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
@@ -3512,40 +3514,41 @@ namespace BomberQoL
         {
             Summary("Selected: " + DiffLabels[_difficulty] + "  |  World " +
                 _world + "  |  Stage " + _stage + "  |  Stats " +
-                StatLabels[_stats] + "  |  Repeat " +
+                StatLabels[_practiceStats] + "  |  Repeat " +
                 OnOff(Plugin.PracticeRepeatStage.Value));
             DrawDifficulty();
+            DrawStats(_practiceStats, delegate(int v) { _practiceStats = v; });
 
-            GUILayout.BeginVertical(RowStyle(1));
-            GUILayout.Label((RowSelected(1) ? ">> " : "   ") + "World");
+            GUILayout.BeginVertical(RowStyle(2));
+            GUILayout.Label((RowSelected(2) ? ">> " : "   ") + "World");
             GUILayout.BeginHorizontal();
             for (int i = 1; i <= 7; i++)
             {
                 int world = i;
-                ValueButton(1, world, _world, world.ToString(), 56f,
+                ValueButton(2, world, _world, world.ToString(), 56f,
                     delegate { _world = world; ClampStage(); });
             }
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
 
-            GUILayout.BeginVertical(RowStyle(2));
-            GUILayout.Label((RowSelected(2) ? ">> " : "   ") + "Stage");
+            GUILayout.BeginVertical(RowStyle(3));
+            GUILayout.Label((RowSelected(3) ? ">> " : "   ") + "Stage");
             GUILayout.BeginHorizontal();
             for (int i = 1; i <= MaxStage(_world); i++)
             {
                 int stage = i;
-                ValueButton(2, stage, _stage, stage.ToString(), 48f,
+                ValueButton(3, stage, _stage, stage.ToString(), 48f,
                     delegate { _stage = stage; });
             }
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
 
             GUILayout.Space(4);
-            GUILayout.BeginHorizontal(RowStyle(3));
+            GUILayout.BeginHorizontal(RowStyle(4));
             Color oldColor = GUI.contentColor;
-            if (RowSelected(3)) GUI.contentColor = MarkerColor;
+            if (RowSelected(4)) GUI.contentColor = MarkerColor;
             bool repeat = GUILayout.Toggle(Plugin.PracticeRepeatStage.Value,
-                (RowSelected(3) ? ">> " : "   ") +
+                (RowSelected(4) ? ">> " : "   ") +
                 "Repeat this stage when cleared");
             GUI.contentColor = oldColor;
             GUILayout.FlexibleSpace();
@@ -3554,12 +3557,12 @@ namespace BomberQoL
                 Plugin.PracticeRepeatStage.Value = repeat;
 
             GUILayout.Space(10);
-            GUILayout.BeginVertical(RowStyle(4));
-            if (GUILayout.Button((RowSelected(4) ? ">> " : "   ") +
+            GUILayout.BeginVertical(RowStyle(5));
+            if (GUILayout.Button((RowSelected(5) ? ">> " : "   ") +
                 "Start Practice", GUILayout.Height(36)))
                 StartPractice();
             GUILayout.EndVertical();
-            GUILayout.Label(RowSelected(4)
+            GUILayout.Label(RowSelected(5)
                 ? ">> A: start    B: close    L/R: tabs"
                 : "   A: start    B: close    L/R: tabs");
         }
@@ -3567,10 +3570,10 @@ namespace BomberQoL
         private void DrawRandomizer()
         {
             Summary("Selected: " + DiffLabels[_difficulty] + "  |  Stats " +
-                StatLabels[_stats] + "  |  Random Run: 10 stages per boss, " +
+                StatLabels[_runStats] + "  |  Random Run: 10 stages per boss, " +
                 "13 bosses");
             DrawDifficulty();
-            DrawStats();
+            DrawStats(_runStats, delegate(int v) { _runStats = v; });
 
             GUILayout.Space(8);
             GUILayout.BeginHorizontal();
@@ -3738,9 +3741,11 @@ namespace BomberQoL
             GUILayout.Label("Practice", _helpHeading);
             GUILayout.Label(
                 "Pick a difficulty, world and stage and start one stage with " +
-                "default stats. Story saves are suppressed, so practice does " +
-                "not advance the real story. Optional repeat restarts the same " +
-                "stage when cleared.", _helpStyle);
+                "the Stats preset chosen on the Practice tab (Default by " +
+                "default). Story saves are suppressed, so practice does not " +
+                "advance the real story. Optional repeat restarts the same " +
+                "stage when cleared and re-applies the preset each time.",
+                _helpStyle);
 
             GUILayout.Space(8);
             GUILayout.Label("Randomizer", _helpHeading);

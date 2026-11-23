@@ -330,9 +330,11 @@ ResetStatsPerStage = true
 - **Practice tab** — the F9 menu starts on Beginner and has Practice,
   Randomizer, Multiplayer, Settings, and Help tabs. The selected row is highlighted in gold and the active tab is filled gold; each tab shows a
   Selected line with the current difficulty, stats preset and stage. Practice
-  selects world and stage directly, uses the selected stats preset (Default by
-  default), keeps the normal character-select screen (it never randomizes
-  characters), and can **Repeat stage when cleared**. `[Practice] RepeatStage`
+  and Random Run keep separate Stats selections, so changing one does not
+  change the other. Practice selects world and stage directly, re-applies its
+  selected stats preset (Default by default) on every start and repeat, keeps
+  the normal character-select screen (it never randomizes characters), and can
+  **Repeat stage when cleared**. `[Practice] RepeatStage`
   stores the toggle.
 - **F9 toggles** — the Randomizer tab toggles random pickups, blank icons,
   pickup-name popups, difficulty-based odds, random characters, random A-button
