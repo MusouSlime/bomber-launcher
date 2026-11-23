@@ -26,7 +26,6 @@ artwork extracted from the game itself.
 | **Soft Reset Combo** | BepInEx plugin: hold LB + RB + Start to fully relaunch the game |
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
 | **Post-processing** | Motion blur, depth of field, bloom, vignette and film grain switches |
-| **Character Skins** | Recolor a character's existing model, pose and animations with a custom PNG |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
 
@@ -117,11 +116,7 @@ The plugin adds:
   each story/practice map using that map's own enemy palette, so all models and
   sounds are already loaded. A fixed seed lives in
   `[Randomizer] Seed` (0 = random). **Skip Character Select** jumps straight
-  into battle when random characters or a random run is active. The **Skins**
-  tab applies a custom albedo PNG to a chosen character while keeping the
-  vanilla mesh, skeleton and animations. Put skins under
-  `BepInEx/plugins/BomberQoL/skins/` or set `[CharacterSkin] Texture`; see
-  `tools/make_palette_skin.py`. Practice has a
+  into battle when random characters or a random run is active. Practice has a
   **Starting items** editor for the Custom preset: final Fire/Bombs/Speed levels plus
   Punch, Power Glove, Kick, Remote, Penetration and Elasticity. Editing any
   entry switches Stats to Custom. The F9 menu has

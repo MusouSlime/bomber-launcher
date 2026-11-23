@@ -378,30 +378,6 @@ Both are exposed as launcher toggles. Practice saves remain suppressed, so this
 is a safe base for a roguelike run: random characters, random enemies,
 practice stage jumps and no real-save writes.
 
-## Character skins
-
-The **Skins** tab replaces a character's albedo texture only. The game mesh,
-29-bone skeleton, pose and all animations stay untouched, so the result keeps
-the game's look and works for players and CPUs.
-
-```ini
-[CharacterSkin]
-Enabled = true
-Target = white
-Texture = /path/to/skin.png
-```
-
-- Empty `Texture` uses the first PNG under
-  `BepInEx/plugins/BomberQoL/skins/`.
-- Prefer `skins/<name>/texture.png`.
-- The base character atlas is 128x128. `tools/make_palette_skin.py` remaps the
-  white bomber's palette to a Viewtiful Joe-inspired red/white/skin/gold set;
-  the same approach works for other palette skins.
-- The mesh importer is a separate experimental feature and is not in `master`.
-
-Changes apply on the next battle or character preview. Use the F9 **Skins**
-tab to toggle, choose the target character, or reload.
-
 ## Story game over
 
 ```ini

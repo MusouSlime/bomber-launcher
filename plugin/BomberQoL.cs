@@ -79,9 +79,6 @@ namespace BomberQoL
         internal static ConfigEntry<bool> CpuSpecialAbilities;
         internal static ConfigEntry<bool> PlatformExclusives;
         internal static ConfigEntry<bool> MainMenuQoL;
-        internal static ConfigEntry<bool> CharacterSkinEnabled;
-        internal static ConfigEntry<string> CharacterSkinTarget;
-        internal static ConfigEntry<string> CharacterSkinTexture;
         internal static ConfigEntry<bool> SkipGemContinue;
         internal static ConfigEntry<bool> MasterStatReset;
         internal static ConfigEntry<bool> ResetStatsPerStage;
@@ -208,12 +205,6 @@ namespace BomberQoL
                 "Make the built-in platform-exclusive character IDs usable (Master Chief, Ratchet, etc.).");
             MainMenuQoL = Config.Bind("UI", "MainMenuQoL", true,
                 "Replace the main menu Other option with Bomber QoL and open the F9 overlay.");
-            CharacterSkinEnabled = Config.Bind("CharacterSkin", "Enabled", false,
-                "Replace the target character's albedo texture with a custom PNG while keeping the game mesh, rig and animations.");
-            CharacterSkinTarget = Config.Bind("CharacterSkin", "Target", "white",
-                "Character key whose texture is replaced (for example white, black, simon).");
-            CharacterSkinTexture = Config.Bind("CharacterSkin", "Texture", "",
-                "PNG path. Empty uses the first PNG under BepInEx/plugins/BomberQoL/skins.");
             SkipGemContinue = Config.Bind("Gameplay", "SkipGemContinue", true,
                 "On story game over, skip the gem continue dialog and return to the main menu.");
             MasterStatReset = Config.Bind("Gameplay", "MasterStatReset", true,
@@ -320,7 +311,6 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PlatformUsableBuiltinPatch));
             harmony.PatchAll(typeof(MainMenuOptionPatch));
             harmony.PatchAll(typeof(RandomEnemiesPatch));
-            harmony.PatchAll(typeof(CharacterSkinCreatePatch));
             harmony.PatchAll(typeof(EnemySpawnLogPatch));
             harmony.PatchAll(typeof(MainMenuLabelPatch));
             harmony.PatchAll(typeof(CustomBgmPlayPatch));
@@ -1806,165 +1796,6 @@ namespace BomberQoL
         }
     }
 
-    [HarmonyPatch(typeof(Player.CharacterModel), "create")]
-    internal static class CharacterSkinCreatePatch
-    {
-        private static void Postfix(Player.CharacterModel __instance)
-        {
-            CharacterSkin.Apply(__instance);
-        }
-    }
-
-    internal static class CharacterSkin
-    {
-        private static readonly FieldInfo ModelField =
-            AccessTools.Field(typeof(Player.CharacterModel), "_model");
-
-        private static Texture2D _texture;
-        private static string _texturePath;
-        private static bool _failed;
-        private static bool _logged;
-
-        internal static string SkinsRoot
-        {
-            get
-            {
-                return Path.Combine(Path.Combine(Paths.PluginPath,
-                    "BomberQoL"), "skins");
-            }
-        }
-
-        internal static void Reload()
-        {
-            _texture = null;
-            _texturePath = null;
-            _failed = false;
-            _logged = false;
-        }
-
-        internal static string TextureName
-        {
-            get
-            {
-                if (string.IsNullOrEmpty(_texturePath)) return "none";
-                return Path.GetFileName(Path.GetDirectoryName(_texturePath)) +
-                    "/" + Path.GetFileName(_texturePath);
-            }
-        }
-
-        internal static void Apply(Player.CharacterModel model)
-        {
-            if (!Plugin.CharacterSkinEnabled.Value || model == null)
-                return;
-            CharacterDataManager cd =
-                SingletonBase<CharacterDataManager>.getInstance();
-            if (cd == null) return;
-            CharacterInfoDataTable.CharacterInfoData info =
-                cd.getCharacterInfo(model.characterId);
-            if (info == null) return;
-            string target = Plugin.CharacterSkinTarget.Value;
-            if (!string.IsNullOrEmpty(target) &&
-                !string.Equals(target, "all",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(info.charKey, target,
-                    StringComparison.OrdinalIgnoreCase))
-                return;
-            if (!EnsureTexture()) return;
-            GameObject go = ModelField.GetValue(model) as GameObject;
-            if (go == null) return;
-            Renderer[] renderers =
-                go.GetComponentsInChildren<Renderer>(true);
-            if (renderers == null) return;
-            int replaced = 0;
-            for (int i = 0; i < renderers.Length; i++)
-            {
-                Renderer r = renderers[i];
-                if (r == null) continue;
-                Material[] mats = r.materials;
-                if (mats == null) continue;
-                for (int m = 0; m < mats.Length; m++)
-                {
-                    Material mat = mats[m];
-                    if (mat == null) continue;
-                    if (mat.HasProperty("_MainTex"))
-                        mat.SetTexture("_MainTex", _texture);
-                    if (mat.HasProperty("_BaseMap"))
-                        mat.SetTexture("_BaseMap", _texture);
-                    mat.mainTexture = _texture;
-                    replaced++;
-                }
-                r.materials = mats;
-            }
-            if (!_logged && replaced > 0)
-            {
-                _logged = true;
-                Plugin.Log.LogInfo("Character skin: " + info.charKey +
-                    " -> " + _texturePath);
-            }
-        }
-
-        private static bool EnsureTexture()
-        {
-            if (_texture != null) return true;
-            if (_failed) return false;
-            string path = Plugin.CharacterSkinTexture.Value;
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
-            {
-                string root = SkinsRoot;
-                if (!Directory.Exists(root))
-                {
-                    _failed = true;
-                    Plugin.Log.LogWarning("Character skin: folder not found: " +
-                        root);
-                    return false;
-                }
-                string preferred = Path.Combine(
-                    Path.Combine(root, Plugin.CharacterSkinTarget.Value),
-                    "texture.png");
-                if (File.Exists(preferred)) path = preferred;
-                else
-                {
-                    string[] pngs = Directory.GetFiles(root, "*.png",
-                        SearchOption.AllDirectories);
-                    Array.Sort(pngs, StringComparer.OrdinalIgnoreCase);
-                    if (pngs.Length > 0) path = pngs[0];
-                }
-            }
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
-            {
-                _failed = true;
-                Plugin.Log.LogWarning("Character skin: no PNG found under " +
-                    SkinsRoot);
-                return false;
-            }
-            try
-            {
-                byte[] bytes = File.ReadAllBytes(path);
-                Texture2D tex = new Texture2D(2, 2, TextureFormat.ARGB32,
-                    false);
-                if (!tex.LoadImage(bytes))
-                {
-                    UnityEngine.Object.Destroy(tex);
-                    _failed = true;
-                    return false;
-                }
-                tex.name = "BomberQoL_Skin";
-                tex.wrapMode = TextureWrapMode.Clamp;
-                _texture = tex;
-                _texturePath = path;
-                Plugin.Log.LogInfo("Character skin: loaded " + path);
-                return true;
-            }
-            catch (Exception e)
-            {
-                _failed = true;
-                Plugin.Log.LogWarning("Character skin load failed: " +
-                    e.Message);
-                return false;
-            }
-        }
-    }
-
     internal static class PlatformCharacters
     {
         private static readonly HashSet<string> ExclusiveKeys =
@@ -3245,21 +3076,10 @@ namespace BomberQoL
         private float _lastPadLog;
         private bool _comboLatched;
         private Vector2 _helpScroll;
-        private int _skinTargetIndex;
 
         private void Awake()
         {
             Instance = this;
-            string target = Plugin.CharacterSkinTarget.Value;
-            for (int i = 0; i < SkinTargetKeys.Length; i++)
-            {
-                if (string.Equals(SkinTargetKeys[i], target,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    _skinTargetIndex = i;
-                    break;
-                }
-            }
         }
 
         internal static void OpenFromMenu()
@@ -3285,7 +3105,6 @@ namespace BomberQoL
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
                 if (_tab == 3) return 15;
-                if (_tab == 4) return 3;
                 return 0;
             }
         }
@@ -3339,17 +3158,17 @@ namespace BomberQoL
 
             if (Input.GetKeyDown(KeyCode.Q) || PadButtonDown("L"))
             {
-                _tab = (_tab + 5) % 6;
+                _tab = (_tab + 4) % 5;
                 _row = 0;
             }
             if (Input.GetKeyDown(KeyCode.E) || PadButtonDown("R"))
             {
-                _tab = (_tab + 1) % 6;
+                _tab = (_tab + 1) % 5;
                 _row = 0;
             }
             if (Input.GetKeyDown(KeyCode.Tab))
             {
-                _tab = (_tab + 1) % 6;
+                _tab = (_tab + 1) % 5;
                 _row = 0;
             }
             HandleNavigation();
@@ -3483,7 +3302,7 @@ namespace BomberQoL
 
         private void ChangeRowValue(int delta)
         {
-            if (_tab == 5) return;
+            if (_tab == 4) return;
             if (_tab == 0)
             {
                 switch (_row)
@@ -3510,21 +3329,6 @@ namespace BomberQoL
                         break;
                     default:
                         StepLoadout(_row - 5, delta);
-                        break;
-                }
-                return;
-            }
-
-            if (_tab == 4)
-            {
-                switch (_row)
-                {
-                    case 0: Toggle(Plugin.CharacterSkinEnabled); break;
-                    case 1:
-                        _skinTargetIndex = (_skinTargetIndex + delta +
-                            SkinTargetKeys.Length) % SkinTargetKeys.Length;
-                        Plugin.CharacterSkinTarget.Value =
-                            SkinTargetKeys[_skinTargetIndex];
                         break;
                 }
                 return;
@@ -3589,7 +3393,7 @@ namespace BomberQoL
 
         private void ActivateRow()
         {
-            if (_tab == 5) return;
+            if (_tab == 4) return;
             if (_tab == 0)
             {
                 if (_row == 14) { StartPractice(); return; }
@@ -3606,12 +3410,6 @@ namespace BomberQoL
             if (_tab == 3 && _row == 14)
             {
                 MainMenuOptionPatch.OpenOriginalOptions();
-                return;
-            }
-            if (_tab == 4 && _row == 2)
-            {
-                CharacterSkin.Reload();
-                Plugin.Log.LogInfo("Character skin: reloaded");
                 return;
             }
             ChangeRowValue(1);
@@ -3647,7 +3445,7 @@ namespace BomberQoL
             bool pageUp = Input.GetKeyDown(KeyCode.PageUp);
             bool pageDown = Input.GetKeyDown(KeyCode.PageDown);
 
-            if (_tab == 5)
+            if (_tab == 4)
             {
                 if (up) _helpScroll.y = Mathf.Max(0f,
                     _helpScroll.y - 40f);
@@ -4174,57 +3972,6 @@ namespace BomberQoL
                 : "   A: toggle    B: close    L/R: tabs    X/Y+Up/Down: scroll");
         }
 
-        internal static readonly string[] SkinTargetKeys =
-        {
-            "white", "black", "blue", "red",
-            "yellow", "green", "pink", "lightblue"
-        };
-
-        private static readonly string[] SkinTargetLabels =
-        {
-            "White Bomber", "Black Bomber", "Blue Bomber", "Red Bomber",
-            "Yellow Bomber", "Green Bomber", "Pink Bomber",
-            "Light Blue Bomber"
-        };
-
-        private void DrawSkins()
-        {
-            int target = Mathf.Clamp(_skinTargetIndex, 0,
-                SkinTargetLabels.Length - 1);
-            Summary("Skin: " + CharacterSkin.TextureName + "  |  Replace: " +
-                SkinTargetLabels[target] + "  |  " +
-                OnOff(Plugin.CharacterSkinEnabled.Value));
-            DrawToggle(0, Plugin.CharacterSkinEnabled,
-                "Use custom character skin");
-            GUILayout.BeginHorizontal(RowStyle(1));
-            Color old = GUI.contentColor;
-            if (RowSelected(1)) GUI.contentColor = MarkerColor;
-            GUILayout.Label((RowSelected(1) ? ">> " : "   ") +
-                "Replace character: " + SkinTargetLabels[target]);
-            GUI.contentColor = old;
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            NoteRow(1);
-            GUILayout.BeginVertical(RowStyle(2));
-            if (GUILayout.Button((RowSelected(2) ? ">> " : "   ") +
-                "Reload skin", GUILayout.Height(30)))
-            {
-                CharacterSkin.Reload();
-                Plugin.Log.LogInfo("Character skin: reloaded");
-            }
-            GUILayout.EndVertical();
-            NoteRow(2);
-
-            GUILayout.Space(8);
-            GUILayout.Label("Skins folder: " + CharacterSkin.SkinsRoot);
-            GUILayout.Label("PNG replaces the character's albedo; mesh, rig and animations stay vanilla.");
-            GUILayout.Label("Set [CharacterSkin] Texture to an exact PNG path if needed.");
-            GUILayout.Label("Changes apply to the next battle or character preview.");
-            GUILayout.Label(RowSelected(2)
-                ? ">> A: reload    B: close    L/R: tabs"
-                : "   A: toggle / reload    B: close    L/R: tabs");
-        }
-
         private GUIStyle _helpStyle;
         private GUIStyle _helpTitle;
         private GUIStyle _helpHeading;
@@ -4295,17 +4042,6 @@ namespace BomberQoL
                 "AI data for them.", _helpStyle);
 
             GUILayout.Space(8);
-            GUILayout.Label("Skins", _helpHeading);
-            GUILayout.Label(
-                "Custom skins replace the selected character's albedo " +
-                "texture while keeping the original mesh, skeleton and all " +
-                "animations. Put a PNG under " +
-                "BepInEx/plugins/BomberQoL/skins/ or set an exact path in " +
-                "[CharacterSkin] Texture. Choose the character with the " +
-                "Replace character row; changes apply on the next battle or " +
-                "character preview.", _helpStyle);
-
-            GUILayout.Space(8);
             GUILayout.Label("Settings", _helpHeading);
             GUILayout.Label(
                 "Runtime launcher options: post-processing effects, fast " +
@@ -4372,7 +4108,7 @@ namespace BomberQoL
             Color oldTabBg = GUI.backgroundColor;
             Color oldTabFg = GUI.contentColor;
             string[] tabNames = { "Practice", "Randomizer",
-                "Multiplayer", "Settings", "Skins", "Help" };
+                "Multiplayer", "Settings", "Help" };
             for (int i = 0; i < tabNames.Length; i++)
             {
                 int tab = i;
@@ -4404,7 +4140,7 @@ namespace BomberQoL
                 _autoScrollPending = true;
             }
             _hasSelectedRow = false;
-            if (_tab == 5)
+            if (_tab == 4)
             {
                 DrawHelp();
             }
@@ -4423,10 +4159,8 @@ namespace BomberQoL
                     DrawRandomizer();
                 else if (_tab == 2)
                     DrawMultiplayer();
-                else if (_tab == 3)
-                    DrawSettings();
                 else
-                    DrawSkins();
+                    DrawSettings();
                 GUILayout.EndScrollView();
 
                 if (_autoScrollPending && _hasSelectedRow)
