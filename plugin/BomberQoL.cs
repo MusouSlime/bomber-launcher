@@ -102,6 +102,11 @@ namespace BomberQoL
         internal static ConfigEntry<bool> UltraLow;
         internal static ConfigEntry<int> UltraWidth;
         internal static ConfigEntry<int> UltraHeight;
+        internal static ConfigEntry<bool> NetworkEnableRelay;
+        internal static ConfigEntry<bool> NetworkForceWorldwide;
+        internal static ConfigEntry<bool> NetworkFilterFullLobbies;
+        internal static ConfigEntry<int> NetworkLobbyResultCount;
+        internal static ConfigEntry<bool> NetworkLogSearch;
         internal static KeyCode SkipKey = KeyCode.Space;
         internal static KeyCode SoftResetKey = KeyCode.F10;
         internal static KeyCode PracticeMenuKey = KeyCode.F9;
@@ -259,6 +264,16 @@ namespace BomberQoL
                 "Ultra-low window width. 0 keeps the current resolution.");
             UltraHeight = Config.Bind("Performance", "UltraHeight", 540,
                 "Ultra-low window height. 0 keeps the current resolution.");
+            NetworkEnableRelay = Config.Bind("Network", "EnableRelay", true,
+                "Enable Steam P2P packet relay so players behind strict NAT/CGNAT can connect.");
+            NetworkForceWorldwide = Config.Bind("Network", "ForceWorldwide", true,
+                "Force online lobby searches to use the worldwide distance filter.");
+            NetworkFilterFullLobbies = Config.Bind("Network", "FilterFullLobbies", true,
+                "Hide full rooms and raise the Steam lobby result count.");
+            NetworkLobbyResultCount = Config.Bind("Network", "LobbyResultCount", 100,
+                "Maximum number of Steam lobbies to request.");
+            NetworkLogSearch = Config.Bind("Network", "LogSearch", true,
+                "Log the online lobby search filters and relay state.");
 
             try
             {
@@ -352,6 +367,8 @@ namespace BomberQoL
             harmony.PatchAll(typeof(PickupToastPatch));
             harmony.PatchAll(typeof(GemContinuePatch));
             harmony.PatchAll(typeof(PracticeStatsPatch));
+            harmony.PatchAll(typeof(NetworkLobbySearchPatch));
+            harmony.PatchAll(typeof(NetworkLobbyDistancePatch));
 
             Type logoType = AccessTools.Inner(typeof(TitleUI), "LogoState");
             MethodInfo logoExec = logoType == null ? null :
@@ -403,6 +420,7 @@ namespace BomberQoL
             UnityEngine.Object.DontDestroyOnLoad(customSfx);
             customSfx.AddComponent<CustomSfxPlayer>();
             StartCoroutine(LogJoysticksSoon());
+            StartCoroutine(EnableRelaySoon());
 
             SceneManager.sceneLoaded += OnSceneLoaded;
             Log.LogInfo("Bomber QoL loaded (skip key: " + SkipKey +
@@ -431,6 +449,28 @@ namespace BomberQoL
             ApplyAllPostFx();
             ApplyResultTweaks();
             EnableMasterButton();
+        }
+
+        private IEnumerator EnableRelaySoon()
+        {
+            if (!NetworkEnableRelay.Value) yield break;
+            yield return new WaitForSeconds(3f);
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                try
+                {
+                    bool ok = Steamworks.SteamNetworking.AllowP2PPacketRelay(true);
+                    Log.LogInfo("Steam P2P relay attempt " + (attempt + 1) +
+                        ": " + (ok ? "enabled" : "not ready"));
+                    if (ok) yield break;
+                }
+                catch (Exception e)
+                {
+                    Log.LogWarning("Steam P2P relay attempt " + (attempt + 1) +
+                        " failed: " + e.Message);
+                }
+                yield return new WaitForSeconds(3f);
+            }
         }
 
         private IEnumerator LogJoysticksSoon()
@@ -5203,4 +5243,36 @@ namespace BomberQoL
                 p.grain.enabled = false;
         }
     }
+
+    [HarmonyPatch(typeof(Steamworks.SteamMatchmaking), "RequestLobbyList")]
+    internal static class NetworkLobbySearchPatch
+    {
+        private static void Prefix()
+        {
+            if (!Plugin.NetworkFilterFullLobbies.Value) return;
+            Steamworks.SteamMatchmaking.AddRequestLobbyListFilterSlotsAvailable(1);
+            int count = Plugin.NetworkLobbyResultCount.Value;
+            if (count < 1) count = 1;
+            if (count > 100) count = 100;
+            Steamworks.SteamMatchmaking.AddRequestLobbyListResultCountFilter(count);
+            if (Plugin.NetworkLogSearch.Value)
+                Plugin.Log.LogInfo("Steam lobby search: slots>=1, max=" + count);
+        }
+    }
+
+    [HarmonyPatch(typeof(Steamworks.SteamMatchmaking),
+        "AddRequestLobbyListDistanceFilter")]
+    internal static class NetworkLobbyDistancePatch
+    {
+        private static void Prefix(
+            ref Steamworks.ELobbyDistanceFilter eLobbyDistanceFilter)
+        {
+            if (!Plugin.NetworkForceWorldwide.Value) return;
+            eLobbyDistanceFilter =
+                Steamworks.ELobbyDistanceFilter.k_ELobbyDistanceFilterWorldwide;
+            if (Plugin.NetworkLogSearch.Value)
+                Plugin.Log.LogInfo("Steam lobby search: worldwide distance");
+        }
+    }
+
 }
