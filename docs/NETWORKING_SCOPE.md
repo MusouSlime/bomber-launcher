@@ -163,3 +163,74 @@ automated test; the UI state/confirm path needs a manual pass. The underlying
 - Rollback or new netcode — the game is lockstep/input-delay; major rewrite.
 - Cross-play with Switch/consoles — different platform backends and assets.
 - Creating a playerbase — discovery can improve, but code cannot fill rooms.
+
+## Can the game use another network?
+
+Short answer: **not through a simple setting, and not through LAN mode.** The
+PC build is wired to Steamworks for both discovery and gameplay packets.
+
+### What the binary actually does
+
+- `NetworkManager.start(StartParam)` always transitions to
+  `steamworksNetworkInit`, regardless of `NET_TYPE`.
+- `NET_TYPE.LAN` and the `LocalNetReadyScene` classes exist, but they do not
+  provide a separate PC LAN/direct-IP transport. The local-wireless path is a
+  console-era leftover and still ends up in the Steamworks network state.
+- The `ITransportState` interface is for the sync/clone state machines, not a
+  pluggable network backend.
+- Gameplay packets go through `Steamworks.SteamNetworking`:
+  `SendP2PPacket`, `ReadP2PPacket`, `IsP2PPacketAvailable` and
+  `GetP2PSessionState`.
+
+So there is no supported “use UDP/direct IP instead” switch to expose.
+
+### Options
+
+| Option | Feasible? | What it means |
+|---|---|---|
+| Steam P2P + relay | **Yes, done** | Valve relay handles strict NAT; still Steam IDs/lobbies |
+| VPN / Tailscale / ZeroTier | **Setup only** | Can improve routing/NAT but does not replace Steam discovery; Steam P2P still uses Steam IDs |
+| Hidden LAN mode | **No** | `NET_TYPE.LAN` still initializes Steamworks; no PC LAN transport |
+| UDP/direct-IP redirect | **Possible, medium-high** | Patch `SteamNetworking.SendP2PPacket` / `ReadP2PPacket` to forward to a custom socket/relay while keeping Steam lobbies |
+| Custom lobby + custom transport | **High** | Replace or bypass `SteamworksNetwork`; no interface, many private calls |
+| Dedicated server | **Very high** | Requires the packet/sync protocol reverse-engineered |
+| Cross-play with vanilla Steam clients | **No** | Every client needs the same patched transport and discovery |
+
+### The realistic “another network” route
+
+Keep Steam **only for lobby discovery**, and redirect gameplay packets to a
+custom UDP relay or direct IP:
+
+1. Exchange endpoint data through Steam lobby data (or a room code/IP field in
+   the plugin).
+2. Harmony-patch `SteamNetworking.SendP2PPacket` to send the same packet bytes
+   to the custom endpoint.
+3. Patch `IsP2PPacketAvailable` / `ReadP2PPacket` to read from the custom socket
+   and synthesize a `CSteamID` for the sender.
+4. Patch `GetP2PSessionState` or the ping path so RTT/input-delay stays sane.
+5. Keep the existing sync/clone protocol untouched.
+
+This is the lowest-risk way to use a **relay or direct IP** without rewriting
+the game’s netcode. It is still a real project: packet framing, endpoint
+identity, RTT, host migration, NAT, version checks and two-client testing all
+need work.
+
+A plain **UDP relay** (both clients connect to a small relay VPS) is easier than
+direct NAT punch-through, but the relay must preserve packet boundaries and
+order expectations. A direct-IP mode needs port forwarding or a VPN.
+
+### Effort
+
+| Work | Estimate |
+|---|---|
+| VPN setup with current Steam P2P | Hours, no code |
+| UDP relay packet redirect | 2–4 weeks plus testing |
+| Direct-IP endpoint exchange | 2–4 weeks |
+| Full custom lobby/transport | Months, fragile |
+| Dedicated server | Months, protocol research |
+
+### Recommendation
+
+Finish the **two-client Steam relay test** before building another transport.
+If Steam P2P is still unreliable after relay, prototype a **UDP relay** behind
+the existing Steam lobby flow. Do not attempt a full backend replacement first.
