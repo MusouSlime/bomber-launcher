@@ -393,6 +393,9 @@ ShadowsOff = true
 UltraLow = false
 UltraWidth = 960
 UltraHeight = 540
+HighEnd = false
+HighEndFps = 0
+HighEndVSync = true
 ```
 
 It applies at startup and on scene loads:
@@ -420,13 +423,32 @@ It applies at startup and on scene loads:
 - HDR/MSAA off on all cameras
 - 60 FPS by default (optional 30 cap), no shadows, no post-FX
 
-The launcher exposes both switches and headless presets:
+Ultra-Low is the **floor**: the window is clamped to at least 960×540.
+
+**High-End Mode** is the **ceiling**:
+
+- native resolution (restores the pre-ultra window)
+- full-resolution textures (`masterTextureLimit = 0`)
+- 8× anti-aliasing
+- 8 pixel lights
+- shadows on, shadow distance at least 150
+- LOD bias 2.0 and maximum LOD level 0
+- particle raycast budget 2000
+- forced anisotropic filtering, soft particles and realtime reflections
+- HDR/MSAA on for all cameras
+- all post-processing effects on
+- uncapped by default (`HighEndFps = 0`) with VSync enabled
+
+High-End overrides Low/Ultra-Low if conflicting config values are present. The
+launcher exposes all three switches and headless presets:
 
 ```bash
 python3 bomber_launcher.py --low-end
 python3 bomber_launcher.py --ultra-low
+python3 bomber_launcher.py --high-end
 ./BomberLauncher.exe --low-end
 ./BomberLauncher.exe --ultra-low
+./BomberLauncher.exe --high-end
 ```
 
 Ultra-low changes the window resolution once at startup. The UI/text will be

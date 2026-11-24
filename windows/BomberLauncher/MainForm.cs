@@ -89,6 +89,7 @@ public class MainForm : Form
     private readonly CheckBox _grain = new();
     private readonly CheckBox _lowEnd = new();
     private readonly CheckBox _ultraLow = new();
+    private readonly CheckBox _highEnd = new();
 
     private string? _game;
     private bool _loading;
@@ -284,8 +285,11 @@ public class MainForm : Form
         AddRow(env, "Low-End Mode",
             "60 FPS cap (30 optional), no post-FX, half textures", _lowEnd);
         Separator(env);
-        AddRow(env, "Ultra-Low Mode",
+        AddRow(env, "Ultra-Low Mode (floor)",
             "960x540, quarter textures, no pixel lights, LOD 2", _ultraLow);
+        Separator(env);
+        AddRow(env, "High-End Mode (ceiling)",
+            "Native res, full textures, 8x AA, max lights/shadows/LOD", _highEnd);
         Separator(env);
         AddRow(env, "Faster Result Screens",
             "Halves post-battle result delays (BepInEx)", _fastResults);
@@ -327,7 +331,11 @@ public class MainForm : Form
         _lowEnd.CheckedChanged += (_, _) =>
         {
             SavePlugin("Performance", "LowEnd", _lowEnd.Checked);
-            if (_lowEnd.Checked) SavePluginValue("Performance", "TargetFps", "60");
+            if (_lowEnd.Checked)
+            {
+                SavePlugin("Performance", "HighEnd", false);
+                SavePluginValue("Performance", "TargetFps", "60");
+            }
         };
         _ultraLow.CheckedChanged += (_, _) =>
         {
@@ -335,7 +343,17 @@ public class MainForm : Form
             if (_ultraLow.Checked)
             {
                 SavePlugin("Performance", "LowEnd", true);
+                SavePlugin("Performance", "HighEnd", false);
                 SavePluginValue("Performance", "TargetFps", "60");
+            }
+        };
+        _highEnd.CheckedChanged += (_, _) =>
+        {
+            SavePlugin("Performance", "HighEnd", _highEnd.Checked);
+            if (_highEnd.Checked)
+            {
+                SavePlugin("Performance", "LowEnd", false);
+                SavePlugin("Performance", "UltraLow", false);
             }
         };
         _padCombo.SelectedIndexChanged += (_, _) => SavePadButton();
@@ -577,6 +595,7 @@ public class MainForm : Form
             _grain.Enabled = editable && plugin;
             _lowEnd.Enabled = editable && plugin;
             _ultraLow.Enabled = editable && plugin;
+            _highEnd.Enabled = editable && plugin;
 
             _dual.Checked = false;
             _intro.Checked = false;
@@ -593,6 +612,7 @@ public class MainForm : Form
             _grain.Checked = true;
             _lowEnd.Checked = false;
             _ultraLow.Checked = false;
+            _highEnd.Checked = false;
 
             if (_game != null)
             {
@@ -623,6 +643,8 @@ public class MainForm : Form
                         Core.GetPluginOption(_game, "Performance", "LowEnd", "false") == "true";
                     _ultraLow.Checked =
                         Core.GetPluginOption(_game, "Performance", "UltraLow", "false") == "true";
+                    _highEnd.Checked =
+                        Core.GetPluginOption(_game, "Performance", "HighEnd", "false") == "true";
                     _logos.Checked =
                         Core.GetPluginOption(_game, "Movies", "AutoSkipLogos", "true") == "true";
                     _autoSkip.Checked =

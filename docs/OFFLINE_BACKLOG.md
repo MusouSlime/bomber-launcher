@@ -29,7 +29,7 @@ two-client test.
 These are the items needed before calling the current offline feature set
 “complete.”
 
-1. **Low-End / Ultra-Low verification pass**
+1. **Low-End / Ultra-Low / High-End verification pass**
    - 960×540, 1280×720, 1920×1080 and 4K.
    - All five F9 tabs, controller and keyboard navigation.
    - In-game Options reflect and restore the texture/AA/shadow/light values.

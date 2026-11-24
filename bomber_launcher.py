@@ -1042,6 +1042,14 @@ class BomberWindow(Adw.ApplicationWindow):
             self.ultra_low_sw))
         env.append(self._separator())
 
+        self.high_end_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.high_end_sw.connect("notify::active", self.on_high_end)
+        env.append(self._row(
+            "avatar_green.png", "High-End Mode (ceiling)",
+            "Native res, full textures, 8x AA, max lights/shadows/LOD",
+            self.high_end_sw))
+        env.append(self._separator())
+
         self.fast_results_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.fast_results_sw.connect("notify::active", self.on_fast_results)
         env.append(self._row(
@@ -1341,14 +1349,15 @@ class BomberWindow(Adw.ApplicationWindow):
                   self.autoskip_sw, self.master_sw, self.mblur_sw,
                   self.dof_sw, self.bloom_sw, self.vignette_sw,
                   self.grain_sw, self.low_end_sw,
-                  self.ultra_low_sw, self.fast_results_sw):
+                  self.ultra_low_sw, self.high_end_sw,
+                  self.fast_results_sw):
             w.set_sensitive(plugin and not running)
         if not plugin:
             for w in (self.skip_movies_sw, self.logos_sw, self.autoskip_sw,
                       self.master_sw, self.mblur_sw, self.dof_sw,
                       self.bloom_sw, self.vignette_sw, self.grain_sw,
                       self.low_end_sw, self.ultra_low_sw,
-                      self.fast_results_sw):
+                      self.high_end_sw, self.fast_results_sw):
                 w.set_active(False)
 
         if self.mods:
@@ -1423,6 +1432,8 @@ class BomberWindow(Adw.ApplicationWindow):
                         cfg.get("Performance", {}).get("LowEnd", "false").lower() == "true")
                     self.ultra_low_sw.set_active(
                         cfg.get("Performance", {}).get("UltraLow", "false").lower() == "true")
+                    self.high_end_sw.set_active(
+                        cfg.get("Performance", {}).get("HighEnd", "false").lower() == "true")
                 except Exception:
                     pass
         self._loading = False
@@ -1783,6 +1794,7 @@ class BomberWindow(Adw.ApplicationWindow):
         try:
             self.mods.set_plugin_option("Performance", "LowEnd", active)
             if active:
+                self.mods.set_plugin_option("Performance", "HighEnd", False)
                 self.mods.set_plugin_value("Performance", "TargetFps", "60")
             self.toast("Low-end mode " + ("on" if active else "off") +
                        " — applies next launch")
@@ -1798,8 +1810,24 @@ class BomberWindow(Adw.ApplicationWindow):
             self.mods.set_plugin_option("Performance", "UltraLow", active)
             if active:
                 self.mods.set_plugin_option("Performance", "LowEnd", True)
+                self.mods.set_plugin_option("Performance", "HighEnd", False)
                 self.mods.set_plugin_value("Performance", "TargetFps", "60")
             self.toast("Ultra-low mode " + ("on" if active else "off") +
+                       " — applies next launch")
+        except Exception as e:
+            self.toast(str(e))
+        self.refresh()
+
+    def on_high_end(self, row, _pspec):
+        if self._loading or not self.mods or not self.mods.plugin_installed():
+            return
+        active = row.get_active()
+        try:
+            self.mods.set_plugin_option("Performance", "HighEnd", active)
+            if active:
+                self.mods.set_plugin_option("Performance", "LowEnd", False)
+                self.mods.set_plugin_option("Performance", "UltraLow", False)
+            self.toast("High-end mode " + ("on" if active else "off") +
                        " — applies next launch")
         except Exception as e:
             self.toast(str(e))
@@ -1986,19 +2014,28 @@ def apply_preset(name):
     if name in ("ultra-low", "ultralow", "ultra"):
         mods.set_plugin_option("Performance", "UltraLow", True)
         mods.set_plugin_option("Performance", "LowEnd", True)
+        mods.set_plugin_option("Performance", "HighEnd", False)
         mods.set_plugin_value("Performance", "TargetFps", "60")
         print("Ultra-low mode enabled for", game)
         return 0
     if name in ("low-end", "lowend", "low"):
         mods.set_plugin_option("Performance", "LowEnd", True)
         mods.set_plugin_option("Performance", "UltraLow", False)
+        mods.set_plugin_option("Performance", "HighEnd", False)
         mods.set_plugin_value("Performance", "TargetFps", "60")
         print("Low-end mode enabled for", game)
+        return 0
+    if name in ("high-end", "highend", "high", "quality"):
+        mods.set_plugin_option("Performance", "HighEnd", True)
+        mods.set_plugin_option("Performance", "LowEnd", False)
+        mods.set_plugin_option("Performance", "UltraLow", False)
+        print("High-end mode enabled for", game)
         return 0
     if name in ("balanced", "default"):
         mods.set_plugin_option("Performance", "LowEnd", False)
         mods.set_plugin_option("Performance", "UltraLow", False)
-        print("Low-end mode disabled for", game)
+        mods.set_plugin_option("Performance", "HighEnd", False)
+        print("Performance modes disabled for", game)
         return 0
     print("unknown preset:", name)
     return 1
@@ -2007,6 +2044,8 @@ def apply_preset(name):
 def main():
     if "--check" in sys.argv:
         raise SystemExit(check())
+    if "--high-end" in sys.argv or "--highend" in sys.argv:
+        raise SystemExit(apply_preset("high-end"))
     if "--ultra-low" in sys.argv or "--ultralow" in sys.argv:
         raise SystemExit(apply_preset("ultra-low"))
     if "--low-end" in sys.argv or "--lowend" in sys.argv:

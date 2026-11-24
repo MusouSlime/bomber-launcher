@@ -27,7 +27,8 @@ artwork extracted from the game itself.
 | **Practice Stage Selector** | BepInEx plugin: F9 or L1+R1+X, then choose world/stage/difficulty |
 | **Post-processing** | Motion blur, depth of field, bloom, vignette and film grain switches |
 | **Low-End Mode** | 60 FPS target (30 optional), no post-FX, shadows off, half textures, reduced lights/LOD |
-| **Ultra-Low Mode** | 960x540, quarter textures, no pixel lights, LOD 2, no particles |
+| **Ultra-Low Mode (floor)** | 960x540 minimum, quarter textures, no pixel lights, LOD 2, no particles |
+| **High-End Mode (ceiling)** | Native resolution, full textures, 8x AA, max lights/shadows/LOD, post-FX on |
 | **Restore Original Files** | Reverts the DLL patch and intro movies from backups |
 | **Back Up Save** | Timestamped copy of `savedata.bin` |
 

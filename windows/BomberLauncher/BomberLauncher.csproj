@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>BomberLauncher</AssemblyName>
     <RootNamespace>BomberLauncher</RootNamespace>
-    <Version>0.6.10</Version>
+    <Version>0.6.11</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <PublishSingleFile>true</PublishSingleFile>

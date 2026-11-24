@@ -24,7 +24,7 @@ namespace BomberQoL
         Difficulty
     }
 
-    [BepInPlugin(GUID, "Bomber QoL", "0.6.10")]
+    [BepInPlugin(GUID, "Bomber QoL", "0.6.11")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "bomber.qol";
@@ -107,6 +107,9 @@ namespace BomberQoL
         internal static ConfigEntry<bool> NetworkFilterFullLobbies;
         internal static ConfigEntry<int> NetworkLobbyResultCount;
         internal static ConfigEntry<bool> NetworkLogSearch;
+        internal static ConfigEntry<bool> HighEnd;
+        internal static ConfigEntry<int> HighEndFps;
+        internal static ConfigEntry<bool> HighEndVSync;
         internal static KeyCode SkipKey = KeyCode.Space;
         internal static KeyCode SoftResetKey = KeyCode.F10;
         internal static KeyCode PracticeMenuKey = KeyCode.F9;
@@ -274,6 +277,12 @@ namespace BomberQoL
                 "Maximum number of Steam lobbies to request.");
             NetworkLogSearch = Config.Bind("Network", "LogSearch", true,
                 "Log the online lobby search filters and relay state.");
+            HighEnd = Config.Bind("Performance", "HighEnd", false,
+                "High-end ceiling: native resolution, full textures, 8x AA, max lights/shadows/LOD and post-FX.");
+            HighEndFps = Config.Bind("Performance", "HighEndFps", 0,
+                "High-end frame-rate cap. 0 leaves the game uncapped.");
+            HighEndVSync = Config.Bind("Performance", "HighEndVSync", true,
+                "Enable VSync in high-end mode.");
 
             try
             {
@@ -605,13 +614,8 @@ namespace BomberQoL
         private static AnisotropicFiltering _defAniso;
         private static bool _defSoft;
         private static bool _defReflection;
-        private static bool _perfLogged;
-
-        private static bool _ultraResolutionApplied;
         private static int _steamTier = -1;
         private static int[] _origSteamSettings;
-        private static readonly Dictionary<int, bool[]> CameraDefaults =
-            new Dictionary<int, bool[]>();
 
         private static void SyncGameSteamSettings(int tier)
         {
@@ -629,14 +633,19 @@ namespace BomberQoL
                     for (int i = 0; i < _origSteamSettings.Length; i++)
                         _origSteamSettings[i] = data.getSteamSettingAt(i);
                 }
+                int texture = tier == 3 ? 2 : (tier == 2 ? 0 : 1);
+                int aa = tier == 3 ? 2 : 0;
+                int shadow = tier == 3 ? 2 : 0;
+                int light = tier == 3 ? 1 : 0;
                 data.setSteamSettingAt(0, -1);
-                data.setSteamSettingAt(2, tier == 2 ? 0 : 1);
-                data.setSteamSettingAt(3, 0);
-                data.setSteamSettingAt(4, 0);
-                data.setSteamSettingAt(5, 0);
+                data.setSteamSettingAt(2, texture);
+                data.setSteamSettingAt(3, aa);
+                data.setSteamSettingAt(4, shadow);
+                data.setSteamSettingAt(5, light);
                 data.applySteamSettings();
-                Log.LogInfo("In-game options set to " +
-                    (tier == 2 ? "ultra-low" : "low") +
+                string label = tier == 3 ? "high-end" :
+                    (tier == 2 ? "ultra-low" : "low");
+                Log.LogInfo("In-game options set to " + label +
                     " (texture, AA, shadows, lights)");
             }
             else if (_origSteamSettings != null)
@@ -649,6 +658,23 @@ namespace BomberQoL
             }
             _steamTier = tier;
         }
+
+        // Absolute performance floor/ceiling. The tiers may not go past these.
+        private const int FloorWidth = 960;
+        private const int FloorHeight = 540;
+        private const int CeilingAA = 8;
+        private const int CeilingPixelLights = 8;
+        private const int CeilingParticles = 2000;
+        private const float CeilingLodBias = 2.0f;
+
+        private static int _perfTier = -1;
+        private static bool _ultraResolutionApplied;
+        private static bool _highResolutionApplied;
+        private static int _ultraOrigWidth;
+        private static int _ultraOrigHeight;
+        private static bool _ultraOrigFullscreen;
+        private static readonly Dictionary<int, bool[]> CameraDefaults =
+            new Dictionary<int, bool[]>();
 
         internal static void ApplyPerformance()
         {
@@ -669,10 +695,39 @@ namespace BomberQoL
                 _defSoft = QualitySettings.softParticles;
                 _defReflection = QualitySettings.realtimeReflectionProbes;
             }
+            bool high = HighEnd.Value;
             bool ultra = UltraLow.Value;
             bool low = LowEnd.Value || ultra;
-            SyncGameSteamSettings(low ? (ultra ? 2 : 1) : 0);
-            if (low)
+            if (high && (low || ultra))
+            {
+                if (_perfTier != 3)
+                    Log.LogWarning("High-end mode overrides Low/Ultra-low settings");
+            }
+            int tier = high ? 3 : (ultra ? 2 : (low ? 1 : 0));
+            SyncGameSteamSettings(tier);
+            if (high)
+            {
+                int fps = HighEndFps.Value;
+                Application.targetFrameRate = fps > 0 ? fps : -1;
+                QualitySettings.vSyncCount = HighEndVSync.Value ? 1 : 0;
+                QualitySettings.antiAliasing = CeilingAA;
+                QualitySettings.masterTextureLimit = 0;
+                QualitySettings.pixelLightCount = CeilingPixelLights;
+                QualitySettings.lodBias = CeilingLodBias;
+                QualitySettings.particleRaycastBudget = CeilingParticles;
+                QualitySettings.maximumLODLevel = 0;
+                QualitySettings.shadows = ShadowQuality.All;
+                QualitySettings.shadowDistance =
+                    Mathf.Max(_defShadowDistance, 150f);
+                QualitySettings.anisotropicFiltering =
+                    AnisotropicFiltering.ForceEnable;
+                QualitySettings.softParticles = true;
+                QualitySettings.realtimeReflectionProbes = true;
+                RestoreUltraResolution();
+                ApplyHighResolution();
+                ApplyCameraOverrides(false, true);
+            }
+            else if (low)
             {
                 int fps = LowEndFps.Value;
                 Application.targetFrameRate = fps > 0 ? fps : -1;
@@ -692,20 +747,10 @@ namespace BomberQoL
                     AnisotropicFiltering.Disable;
                 QualitySettings.softParticles = false;
                 QualitySettings.realtimeReflectionProbes = false;
-                ApplyCameraOverrides(ultra);
+                ApplyCameraOverrides(ultra, false);
+                _highResolutionApplied = false;
                 if (ultra) ApplyUltraResolution();
-                if (!_perfLogged)
-                {
-                    _perfLogged = true;
-                    Log.LogInfo((ultra ? "Ultra-low" : "Low-end") +
-                        " mode: " + (fps > 0 ? fps + " FPS" : "uncapped") +
-                        ", shadows " + (LowEndShadowsOff.Value
-                            ? "off" : "default") +
-                        ", textures " + (ultra ? "quarter" :
-                            (LowEndHalfTextures.Value ? "half" : "full")) +
-                        (ultra ? " at " + UltraWidth.Value + "x" +
-                            UltraHeight.Value : ""));
-                }
+                else RestoreUltraResolution();
             }
             else
             {
@@ -722,23 +767,76 @@ namespace BomberQoL
                 QualitySettings.anisotropicFiltering = _defAniso;
                 QualitySettings.softParticles = _defSoft;
                 QualitySettings.realtimeReflectionProbes = _defReflection;
-                ApplyCameraOverrides(false);
-                _ultraResolutionApplied = false;
+                RestoreUltraResolution();
+                _highResolutionApplied = false;
+                ApplyCameraOverrides(false, false);
+            }
+            if (tier != _perfTier)
+            {
+                _perfTier = tier;
+                string label = tier == 3 ? "High-end" :
+                    (tier == 2 ? "Ultra-low" : (tier == 1 ? "Low-end" : "Default"));
+                if (tier > 0)
+                {
+                    string res = tier == 2
+                        ? " at " + FloorWidth + "x" + FloorHeight : "";
+                    string tex = tier == 3 ? "full" :
+                        (tier == 2 ? "quarter" :
+                            (LowEndHalfTextures.Value ? "half" : "full"));
+                    int cap = tier == 3 ? HighEndFps.Value : LowEndFps.Value;
+                    Log.LogInfo(label + " mode: " +
+                        (cap > 0 ? cap + " FPS" : "uncapped") +
+                        ", textures " + tex +
+                        (tier == 3
+                            ? ", 8x AA, max lights/shadows/LOD"
+                            : ", shadows off") + res);
+                }
+                else
+                {
+                    Log.LogInfo("Default graphics restored");
+                }
             }
         }
 
         private static void ApplyUltraResolution()
         {
             if (_ultraResolutionApplied) return;
-            int w = UltraWidth.Value;
-            int h = UltraHeight.Value;
-            if (w <= 0 || h <= 0) return;
+            int w = Mathf.Max(FloorWidth, UltraWidth.Value);
+            int h = Mathf.Max(FloorHeight, UltraHeight.Value);
+            _ultraOrigWidth = Screen.width;
+            _ultraOrigHeight = Screen.height;
+            _ultraOrigFullscreen = Screen.fullScreen;
             _ultraResolutionApplied = true;
             Screen.SetResolution(w, h, false);
-            Log.LogInfo("Ultra-low resolution: " + w + "x" + h);
+            Log.LogInfo("Ultra-low resolution floor: " + w + "x" + h);
         }
 
-        private static void ApplyCameraOverrides(bool ultra)
+        private static void RestoreUltraResolution()
+        {
+            if (!_ultraResolutionApplied) return;
+            _ultraResolutionApplied = false;
+            if (_ultraOrigWidth > 0 && _ultraOrigHeight > 0)
+            {
+                Screen.SetResolution(_ultraOrigWidth, _ultraOrigHeight,
+                    _ultraOrigFullscreen);
+                Log.LogInfo("Resolution restored: " + _ultraOrigWidth + "x" +
+                    _ultraOrigHeight);
+            }
+        }
+
+        private static void ApplyHighResolution()
+        {
+            if (_highResolutionApplied) return;
+            _highResolutionApplied = true;
+            int w = Screen.currentResolution.width;
+            int h = Screen.currentResolution.height;
+            if (w <= 0 || h <= 0) return;
+            if (Screen.width >= w && Screen.height >= h) return;
+            Screen.SetResolution(w, h, Screen.fullScreen);
+            Log.LogInfo("High-end resolution ceiling: " + w + "x" + h);
+        }
+
+        private static void ApplyCameraOverrides(bool ultra, bool high)
         {
             Camera[] cameras = Camera.allCameras;
             for (int i = 0; i < cameras.Length; i++)
@@ -752,8 +850,8 @@ namespace BomberQoL
                     def = new[] { cam.allowHDR, cam.allowMSAA };
                     CameraDefaults[id] = def;
                 }
-                cam.allowHDR = ultra ? false : def[0];
-                cam.allowMSAA = ultra ? false : def[1];
+                cam.allowHDR = high ? true : (ultra ? false : def[0]);
+                cam.allowMSAA = high ? true : (ultra ? false : def[1]);
             }
         }
 
@@ -3333,7 +3431,7 @@ namespace BomberQoL
                 if (_tab == 0) return 15;
                 if (_tab == 1) return 13;
                 if (_tab == 2) return 4;
-                if (_tab == 3) return 18;
+                if (_tab == 3) return 19;
                 return 0;
             }
         }
@@ -3523,11 +3621,28 @@ namespace BomberQoL
             if (entry == Plugin.MainMenuQoL)
                 MainMenuQoLUtility.Apply();
             if (entry == Plugin.LowEnd)
+            {
+                if (entry.Value) Plugin.HighEnd.Value = false;
                 Plugin.ApplyPerformance();
+            }
             if (entry == Plugin.UltraLow)
             {
-                if (entry.Value) Plugin.LowEnd.Value = true;
+                if (entry.Value)
+                {
+                    Plugin.LowEnd.Value = true;
+                    Plugin.HighEnd.Value = false;
+                }
                 Plugin.ApplyPerformance();
+            }
+            if (entry == Plugin.HighEnd)
+            {
+                if (entry.Value)
+                {
+                    Plugin.LowEnd.Value = false;
+                    Plugin.UltraLow.Value = false;
+                }
+                Plugin.ApplyPerformance();
+                Plugin.ApplyAllPostFx();
             }
         }
 
@@ -3622,6 +3737,7 @@ namespace BomberQoL
                         Plugin.ApplyPerformance();
                         break;
                     case 17: Toggle(Plugin.UltraLow); break;
+                    case 18: Toggle(Plugin.HighEnd); break;
                 }
                 return;
             }
@@ -3991,11 +4107,29 @@ namespace BomberQoL
             NoteRow(row);
             if (value == entry.Value) return;
             entry.Value = value;
-            if (entry == Plugin.LowEnd) Plugin.ApplyPerformance();
+            if (entry == Plugin.LowEnd)
+            {
+                if (entry.Value) Plugin.HighEnd.Value = false;
+                Plugin.ApplyPerformance();
+            }
             if (entry == Plugin.UltraLow)
             {
-                if (entry.Value) Plugin.LowEnd.Value = true;
+                if (entry.Value)
+                {
+                    Plugin.LowEnd.Value = true;
+                    Plugin.HighEnd.Value = false;
+                }
                 Plugin.ApplyPerformance();
+            }
+            if (entry == Plugin.HighEnd)
+            {
+                if (entry.Value)
+                {
+                    Plugin.LowEnd.Value = false;
+                    Plugin.UltraLow.Value = false;
+                }
+                Plugin.ApplyPerformance();
+                Plugin.ApplyAllPostFx();
             }
         }
 
@@ -4207,7 +4341,8 @@ namespace BomberQoL
                 OnOff(Plugin.CustomSfxShuffle.Value) + "  |  Main-menu entry " +
                 OnOff(Plugin.MainMenuQoL.Value) + "  |  Low-end " +
                 OnOff(Plugin.LowEnd.Value) + "  |  Ultra " +
-                OnOff(Plugin.UltraLow.Value));
+                OnOff(Plugin.UltraLow.Value) + "  |  High " +
+                OnOff(Plugin.HighEnd.Value));
             float colW = Mathf.Clamp((Screen.width - 104) / 3f, 200f, 400f);
             GUILayout.BeginHorizontal();
             GUILayout.BeginVertical(GUILayout.Width(colW));
@@ -4234,13 +4369,16 @@ namespace BomberQoL
             GUILayout.BeginVertical(GUILayout.Width(colW));
             DrawToggle(15, Plugin.LowEnd, "Low-end mode");
             DrawLowEndFps(16);
-            DrawToggle(17, Plugin.UltraLow, "Ultra-low mode");
+            DrawToggle(17, Plugin.UltraLow, "Ultra-low mode (floor)");
+            DrawToggle(18, Plugin.HighEnd, "High-end mode (ceiling)");
             GUILayout.Space(4);
-            GUILayout.Label(Plugin.UltraLow.Value
-                ? "960x540, quarter textures, no pixel lights"
-                : (Plugin.LowEnd.Value
-                    ? "60 FPS, no post-FX, half textures, shadows off"
-                    : "Off: the game's own graphics options apply"),
+            GUILayout.Label(Plugin.HighEnd.Value
+                ? "Native res, full textures, 8x AA, max lights/shadows/LOD"
+                : (Plugin.UltraLow.Value
+                    ? "Floor: 960x540, quarter textures, no pixel lights"
+                    : (Plugin.LowEnd.Value
+                        ? "60 FPS, no post-FX, half textures, shadows off"
+                        : "Off: the game's own graphics options apply")),
                 _smallWrapStyle ?? (_smallWrapStyle = MakeWrapStyle()));
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();
@@ -4357,8 +4495,10 @@ namespace BomberQoL
                 "results, Master difficulty, movie skipping, soft reset, " +
                 "BGM/SFX shuffle, the Bomber QoL main-menu entry and " +
                 "low-end mode (60 FPS, no post-FX, shadows off, half " +
-                "textures, reduced lights/LOD) and ultra-low mode " +
-                "(960x540, quarter textures, no pixel lights, LOD 2). The " +
+                "textures, reduced lights/LOD), ultra-low mode as the " +
+                "floor (960x540, quarter textures, no pixel lights, LOD 2) " +
+                "and high-end mode as the ceiling (native resolution, full " +
+                "textures, 8x AA, max lights/shadows/LOD, post-FX on). The " +
                 "original game options are still available from this tab.",
                 _helpStyle);
             GUILayout.Label(
@@ -5230,6 +5370,16 @@ namespace BomberQoL
                 _logged = true;
             }
 
+            bool high = Plugin.HighEnd.Value;
+            if (high)
+            {
+                if (p.motionBlur != null) p.motionBlur.enabled = true;
+                if (p.depthOfField != null) p.depthOfField.enabled = true;
+                if (p.bloom != null) p.bloom.enabled = true;
+                if (p.vignette != null) p.vignette.enabled = true;
+                if (p.grain != null) p.grain.enabled = true;
+                return;
+            }
             bool low = Plugin.LowEnd.Value || Plugin.UltraLow.Value;
             if ((low || Plugin.NoMotionBlur.Value) && p.motionBlur != null)
                 p.motionBlur.enabled = false;
