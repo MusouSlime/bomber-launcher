@@ -1,7 +1,8 @@
 # Scope: characters, skins, arenas, and the rest
 
-Status: planning document. No feature in this file is implemented yet except
-where marked **done**.
+Status: historical planning document. See `docs/OFFLINE_BACKLOG.md` for the
+current offline status. Some early plans here (unlock-all, character import)
+were later rejected or shelved.
 
 ## Data inventory
 
