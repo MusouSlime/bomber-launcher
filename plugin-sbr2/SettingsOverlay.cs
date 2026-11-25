@@ -372,6 +372,11 @@ namespace SBR2QoL
                 v => Plugin.CustomBgmVolume.Value = v, 0.05f, true));
             Rows.Add(Toggle("Audio", "BGM shuffle", () => Plugin.CustomBgmShuffle));
             Rows.Add(Toggle("Audio", "BGM playlist", () => Plugin.CustomBgmPlaylist));
+            Rows.Add(Bool("Audio", "Explosion volume",
+                () => Plugin.ExplosionSfxVolume.Value,
+                v => Plugin.ExplosionSfxVolume.Value = v, 0.05f, true));
+            Rows.Add(Toggle("Audio", "Explosion shuffle",
+                () => Plugin.ExplosionSfxShuffle));
 
             Rows.Add(Toggle("Graphics", "Disable motion blur",
                 () => Plugin.DisableMotionBlur));
@@ -445,6 +450,13 @@ namespace SBR2QoL
             });
             Rows.Add(Toggle("Options", "Controller navigation",
                 () => Plugin.GamepadNavigation));
+            Rows.Add(new Row
+            {
+                Tab = "Options",
+                Label = "Test explosion",
+                Value = () => ">",
+                Change = _ => ExplosionSfx.PlayTest()
+            });
             Rows.Add(new Row
             {
                 Tab = "Options",

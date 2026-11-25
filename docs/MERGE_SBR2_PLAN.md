@@ -389,3 +389,20 @@ joystick button keycodes, which SBR2 already uses for its own controller UI.
 - Launcher: performance card, borderless/resolution launch options, SBR2 save
   backup, BepInEx 6 status/help, and automatic BGM cache sync before launch.
   The sync is incremental (manifest) and removes tracks that left the source.
+
+### Explosion-only SFX — 2026-11-25
+
+Soft reset was an SBR1-only flow and is not being ported.
+
+Custom SFX is now scoped to bomb/explosion labels:
+
+- `Audio.ExplosionSfxFolder` — user-supplied `.ogg`/`.wav` clips.
+- `Audio.ExplosionSfxLabels` — label fragments (default
+  `bom,exp,fire,blast`).
+- `SoundManager.play`, `playWithPan` and `playFade` return a synthetic ID and
+  play a clip on a small AudioSource pool; `isPlaying`, `setSePosition` and
+  `pause` ignore the synthetic IDs.
+- Overlay Audio tab has explosion volume/shuffle; Options has **Test
+  explosion**.
+- Launcher Audio card has an Explosion SFX folder chooser.
+- No Konami audio is bundled; the user supplies the clips.

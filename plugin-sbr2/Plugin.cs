@@ -38,6 +38,10 @@ namespace SBR2QoL
         internal static ConfigEntry<float> CustomBgmVolume;
         internal static ConfigEntry<bool> CustomBgmShuffle;
         internal static ConfigEntry<bool> CustomBgmPlaylist;
+        internal static ConfigEntry<string> ExplosionSfxFolder;
+        internal static ConfigEntry<string> ExplosionSfxLabels;
+        internal static ConfigEntry<float> ExplosionSfxVolume;
+        internal static ConfigEntry<bool> ExplosionSfxShuffle;
         internal static ConfigEntry<bool> SelfTest;
 
         // Performance
@@ -136,6 +140,17 @@ namespace SBR2QoL
                 "When a BGM label has no matching file, play a random track.");
             CustomBgmPlaylist = Config.Bind("Audio", "CustomBgmPlaylist", true,
                 "When a BGM label has no matching file, play the folder in order.");
+            ExplosionSfxFolder = Config.Bind("Audio", "ExplosionSfxFolder", "",
+                "Folder of .ogg/.wav explosion clips; empty disables replacement.");
+            ExplosionSfxLabels = Config.Bind("Audio", "ExplosionSfxLabels",
+                "bom,exp,fire,blast",
+                "Comma-separated label fragments treated as explosions.");
+            ExplosionSfxVolume = Config.Bind("Audio", "ExplosionSfxVolume", 0.8f,
+                new ConfigDescription("Explosion SFX volume.",
+                    new AcceptableValueRange<float>(0f, 1f)));
+            ExplosionSfxShuffle = Config.Bind("Audio", "ExplosionSfxShuffle", true,
+                "Pick a random explosion clip instead of cycling in order.");
+
             SelfTest = Config.Bind("Debug", "SelfTest", false,
                 "Play the first custom BGM track once at startup to verify the audio path.");
 

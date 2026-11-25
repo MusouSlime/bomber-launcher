@@ -51,7 +51,7 @@ The overlay has five tabs: **Audio**, **Graphics**, **Movies**, **Story** and
 - Up/Down selects a row; Left/Right changes it; Enter also advances.
 - Q/E, Tab/Shift+Tab or PageUp/PageDown switch tabs.
 - Controller: left stick/D-pad moves, A changes, B/Start closes, L1/R1 switch
-  tabs.
+  tabs. `GamepadNavigation` can be disabled if a virtual pad misbehaves.
 - **Options → Open game options** closes the overlay and opens the vanilla
   Other menu.
 - F9 closes and saves to `BepInEx/config/sbr2.qol.cfg`.
@@ -112,6 +112,19 @@ File matching:
 - otherwise, if shuffle/playlist is on, use a random/next track.
 
 SBR 2 BGM labels start with `BGM_` or `snd_bgm_`.
+
+### Explosion SFX
+
+Custom SFX is intentionally limited to bomb/explosion sounds:
+
+- `ExplosionSfxFolder` — your own classic Bomberman explosion clips (`.ogg` /
+  `.wav`). Empty disables replacement.
+- `ExplosionSfxLabels` — comma-separated label fragments treated as
+  explosions (`bom,exp,fire,blast` by default).
+- `ExplosionSfxVolume`, `ExplosionSfxShuffle` — volume and random clip choice.
+- The overlay's **Options → Test explosion** plays one clip so you can check
+  the folder without starting a battle.
+- Clips are user-supplied; the repository does not ship Konami audio.
 
 ### Performance
 

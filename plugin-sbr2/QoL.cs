@@ -116,6 +116,22 @@ namespace SBR2QoL
         }
     }
 
+    [HarmonyPatch(typeof(SoundManager), "play",
+        new[] { typeof(string), typeof(float) })]
+    internal static class SfxLabelLogPatch
+    {
+        private static readonly System.Collections.Generic.HashSet<string> Seen =
+            new System.Collections.Generic.HashSet<string>();
+
+        private static void Prefix(string soundLabel)
+        {
+            if (!Plugin.SelfTest.Value) return;
+            if (soundLabel == null || Seen.Contains(soundLabel)) return;
+            Seen.Add(soundLabel);
+            Plugin.Logger.LogInfo("SFXPLAY " + soundLabel);
+        }
+    }
+
     [HarmonyPatch(typeof(MoviePlayUI), "update")]
     internal static class QoLMovieUpdatePatch
     {

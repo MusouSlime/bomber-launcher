@@ -215,7 +215,7 @@ namespace SBR2QoL
             }
         }
 
-        private static AudioClip LoadClip(string file)
+        internal static AudioClip LoadClip(string file)
         {
             string ext = Path.GetExtension(file).ToLowerInvariant();
             if (ext == ".ogg") return LoadOgg(file);

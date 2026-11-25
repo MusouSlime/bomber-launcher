@@ -2612,6 +2612,22 @@ class BomberWindow(Adw.ApplicationWindow):
         self._sbr2_switch_row(audio, "Playlist BGM",
                               "Folder order; advances when a track ends",
                               "Audio", "CustomBgmPlaylist", True)
+
+        self.sbr2_sfx_btn = Gtk.Button(label="Choose…")
+        self.sbr2_sfx_btn.set_valign(Gtk.Align.CENTER)
+        self.sbr2_sfx_btn.connect("clicked", self.on_sbr2_sfx_folder)
+        self.sbr2_sfx_clear = Gtk.Button(label="Clear")
+        self.sbr2_sfx_clear.add_css_class("flat")
+        self.sbr2_sfx_clear.set_valign(Gtk.Align.CENTER)
+        self.sbr2_sfx_clear.connect("clicked", self.on_sbr2_sfx_clear)
+        sfx_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        sfx_box.append(self.sbr2_sfx_btn)
+        sfx_box.append(self.sbr2_sfx_clear)
+        audio.append(self._row(
+            "avatar_pink.png", "Explosion SFX Folder",
+            "Classic Bomberman explosion clips (OGG/WAV); user-supplied",
+            sfx_box))
+        audio.append(self._separator())
         page.append(audio)
         page.append(Gtk.Separator())
 
@@ -2682,6 +2698,7 @@ class BomberWindow(Adw.ApplicationWindow):
 
         self._sbr2_loading = False
         self._update_sbr2_bgm_label()
+        self._update_sbr2_sfx_label()
         return page
 
     def refresh_sbr2(self):
@@ -2832,6 +2849,43 @@ class BomberWindow(Adw.ApplicationWindow):
             return
         try:
             Gio.AppInfo.launch_default_for_uri(game.as_uri(), None)
+        except Exception as e:
+            self.toast(str(e))
+
+    def _update_sbr2_sfx_label(self):
+        if not hasattr(self, "sbr2_sfx_btn"):
+            return
+        path = (get_sbr2_plugin_value(
+            "Audio", "ExplosionSfxFolder", "") or "").strip()
+        self._set_folder_button(
+            self.sbr2_sfx_btn, self.sbr2_sfx_clear, path)
+
+    def on_sbr2_sfx_folder(self, _btn):
+        current = (get_sbr2_plugin_value(
+            "Audio", "ExplosionSfxFolder", "") or "").strip()
+        self._sbr2_sfx_chooser = self._open_folder_chooser(
+            "Explosion SFX folder", current, self._sbr2_sfx_response)
+
+    def _sbr2_sfx_response(self, chooser, response):
+        self._sbr2_sfx_chooser = None
+        if response == Gtk.ResponseType.ACCEPT:
+            f = chooser.get_file()
+            path = f.get_path() if f else None
+            if path:
+                try:
+                    set_sbr2_plugin_value(
+                        "Audio", "ExplosionSfxFolder", path)
+                    self._update_sbr2_sfx_label()
+                    self.toast("Explosion SFX folder saved — restart SBR2")
+                except Exception as e:
+                    self.toast(str(e))
+        chooser.destroy()
+
+    def on_sbr2_sfx_clear(self, _btn):
+        try:
+            set_sbr2_plugin_value("Audio", "ExplosionSfxFolder", "")
+            self._update_sbr2_sfx_label()
+            self.toast("Explosion SFX disabled")
         except Exception as e:
             self.toast(str(e))
 
