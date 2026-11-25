@@ -46,13 +46,13 @@ namespace SBR2QoL
         private static bool _padLogged;
         private static bool _padSeen;
         private static int _padIndex = -1;
+        private static bool _inputActiveSaved;
+        private static bool _inputActiveBefore;
         private static bool _prevUp;
         private static bool _prevDown;
         private static bool _prevLeft;
         private static bool _prevRight;
         private static bool _prevSubmit;
-        private static bool _prevCancel;
-        private static bool _prevPause;
         private static bool _prevTabL;
         private static bool _prevTabR;
         private static float _padIgnoreUntil;
@@ -201,6 +201,16 @@ namespace SBR2QoL
             return true;
         }
 
+        private static void EnsureInput()
+        {
+            if (_inputChecked) return;
+            _inputChecked = true;
+            try { _input = UnityEngine.Object.FindObjectOfType<InputAdapter>(); }
+            catch { _input = null; }
+            Plugin.Logger.LogInfo("Overlay input: " +
+                (_input == null ? "no InputAdapter" : "InputAdapter found"));
+        }
+
         private static bool PadEvent(InputAdapter.EVENT e)
         {
             ReadingPad = true;
@@ -233,9 +243,24 @@ namespace SBR2QoL
                 _padIgnoreUntil = Time.unscaledTime + 0.8f;
                 SyncPadState();
                 Refresh();
+                if (!Plugin.GamepadNavigation.Value)
+                {
+                    EnsureInput();
+                    if (_input != null)
+                    {
+                        _inputActiveBefore = _input._isInputActive;
+                        _input.setInputActive(false);
+                        _inputActiveSaved = true;
+                    }
+                }
             }
             else
             {
+                if (_inputActiveSaved && _input != null)
+                {
+                    _input.setInputActive(_inputActiveBefore);
+                    _inputActiveSaved = false;
+                }
                 Plugin.SaveConfig();
             }
         }
@@ -435,6 +460,13 @@ namespace SBR2QoL
 
             Rows.Add(StoryRow());
 
+            Rows.Add(new Row
+            {
+                Tab = "Options",
+                Label = "Close overlay",
+                Value = () => ">",
+                Change = _ => Toggle()
+            });
             Rows.Add(new Row
             {
                 Tab = "Options",
@@ -675,14 +707,7 @@ namespace SBR2QoL
                 return;
             }
 
-            if (!_inputChecked)
-            {
-                _inputChecked = true;
-                try { _input = UnityEngine.Object.FindObjectOfType<InputAdapter>(); }
-                catch { _input = null; }
-                Plugin.Logger.LogInfo("Overlay input: " +
-                    (_input == null ? "no InputAdapter" : "InputAdapter found"));
-            }
+            EnsureInput();
 
             if (_input != null)
             {
@@ -761,8 +786,6 @@ namespace SBR2QoL
             bool left = PadEvent(InputAdapter.EVENT.UI_LEFT);
             bool right = PadEvent(InputAdapter.EVENT.UI_RIGHT);
             bool submit = PadEvent(InputAdapter.EVENT.UI_SUBMIT);
-            bool cancel = PadEvent(InputAdapter.EVENT.UI_CANCEL);
-            bool pause = PadEvent(InputAdapter.EVENT.UI_PAUSE);
 
             if (Edge(ref _prevUp, up))
             {
@@ -789,18 +812,6 @@ namespace SBR2QoL
                 if (AllowAction("submit")) Adjust(1);
                 handled = true;
             }
-            if (Edge(ref _prevCancel, cancel))
-            {
-                Plugin.Logger.LogInfo("Overlay pad: cancel");
-                Toggle();
-                handled = true;
-            }
-            if (Edge(ref _prevPause, pause))
-            {
-                Plugin.Logger.LogInfo("Overlay pad: pause");
-                Toggle();
-                handled = true;
-            }
             return handled;
         }
 
@@ -815,12 +826,7 @@ namespace SBR2QoL
                 _prevDown = PadEvent(InputAdapter.EVENT.UI_DOWN);
                 _prevLeft = PadEvent(InputAdapter.EVENT.UI_LEFT);
                 _prevRight = PadEvent(InputAdapter.EVENT.UI_RIGHT);
-                _prevSubmit = _input.getEvent(_padIndex,
-                    InputAdapter.EVENT.UI_SUBMIT);
-                _prevCancel = _input.getEvent(_padIndex,
-                    InputAdapter.EVENT.UI_CANCEL);
-                _prevPause = _input.getEvent(_padIndex,
-                    InputAdapter.EVENT.UI_PAUSE);
+                _prevSubmit = PadEvent(InputAdapter.EVENT.UI_SUBMIT);
             }
             catch
             {
@@ -948,19 +954,6 @@ namespace SBR2QoL
                 Input.GetKey(KeyCode.RightShift))
                 return true;
             Toggle();
-            return false;
-        }
-    }
-
-    [HarmonyPatch(typeof(InputAdapter), "getEvent",
-        new[] { typeof(int), typeof(InputAdapter.EVENT) })]
-    internal static class OverlayPadBlockPatch
-    {
-        private static bool Prefix(ref bool __result)
-        {
-            if (!SettingsOverlay.Visible || SettingsOverlay.ReadingPad)
-                return true;
-            __result = false;
             return false;
         }
     }
