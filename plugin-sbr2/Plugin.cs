@@ -4,7 +4,6 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
-using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
 
 namespace SBR2QoL
@@ -51,24 +50,10 @@ namespace SBR2QoL
 
             BindConfig();
 
-            // Register the managed MonoBehaviours, then attach them to a
-            // persistent GameObject. Registering first is required for IL2CPP.
-            try
-            {
-                ClassInjector.RegisterTypeInIl2Cpp<QoLHost>();
-                ClassInjector.RegisterTypeInIl2Cpp<CustomBgmPlayer>();
-            }
-            catch (Exception e)
-            {
-                Logger.LogWarning("ClassInjector: " + e.Message);
-            }
-
-            var host = new GameObject("SBR2QoL");
-            UnityEngine.Object.DontDestroyOnLoad(host);
-            host.hideFlags = HideFlags.HideAndDontSave;
-            host.AddComponent<QoLHost>();
-            host.AddComponent<CustomBgmPlayer>();
-
+            // SBR2's Il2CppInterop build currently fails ClassInjector for
+            // managed MonoBehaviours. Keep this plugin Harmony-only until a
+            // working loader path is selected; injecting QoLHost here crashes
+            // the process with an access violation.
             PatchAllSafe();
 
             Logger.LogInfo("SBR2 QoL loaded (story character='" +

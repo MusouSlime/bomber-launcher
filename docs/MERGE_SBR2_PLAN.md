@@ -139,3 +139,40 @@ For the first release, “ultimate” should mean:
 3. Should SBR2 use a BepInEx 6 F9 overlay, or launcher-only configuration first?
 4. Is a single SBR1 map port to SBR2 worth prototyping before other content?
 5. Where do the SBR2 tools/patches live: same repo or a sibling project?
+
+## Phase 0 progress — 2026-11-25
+
+Completed:
+
+- SBR2 scaffold, tools, patches and docs are now under version control.
+- BepInEx 6 IL2CPP x64 is installed into the SBR2 folder.
+- SBR2 plugin now compiles against the real generated interop assemblies
+  (`GameAssembly`, `HxSystemAssembly`, `Il2Cppmscorlib`, `Il2CppSystem`).
+- Fixed the modern IL2CPP API differences:
+  - `Il2CppType.Of<T>()` for `Resources.FindObjectsOfTypeAll`
+  - `BepInEx.Unity.IL2CPP.Utils` coroutine extension
+  - `UnityWebRequestMultimedia` instead of `WWW`
+
+Blocker found:
+
+- BepInEx 6 be.692 and be.793 both fail managed **ClassInjector** on this SBR2
+  build:
+  - `Sequence contains no elements` in
+    `MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook`
+  - adding an injected `MonoBehaviour` to a `GameObject` then crashes with
+    `System.AccessViolationException`
+- With `BepInEx/config/BepInEx.cfg` → `UnityLogListening = false`, the
+  chainloader works. The SBR2 plugin now loads as a **Harmony-only** plugin:
+  - logo/story patches register
+  - `QoLHost` and `CustomBgmPlayer` are intentionally disabled
+  - movie-skip/post-FX/FOV runtime loops are not active yet
+
+Next decision:
+
+1. **MelonLoader** for SBR2 (better managed-host support), or
+2. **BepInEx Harmony-only SBR2 plugin** — implement update loops through
+   Harmony patches and create only built-in `AudioSource` components, no
+   managed `MonoBehaviour` injection.
+
+Until that is decided, SBR2 is not ready to be the primary “ultimate” runtime;
+the SBR1 0.6.11 build remains the stable target.

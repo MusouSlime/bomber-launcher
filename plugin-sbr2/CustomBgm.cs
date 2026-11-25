@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using BepInEx;
+using BepInEx.Unity.IL2CPP.Utils;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -168,24 +169,25 @@ namespace SBR2QoL
 
         private IEnumerator LoadAndPlay(string file)
         {
-            // WWW is still present in Unity 2020 and avoids depending on the
-            // UnityWebRequestAudio module, which is not always in the interop set.
-            var www = new WWW(ToFileUri(file));
-            yield return www;
+            string ext = Path.GetExtension(file).ToLowerInvariant();
+            AudioType audioType = ext == ".wav" ? AudioType.WAV :
+                (ext == ".mp3" ? AudioType.MPEG : AudioType.OGGVORBIS);
+            var uri = new Il2CppSystem.Uri(ToFileUri(file));
+            var request = UnityWebRequestMultimedia.GetAudioClip(uri, audioType);
+            yield return request.SendWebRequest();
 
-            if (!string.IsNullOrEmpty(www.error))
+            if (!string.IsNullOrEmpty(request.error))
             {
                 Plugin.Logger.LogWarning("Custom BGM failed: " + file +
-                    " (" + www.error + ")");
-                www.Dispose();
+                    " (" + request.error + ")");
+                request.Dispose();
                 _loading = null;
                 Fallback();
                 yield break;
             }
 
-            AudioClip clip = www.GetAudioClip(false, true);
-            if (clip == null) clip = www.GetAudioClip(false, false);
-            www.Dispose();
+            AudioClip clip = DownloadHandlerAudioClip.GetContent(request);
+            request.Dispose();
 
             if (clip == null)
             {

@@ -28,6 +28,26 @@
       <HintPath>$(BepInExDir)/core/Il2CppInterop.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(BepInExDir)/interop/Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppSystem">
+      <HintPath>$(BepInExDir)/interop/Il2CppSystem.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppSystem.Core">
+      <HintPath>$(BepInExDir)/interop/Il2CppSystem.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GameAssembly">
+      <HintPath>$(BepInExDir)/interop/GameAssembly.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="HxSystemAssembly">
+      <HintPath>$(BepInExDir)/interop/HxSystemAssembly.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(BepInExDir)/interop/Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
@@ -54,6 +74,10 @@
     </Reference>
     <Reference Include="UnityEngine.UnityWebRequestWWWModule">
       <HintPath>$(BepInExDir)/interop/UnityEngine.UnityWebRequestWWWModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestAudioModule">
+      <HintPath>$(BepInExDir)/interop/UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Unity.RenderPipelines.Core.Runtime">

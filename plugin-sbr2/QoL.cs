@@ -1,5 +1,6 @@
 using System.Reflection;
 using HarmonyLib;
+using Il2CppInterop.Runtime;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -33,7 +34,7 @@ namespace SBR2QoL
 
         private void UpdateMovieSkip()
         {
-            var objects = Resources.FindObjectsOfTypeAll(typeof(MoviePlayUI));
+            var objects = Resources.FindObjectsOfTypeAll(Il2CppType.Of<MoviePlayUI>());
             bool active = false;
 
             for (int i = 0; i < objects.Length; i++)
@@ -75,7 +76,7 @@ namespace SBR2QoL
 
         private static void ApplyVolumeToggles()
         {
-            var objects = Resources.FindObjectsOfTypeAll(typeof(Volume));
+            var objects = Resources.FindObjectsOfTypeAll(Il2CppType.Of<Volume>());
             for (int i = 0; i < objects.Length; i++)
             {
                 var volume = objects[i] as Volume;
