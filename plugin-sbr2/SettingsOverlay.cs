@@ -70,6 +70,7 @@ namespace SBR2QoL
         private static bool _cancelOk;
 
         internal static float BypassUntil;
+        internal static bool ReadingPad;
 
         internal static bool Visible
         {
@@ -198,6 +199,19 @@ namespace SBR2QoL
             _lastAction = action;
             _lastActionAt = now;
             return true;
+        }
+
+        private static bool PadEvent(InputAdapter.EVENT e)
+        {
+            ReadingPad = true;
+            try
+            {
+                return _input != null && _input.getEvent(_padIndex, e);
+            }
+            finally
+            {
+                ReadingPad = false;
+            }
         }
 
         private static bool Edge(ref bool previous, bool current)
@@ -655,7 +669,9 @@ namespace SBR2QoL
         {
             if (!Plugin.GamepadNavigation.Value)
             {
-                PollKeyboardAxes();
+                // Keyboard is handled in Tick. Do not poll legacy joystick
+                // axes/buttons either, so virtual pads cannot toggle the
+                // overlay when controller navigation is off.
                 return;
             }
 
@@ -675,16 +691,31 @@ namespace SBR2QoL
                     int pads = _input.getPadCount();
                     int index = InputAdapter.UI_INPUT_RECEIVE_PAD_INDEX;
                     InputAdapter.PAD_TYPE type = InputAdapter.PAD_TYPE.INVALID;
-                    if (index >= 0) type = _input.getControllerType(index);
+                    if (index >= 0 && index < pads)
+                        type = _input.getControllerType(index);
+                    if (index < 0 || index >= pads ||
+                        type == InputAdapter.PAD_TYPE.INVALID ||
+                        !_input.isConnected(index))
+                    {
+                        index = -1;
+                        for (int i = pads - 1; i >= 0; i--)
+                        {
+                            if (!_input.isConnected(i)) continue;
+                            var candidate = _input.getControllerType(i);
+                            if (candidate == InputAdapter.PAD_TYPE.INVALID)
+                                continue;
+                            index = i;
+                            type = candidate;
+                            break;
+                        }
+                    }
                     if (!_padLogged)
                     {
                         _padLogged = true;
                         Plugin.Logger.LogInfo("Overlay input: pads=" + pads +
-                            " uiPad=" + index + " type=" + type);
+                            " padIndex=" + index + " type=" + type);
                     }
-                    if (pads > 0 && index >= 0 && index < pads &&
-                        type != InputAdapter.PAD_TYPE.INVALID &&
-                        _input.isConnected(index))
+                    if (index >= 0)
                     {
                         _padIndex = index;
                         if (PollPad()) return;
@@ -712,8 +743,8 @@ namespace SBR2QoL
             }
             bool handled = false;
 
-            bool tabL = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_TAB_L);
-            bool tabR = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_TAB_R);
+            bool tabL = PadEvent(InputAdapter.EVENT.UI_TAB_L);
+            bool tabR = PadEvent(InputAdapter.EVENT.UI_TAB_R);
             if (Edge(ref _prevTabL, tabL))
             {
                 SwitchTab(-1);
@@ -725,13 +756,13 @@ namespace SBR2QoL
                 handled = true;
             }
 
-            bool up = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_UP);
-            bool down = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_DOWN);
-            bool left = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_LEFT);
-            bool right = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_RIGHT);
-            bool submit = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_SUBMIT);
-            bool cancel = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_CANCEL);
-            bool pause = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_PAUSE);
+            bool up = PadEvent(InputAdapter.EVENT.UI_UP);
+            bool down = PadEvent(InputAdapter.EVENT.UI_DOWN);
+            bool left = PadEvent(InputAdapter.EVENT.UI_LEFT);
+            bool right = PadEvent(InputAdapter.EVENT.UI_RIGHT);
+            bool submit = PadEvent(InputAdapter.EVENT.UI_SUBMIT);
+            bool cancel = PadEvent(InputAdapter.EVENT.UI_CANCEL);
+            bool pause = PadEvent(InputAdapter.EVENT.UI_PAUSE);
 
             if (Edge(ref _prevUp, up))
             {
@@ -778,14 +809,12 @@ namespace SBR2QoL
             if (_input == null || _padIndex < 0) return;
             try
             {
-                _prevTabL = _input.getEvent(_padIndex,
-                    InputAdapter.EVENT.UI_TAB_L);
-                _prevTabR = _input.getEvent(_padIndex,
-                    InputAdapter.EVENT.UI_TAB_R);
-                _prevUp = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_UP);
-                _prevDown = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_DOWN);
-                _prevLeft = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_LEFT);
-                _prevRight = _input.getEvent(_padIndex, InputAdapter.EVENT.UI_RIGHT);
+                _prevTabL = PadEvent(InputAdapter.EVENT.UI_TAB_L);
+                _prevTabR = PadEvent(InputAdapter.EVENT.UI_TAB_R);
+                _prevUp = PadEvent(InputAdapter.EVENT.UI_UP);
+                _prevDown = PadEvent(InputAdapter.EVENT.UI_DOWN);
+                _prevLeft = PadEvent(InputAdapter.EVENT.UI_LEFT);
+                _prevRight = PadEvent(InputAdapter.EVENT.UI_RIGHT);
                 _prevSubmit = _input.getEvent(_padIndex,
                     InputAdapter.EVENT.UI_SUBMIT);
                 _prevCancel = _input.getEvent(_padIndex,
@@ -919,6 +948,19 @@ namespace SBR2QoL
                 Input.GetKey(KeyCode.RightShift))
                 return true;
             Toggle();
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(InputAdapter), "getEvent",
+        new[] { typeof(int), typeof(InputAdapter.EVENT) })]
+    internal static class OverlayPadBlockPatch
+    {
+        private static bool Prefix(ref bool __result)
+        {
+            if (!SettingsOverlay.Visible || SettingsOverlay.ReadingPad)
+                return true;
+            __result = false;
             return false;
         }
     }

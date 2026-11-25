@@ -445,7 +445,11 @@ namespace SBR2QoL
             _bagShuffle = shuffle;
             _bagCount = _files.Length;
             _bagFolder = _folder;
-            _bagPos = 0;
+            // Vary the starting track between launches; later refills start
+            // at the top of the cycle so no track repeats early.
+            _bagPos = string.IsNullOrEmpty(_lastFile) && _bag.Count > 1
+                ? Random.Next(_bag.Count)
+                : 0;
         }
 
         private static string NextFromBag()
