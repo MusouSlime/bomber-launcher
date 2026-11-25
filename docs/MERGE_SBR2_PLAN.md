@@ -176,3 +176,30 @@ Next decision:
 
 Until that is decided, SBR2 is not ready to be the primary “ultimate” runtime;
 the SBR1 0.6.11 build remains the stable target.
+
+### MelonLoader attempt — 2026-11-25
+
+MelonLoader was tested as the managed-host alternative:
+
+- v0.7.3: assembly generation succeeds, then
+  `No Support Module Loaded!` and the game window is left without mods.
+- v0.6.6: same failure.
+- The underlying error is the same Il2CppInterop metadata hook failure:
+  `MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook` →
+  `Sequence contains no elements`, followed by
+  `SceneManager.sceneLoaded override failed`.
+- This is not a MelonLoader-only issue; it blocks class injection in both
+  loaders on this SBR2 build.
+
+**Decision:** use BepInEx 6 **Harmony-only** for SBR2. No managed
+`MonoBehaviour` injection; implement update loops and helpers through Harmony
+patches and built-in `AudioSource`/`GameObject` components. MelonLoader is not a
+viable fallback for this build unless Il2CppInterop’s injection hook is fixed
+upstream.
+
+Current restored state:
+
+- BepInEx 6 be.692 is installed.
+- `UnityLogListening = false` is required for the chainloader on this build.
+- `SBR2QoL.dll` loads and registers Harmony patches.
+- `QoLHost` and `CustomBgmPlayer` remain disabled.
