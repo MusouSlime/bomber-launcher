@@ -25,6 +25,7 @@ namespace SBR2QoL
             _lastFrame = Time.frameCount;
             SettingsOverlay.Tick();
             CustomBgmPlayer.Tick();
+            PerformanceTiers.Tick();
 
             float now = Time.unscaledTime;
             if (now >= _nextPostFx)

@@ -34,10 +34,20 @@ namespace SBR2QoL
 
         // Audio
         internal static ConfigEntry<string> CustomBgmFolder;
+        internal static ConfigEntry<string> CustomBgmSource;
         internal static ConfigEntry<float> CustomBgmVolume;
         internal static ConfigEntry<bool> CustomBgmShuffle;
         internal static ConfigEntry<bool> CustomBgmPlaylist;
         internal static ConfigEntry<bool> SelfTest;
+
+        // Performance
+        internal static ConfigEntry<bool> LowEnd;
+        internal static ConfigEntry<bool> UltraLow;
+        internal static ConfigEntry<bool> HighEnd;
+        internal static ConfigEntry<int> LowEndFps;
+        internal static ConfigEntry<float> UltraRenderScale;
+        internal static ConfigEntry<int> HighEndFps;
+        internal static ConfigEntry<bool> HighEndVSync;
 
         // Story
         internal static ConfigEntry<string> StoryCharacterKey;
@@ -46,6 +56,7 @@ namespace SBR2QoL
         internal static ConfigEntry<bool> OverlayEnabled;
         internal static ConfigEntry<string> OverlayKeyName;
         internal static ConfigEntry<bool> ReplaceOptionsMenu;
+        internal static ConfigEntry<bool> GamepadNavigation;
 
         internal static KeyCode SkipKey = KeyCode.Space;
         internal static KeyCode OverlayKey = KeyCode.F9;
@@ -75,6 +86,7 @@ namespace SBR2QoL
             // the process with an access violation.
             PatchAllSafe();
             QoLStatic.Init();
+            PerformanceTiers.Apply();
 
             Logger.LogInfo("SBR2 QoL loaded (story character='" +
                 StoryCharacterKey.Value + "', BGM folder='" +
@@ -115,15 +127,33 @@ namespace SBR2QoL
 
             CustomBgmFolder = Config.Bind("Audio", "CustomBgmFolder", "",
                 "Folder containing .ogg/.wav BGM files. Empty disables replacement.");
+            CustomBgmSource = Config.Bind("Audio", "CustomBgmSource", "",
+                "Original music folder chosen in the launcher (display only).");
             CustomBgmVolume = Config.Bind("Audio", "CustomBgmVolume", 0.8f,
                 new ConfigDescription("Custom BGM volume.",
                     new AcceptableValueRange<float>(0f, 1f)));
-            CustomBgmShuffle = Config.Bind("Audio", "CustomBgmShuffle", true,
+            CustomBgmShuffle = Config.Bind("Audio", "CustomBgmShuffle", false,
                 "When a BGM label has no matching file, play a random track.");
-            CustomBgmPlaylist = Config.Bind("Audio", "CustomBgmPlaylist", false,
-                "When a BGM label has no matching file, cycle through the folder.");
+            CustomBgmPlaylist = Config.Bind("Audio", "CustomBgmPlaylist", true,
+                "When a BGM label has no matching file, play the folder in order.");
             SelfTest = Config.Bind("Debug", "SelfTest", false,
                 "Play the first custom BGM track once at startup to verify the audio path.");
+
+            LowEnd = Config.Bind("Performance", "LowEnd", false,
+                "Low-End floor: half textures, no shadows, no pixel lights, 60 FPS.");
+            UltraLow = Config.Bind("Performance", "UltraLow", false,
+                "Ultra-Low floor: half render scale, quarter textures, no shadows/lights.");
+            HighEnd = Config.Bind("Performance", "HighEnd", false,
+                "High-End ceiling; overrides LowEnd/UltraLow.");
+            LowEndFps = Config.Bind("Performance", "LowEndFps", 60,
+                "Frame cap for Low-End and Ultra-Low (0 = uncapped).");
+            UltraRenderScale = Config.Bind("Performance", "UltraRenderScale", 0.5f,
+                new ConfigDescription("Ultra-Low render scale.",
+                    new AcceptableValueRange<float>(0.25f, 1f)));
+            HighEndFps = Config.Bind("Performance", "HighEndFps", 0,
+                "High-End frame cap (0 = uncapped).");
+            HighEndVSync = Config.Bind("Performance", "HighEndVSync", true,
+                "High-End VSync.");
 
             OverlayEnabled = Config.Bind("Interface", "OverlayEnabled", true,
                 "Show the F9 settings overlay.");
@@ -131,6 +161,8 @@ namespace SBR2QoL
                 "Unity KeyCode that toggles the settings overlay.");
             ReplaceOptionsMenu = Config.Bind("Interface", "ReplaceOptionsMenu",
                 true, "Open the QoL overlay instead of the game's basic options menu.");
+            GamepadNavigation = Config.Bind("Interface", "GamepadNavigation",
+                true, "Allow the QoL overlay to read the game controller.");
 
             StoryCharacterKey = Config.Bind("Story", "StoryCharacter", "",
                 "Story-mode player character key: white, black, pink, blue, red, " +

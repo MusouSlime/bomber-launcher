@@ -45,12 +45,21 @@ The config is written to `BepInEx/config/sbr2.qol.cfg`.
 Press **F9** in game for a Harmony-only settings overlay. It is drawn with
 built-in uGUI components, so no managed `MonoBehaviour` is injected.
 
+The overlay has five tabs: **Audio**, **Graphics**, **Movies**, **Story** and
+**Options**.
+
 - Up/Down selects a row; Left/Right changes it; Enter also advances.
-- Controller: left stick or D-pad moves, A changes, B / Start / Back closes.
+- Q/E, Tab/Shift+Tab or PageUp/PageDown switch tabs.
+- Controller: left stick/D-pad moves, A changes, B/Start closes, L1/R1 switch
+  tabs.
+- **Options → Open game options** closes the overlay and opens the vanilla
+  Other menu.
 - F9 closes and saves to `BepInEx/config/sbr2.qol.cfg`.
 - With `ReplaceOptionsMenu = true`, the main-menu **gear** and the
   **Basic Settings** entry open this overlay instead of the vanilla panels.
   Hold **Shift** while selecting them to reach the vanilla menu.
+- `GamepadNavigation` can disable controller polling if a virtual pad or
+  Steam Input setup misbehaves; keyboard still works.
 - The game also sees the same keys, so the menu behind can move while the
   overlay is open. Use it in a menu rather than mid-battle.
 
@@ -103,6 +112,14 @@ File matching:
 - otherwise, if shuffle/playlist is on, use a random/next track.
 
 SBR 2 BGM labels start with `BGM_` or `snd_bgm_`.
+
+### Performance
+
+- `LowEnd` — half textures, no shadows, no pixel lights, 60 FPS.
+- `UltraLow` — half render scale, quarter textures, no shadows/lights.
+- `HighEnd` — native scale, full textures, shadows, 8x AA, 8 lights,
+  high LOD; overrides LowEnd/UltraLow.
+- `LowEndFps`, `UltraRenderScale`, `HighEndFps`, `HighEndVSync`.
 
 ### Debug
 

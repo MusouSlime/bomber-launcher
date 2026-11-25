@@ -32,6 +32,12 @@ SBR2_APPID = "1913740"
 SBR2_DIR_NAME = "SUPER BOMBERMAN R2"
 SBR2_CFG_REL = Path("BepInEx/config/sbr2.qol.cfg")
 SBR2_PLUGIN_REL = Path("BepInEx/plugins/SBR2QoL.dll")
+SBR2_RESOLUTIONS = [
+    (0, 0, "Desktop"),
+    (1920, 1080, "1920 × 1080"),
+    (1280, 720, "1280 × 720"),
+    (960, 540, "960 × 540"),
+]
 
 HOME = Path.home()
 
@@ -140,6 +146,61 @@ def set_sbr2_plugin_value(section, key, value):
     return path
 
 
+
+def sbr2_save_dir():
+    """Find the SBR2 per-user save folder inside the Proton prefix."""
+    base = (HOME / ".local/share/Steam/steamapps/compatdata/1913740/pfx/"
+            "drive_c/users/steamuser/AppData/LocalLow/"
+            "Konami Digital Entertainment Co_, Ltd_/SUPER BOMBERMAN R 2")
+    if not base.is_dir():
+        return None
+    for sub in sorted(base.iterdir()):
+        if sub.is_dir() and ((sub / "GameData").exists() or
+                             (sub / "SystemData").exists()):
+            return sub
+    return None
+
+
+def backup_sbr2_save():
+    src = sbr2_save_dir()
+    if not src:
+        raise RuntimeError("SBR2 save folder not found (run the game once)")
+    base = (PORTABLE if PORTABLE else HOME / ".local/share/bomber-launcher")
+    root = base / "sbr2-saves"
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = root / stamp
+    dest.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for item in src.rglob("*"):
+        if not item.is_file():
+            continue
+        rel = item.relative_to(src)
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(item, target)
+        count += 1
+    return dest, count
+
+
+def sbr2_bepinex_version():
+    game = find_sbr2_dir()
+    if not game:
+        return None
+    log = game / "BepInEx/LogOutput.log"
+    if log.exists():
+        try:
+            first = log.read_text(errors="replace").splitlines()[:1]
+            if first and "BepInEx" in first[0]:
+                text = first[0].split("BepInEx", 1)[1].strip()
+                if " - " in text:
+                    text = text.split(" - ", 1)[0]
+                return text.strip(" ]-")
+        except Exception:
+            pass
+    if (game / "BepInEx/core").is_dir():
+        return "installed"
+    return None
+
 def get_sbr2_plugin_value(section, key, default=None):
     game = find_sbr2_dir()
     if not game:
@@ -191,6 +252,111 @@ def install_sbr2_plugin():
     return dest
 
 
+def sync_bgm_folder(source, progress=None):
+    """Incrementally mirror a music folder into the shared OGG cache.
+
+    Only new/changed files are converted, and files that this source owned
+    previously are removed when they disappear from the source. A manifest
+    makes repeated launches fast.
+    """
+    source = Path(source).resolve()
+    dest = _bgm_cache_dir().resolve()
+    dest.mkdir(parents=True, exist_ok=True)
+    exts = (".ogg", ".wav", ".mp3", ".flac", ".m4a", ".aac", ".opus",
+            ".wma")
+    if source == dest:
+        files = [p for p in dest.rglob("*")
+                 if p.is_file() and p.suffix.lower() in (".ogg", ".wav")]
+        return dest, 0, 0, len(files), []
+    files = [p for p in source.rglob("*")
+             if p.is_file() and p.suffix.lower() in exts]
+    files.sort(key=lambda p: str(p).lower())
+
+    used = set()
+    jobs = []
+    for src in files:
+        ext = src.suffix.lower()
+        out_ext = ext if ext in (".ogg", ".wav") else ".ogg"
+        stem = _safe_track_name(src.stem)
+        name = stem + out_ext
+        n = 2
+        while name.lower() in used:
+            name = f"{stem}_{n}{out_ext}"
+            n += 1
+        used.add(name.lower())
+        jobs.append((src, dest / name, ext not in (".ogg", ".wav")))
+
+    manifest_path = dest / ".sbr2_sync.json"
+    old_files = {}
+    try:
+        old_files = json.loads(manifest_path.read_text()).get("files", {})
+    except Exception:
+        pass
+
+    new_files = {}
+    converted = 0
+    skipped = 0
+    errors = []
+    ffmpeg = shutil.which("ffmpeg")
+    total = len(jobs)
+    for index, (src, out, needs_convert) in enumerate(jobs):
+        key = str(src.relative_to(source))
+        try:
+            stat = src.stat()
+            entry = old_files.get(key) or {}
+            fresh = (entry.get("dest") == out.name and
+                     abs(float(entry.get("mtime", 0)) - stat.st_mtime) < 0.01
+                     and entry.get("size") == stat.st_size and out.exists())
+            if fresh:
+                skipped += 1
+            else:
+                if needs_convert:
+                    if not ffmpeg:
+                        raise RuntimeError("ffmpeg not found")
+                    result = subprocess.run(
+                        [ffmpeg, "-y", "-loglevel", "error", "-i", str(src),
+                         "-vn", "-c:a", "libvorbis", "-q:a", "4", str(out)],
+                        capture_output=True, text=True)
+                    if result.returncode != 0:
+                        lines = (result.stderr or result.stdout).strip(
+                        ).splitlines()
+                        raise RuntimeError(lines[-1] if lines else
+                                           "ffmpeg failed")
+                else:
+                    shutil.copy2(src, out)
+                converted += 1
+            new_files[key] = {
+                "dest": out.name,
+                "mtime": stat.st_mtime,
+                "size": stat.st_size,
+            }
+        except Exception as e:
+            errors.append(f"{src.name}: {e}")
+        if progress:
+            progress(index + 1, total)
+
+    keep = {entry["dest"] for entry in new_files.values()}
+    removed = 0
+    for entry in old_files.values():
+        name = entry.get("dest")
+        if not name or name in keep:
+            continue
+        try:
+            (dest / name).unlink()
+            removed += 1
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+
+    try:
+        manifest_path.write_text(json.dumps(
+            {"source": str(source), "files": new_files}, indent=1))
+    except Exception as e:
+        errors.append(f"manifest: {e}")
+    return dest, converted, removed, skipped, errors
+
+
 def apply_sbr2_bgm(source=None):
     """Point SBR2 at the launcher's OGG music cache."""
     game = find_sbr2_dir()
@@ -215,7 +381,8 @@ def apply_sbr2_bgm(source=None):
         print("no music cache found; pass a music folder")
         return 1
     set_sbr2_plugin_value("Audio", "CustomBgmFolder", str(dest))
-    set_sbr2_plugin_value("Audio", "CustomBgmShuffle", "true")
+    set_sbr2_plugin_value("Audio", "CustomBgmPlaylist", "true")
+    set_sbr2_plugin_value("Audio", "CustomBgmShuffle", "false")
     print(f"SBR2 custom BGM: {count} track(s) in {dest}")
     return 0
 
@@ -1390,6 +1557,8 @@ class BomberWindow(Adw.ApplicationWindow):
             "environment": "ENVIRONMENT",
             "other": "OTHER",
             "sbr2_status": "SBR2 STATUS",
+            "sbr2_launch": "SBR2 LAUNCH",
+            "sbr2_performance": "SBR2 PERFORMANCE",
             "sbr2_movies": "SBR2 MOVIES",
             "sbr2_graphics": "SBR2 GRAPHICS",
             "sbr2_audio": "SBR2 AUDIO",
@@ -2185,10 +2354,13 @@ class BomberWindow(Adw.ApplicationWindow):
         return sw
 
     def _sbr2_dropdown_row(self, card, title, subtitle, section, key,
-                           display, values, avatar="avatar_yellow.png"):
+                           display, values, default=None,
+                           avatar="avatar_yellow.png"):
         dd = Gtk.DropDown.new_from_strings(display)
         dd.set_valign(Gtk.Align.CENTER)
-        current = str(get_sbr2_plugin_value(section, key, "")).strip().lower()
+        fallback = "" if default is None else str(default)
+        current = str(get_sbr2_plugin_value(
+            section, key, fallback)).strip().lower()
         index = 0
         for i, value in enumerate(values):
             if str(value).strip().lower() == current:
@@ -2248,7 +2420,49 @@ class BomberWindow(Adw.ApplicationWindow):
         status.append(self._row(
             "avatar_yellow.png", "Plugin & Game",
             "Copy the built plugin, then launch through Steam", actions))
+        status.append(self._separator())
+
+        maintenance = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        backup = Gtk.Button(label="Back Up Save")
+        backup.connect("clicked", self.on_sbr2_backup_save)
+        bep = Gtk.Button(label="BepInEx Help")
+        bep.connect("clicked", self.on_sbr2_bepinex_help)
+        maintenance.append(backup)
+        maintenance.append(bep)
+        status.append(self._row(
+            "avatar_white.png", "Maintenance",
+            "Save backup and BepInEx 6 guidance", maintenance))
         page.append(status)
+        page.append(Gtk.Separator())
+
+        page.append(self._section("sbr2_launch"))
+        launch_card = self._card()
+        self.sbr2_borderless = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.sbr2_borderless.set_active(
+            bool(self.cfg.get("sbr2_borderless", True)))
+        self.sbr2_borderless.connect(
+            "notify::active", self.on_sbr2_borderless)
+        launch_card.append(self._row(
+            "avatar_blue.png", "Borderless Window",
+            "Launch with -popupwindow at the selected resolution",
+            self.sbr2_borderless))
+        launch_card.append(self._separator())
+
+        self.sbr2_resolution = Gtk.DropDown.new_from_strings(
+            [name for _w, _h, name in SBR2_RESOLUTIONS])
+        self.sbr2_resolution.set_valign(Gtk.Align.CENTER)
+        try:
+            self.sbr2_resolution.set_selected(
+                int(self.cfg.get("sbr2_res", 0)) % len(SBR2_RESOLUTIONS))
+        except Exception:
+            self.sbr2_resolution.set_selected(0)
+        self.sbr2_resolution.connect(
+            "notify::selected", self.on_sbr2_resolution)
+        launch_card.append(self._row(
+            "avatar_pink.png", "Window Resolution",
+            "Desktop keeps the monitor size", self.sbr2_resolution))
+        page.append(launch_card)
         page.append(Gtk.Separator())
 
         page.append(self._section("sbr2_movies"))
@@ -2308,6 +2522,50 @@ class BomberWindow(Adw.ApplicationWindow):
         page.append(gfx)
         page.append(Gtk.Separator())
 
+        page.append(self._section("sbr2_performance"))
+        perf = self._card()
+        preset_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.sbr2_perf_dd = Gtk.DropDown.new_from_strings(
+            ["Off", "Low-End", "Ultra-Low", "High-End"])
+        self.sbr2_perf_dd.set_valign(Gtk.Align.CENTER)
+        tier = get_sbr2_plugin_value("Performance", "HighEnd", "false")
+        is_high = str(tier).lower() == "true"
+        is_ultra = str(get_sbr2_plugin_value(
+            "Performance", "UltraLow", "false")).lower() == "true"
+        is_low = str(get_sbr2_plugin_value(
+            "Performance", "LowEnd", "false")).lower() == "true"
+        self.sbr2_perf_dd.set_selected(
+            3 if is_high else 2 if is_ultra else 1 if is_low else 0)
+        self.sbr2_perf_dd.connect(
+            "notify::selected", self.on_sbr2_perf_preset)
+        preset_box.append(self.sbr2_perf_dd)
+        perf.append(self._row(
+            "avatar_yellow.png", "Performance Preset",
+            "High-End overrides the low/ultra flags", preset_box))
+        perf.append(self._separator())
+        self._sbr2_widgets.append(self.sbr2_perf_dd)
+
+        self._sbr2_dropdown_row(
+            perf, "Low / Ultra FPS", "Frame cap for the floor presets",
+            "Performance", "LowEndFps",
+            ["30", "60", "120", "Uncapped"],
+            ["30", "60", "120", "0"], default="60")
+        self._sbr2_dropdown_row(
+            perf, "Ultra Render Scale", "Render resolution for Ultra-Low",
+            "Performance", "UltraRenderScale",
+            ["0.50", "0.65", "0.75", "1.00"],
+            ["0.5", "0.65", "0.75", "1"], default="0.5")
+        self._sbr2_dropdown_row(
+            perf, "High-End FPS", "Frame cap for the ceiling",
+            "Performance", "HighEndFps",
+            ["Uncapped", "60", "120", "144"],
+            ["0", "60", "120", "144"], default="0")
+        self._sbr2_switch_row(perf, "High-End VSync",
+                              "VSync for the ceiling preset",
+                              "Performance", "HighEndVSync", True)
+        page.append(perf)
+        page.append(Gtk.Separator())
+
         page.append(self._section("sbr2_audio"))
         audio = self._card()
         self.sbr2_bgm_btn = Gtk.Button(label="Choose…")
@@ -2317,12 +2575,20 @@ class BomberWindow(Adw.ApplicationWindow):
         self.sbr2_bgm_clear.add_css_class("flat")
         self.sbr2_bgm_clear.set_valign(Gtk.Align.CENTER)
         self.sbr2_bgm_clear.connect("clicked", self.on_sbr2_bgm_clear)
+        self.sbr2_bgm_refresh = Gtk.Button(label="Refresh")
+        self.sbr2_bgm_refresh.add_css_class("flat")
+        self.sbr2_bgm_refresh.set_valign(Gtk.Align.CENTER)
+        self.sbr2_bgm_refresh.set_tooltip_text(
+            "Re-scan the music folder (also runs on every launch)")
+        self.sbr2_bgm_refresh.connect(
+            "clicked", self.on_sbr2_bgm_refresh)
         bgm_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         bgm_box.append(self.sbr2_bgm_btn)
         bgm_box.append(self.sbr2_bgm_clear)
+        bgm_box.append(self.sbr2_bgm_refresh)
         audio.append(self._row(
             "avatar_white.png", "Custom BGM Folder",
-            "Music folder converted to the shared OGG cache", bgm_box))
+            "Synced to the OGG cache on every launch", bgm_box))
         audio.append(self._separator())
 
         volume = Gtk.Scale.new_with_range(
@@ -2341,11 +2607,11 @@ class BomberWindow(Adw.ApplicationWindow):
         self._sbr2_widgets.append(volume)
 
         self._sbr2_switch_row(audio, "Shuffle BGM",
-                              "Random track when a label has no exact file",
-                              "Audio", "CustomBgmShuffle", True)
+                              "Random order; advances when a track ends",
+                              "Audio", "CustomBgmShuffle", False)
         self._sbr2_switch_row(audio, "Playlist BGM",
-                              "Cycle tracks when a label has no exact file",
-                              "Audio", "CustomBgmPlaylist", False)
+                              "Folder order; advances when a track ends",
+                              "Audio", "CustomBgmPlaylist", True)
         page.append(audio)
         page.append(Gtk.Separator())
 
@@ -2378,6 +2644,10 @@ class BomberWindow(Adw.ApplicationWindow):
             interface, "Replace Settings Gear",
             "Gear / Basic Settings open the overlay; hold Shift for vanilla",
             "Interface", "ReplaceOptionsMenu", True)
+        self._sbr2_switch_row(
+            interface, "Controller Navigation",
+            "Allow the overlay to read the game controller",
+            "Interface", "GamepadNavigation", True)
         self._sbr2_dropdown_row(
             interface, "Overlay Key", "Keyboard toggle",
             "Interface", "OverlayKey",
@@ -2428,10 +2698,11 @@ class BomberWindow(Adw.ApplicationWindow):
         core = (game / "BepInEx/core").is_dir()
         plugin = (game / SBR2_PLUGIN_REL).exists()
         interop = (game / "BepInEx/interop/GameAssembly.dll").exists()
+        version = sbr2_bepinex_version()
         if not core:
             state = "BepInEx 6 IL2CPP x64 is not installed"
         elif not plugin:
-            state = "BepInEx ready · plugin not installed"
+            state = (f"BepInEx {version or '6'} ready · plugin not installed")
         elif not interop:
             state = "Plugin installed · run once to generate interop"
         else:
@@ -2441,14 +2712,25 @@ class BomberWindow(Adw.ApplicationWindow):
         self.sbr2_status.set_text(f"{game}\n{state}")
         for w in self._sbr2_widgets:
             w.set_sensitive(not running)
+        if hasattr(self, "sbr2_perf_dd"):
+            high = self._sbr2_bool("Performance", "HighEnd")
+            ultra = self._sbr2_bool("Performance", "UltraLow")
+            low = self._sbr2_bool("Performance", "LowEnd")
+            index = 3 if high else 2 if ultra else 1 if low else 0
+            if self.sbr2_perf_dd.get_selected() != index:
+                self._sbr2_loading = True
+                self.sbr2_perf_dd.set_selected(index)
+                self._sbr2_loading = False
 
     def _update_sbr2_bgm_label(self):
         if not hasattr(self, "sbr2_bgm_btn"):
             return
-        path = (get_sbr2_plugin_value(
-            "Audio", "CustomBgmFolder", "") or "").strip()
+        source = (self.cfg.get("sbr2_bgm_source") or "").strip()
+        if not source or not Path(source).is_dir():
+            source = (get_sbr2_plugin_value(
+                "Audio", "CustomBgmSource", "") or "").strip()
         self._set_folder_button(
-            self.sbr2_bgm_btn, self.sbr2_bgm_clear, path)
+            self.sbr2_bgm_btn, self.sbr2_bgm_clear, source)
 
     def on_sbr2_install(self, _btn):
         try:
@@ -2459,14 +2741,89 @@ class BomberWindow(Adw.ApplicationWindow):
             self.toast(str(e))
 
     def on_sbr2_launch(self, _btn):
+        source = (self.cfg.get("sbr2_bgm_source") or "").strip()
+        if not source:
+            source = (get_sbr2_plugin_value(
+                "Audio", "CustomBgmSource", "") or "").strip()
+        if source and Path(source).is_dir():
+            self._sbr2_start_sync(source, then_launch=True)
+        else:
+            self._launch_sbr2_now()
+
+    def _launch_sbr2_now(self):
+        args = []
         try:
-            subprocess.Popen(["steam", "-applaunch", SBR2_APPID],
+            if self.cfg.get("sbr2_borderless", True):
+                index = int(self.cfg.get("sbr2_res", 0)) % len(
+                    SBR2_RESOLUTIONS)
+                width, height, _name = SBR2_RESOLUTIONS[index]
+                if not width or not height:
+                    width, height = self.desktop_size()
+                if width and height:
+                    args = ["-popupwindow", "-screen-fullscreen", "0",
+                            "-screen-width", str(width),
+                            "-screen-height", str(height)]
+                    dw, dh = self.desktop_size()
+                    args += ["-screen-x", str(max(0, (dw - width) // 2)),
+                             "-screen-y", str(max(0, (dh - height) // 2))]
+            subprocess.Popen(["steam", "-applaunch", SBR2_APPID, *args],
                              start_new_session=True,
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
             self.toast("Launching SUPER BOMBERMAN R2…")
         except Exception as e:
             self.toast(f"Launch failed: {e}")
+
+    def on_sbr2_borderless(self, row, _pspec):
+        if self._sbr2_loading:
+            return
+        self.cfg["sbr2_borderless"] = bool(row.get_active())
+        save_config(self.cfg)
+
+    def on_sbr2_resolution(self, row, _pspec):
+        if self._sbr2_loading:
+            return
+        self.cfg["sbr2_res"] = int(row.get_selected())
+        save_config(self.cfg)
+
+    def on_sbr2_perf_preset(self, row, _pspec):
+        if self._sbr2_loading:
+            return
+        tiers = ["off", "low", "ultra", "high"]
+        index = row.get_selected()
+        if not (0 <= index < len(tiers)):
+            return
+        tier = tiers[index]
+        try:
+            for key, name in (("LowEnd", "low"), ("UltraLow", "ultra"),
+                              ("HighEnd", "high")):
+                set_sbr2_plugin_value(
+                    "Performance", key,
+                    "true" if tier == name else "false")
+            labels = ["Off", "Low-End", "Ultra-Low", "High-End"]
+            self.toast(f"SBR2 performance: {labels[index]}")
+        except Exception as e:
+            self.toast(str(e))
+
+    def on_sbr2_backup_save(self, _btn):
+        try:
+            dest, count = backup_sbr2_save()
+            self.toast(f"SBR2 save: {count} files → {dest.name}")
+        except Exception as e:
+            self.toast(str(e))
+
+    def on_sbr2_bepinex_help(self, _btn):
+        game = find_sbr2_dir()
+        if game and (game / "BepInEx/core").is_dir():
+            self.toast("BepInEx 6 installed: " +
+                       (sbr2_bepinex_version() or "see LogOutput.log"))
+            return
+        try:
+            Gio.AppInfo.launch_default_for_uri(
+                "https://builds.bepinex.dev/projects/bepinex_be", None)
+        except Exception as e:
+            self.toast(str(e))
+        self.toast("Use BepInEx 6 x64 IL2CPP (be.692 known good)")
 
     def on_sbr2_open_folder(self, _btn):
         game = find_sbr2_dir()
@@ -2483,10 +2840,12 @@ class BomberWindow(Adw.ApplicationWindow):
             self.toast("Close SBR2 first")
             return
         if self._sbr2_converting:
-            self.toast("BGM conversion already running")
+            self.toast("BGM update already running")
             return
-        current = (get_sbr2_plugin_value(
-            "Audio", "CustomBgmFolder", "") or "").strip()
+        current = (self.cfg.get("sbr2_bgm_source") or "").strip()
+        if not current or not Path(current).is_dir():
+            current = (get_sbr2_plugin_value(
+                "Audio", "CustomBgmSource", "") or "").strip()
         self._sbr2_chooser = self._open_folder_chooser(
             "SBR2 custom BGM folder", current, self._sbr2_bgm_response)
 
@@ -2496,46 +2855,75 @@ class BomberWindow(Adw.ApplicationWindow):
             f = chooser.get_file()
             path = f.get_path() if f else None
             if path:
-                self._sbr2_start_conversion(path)
+                self.cfg["sbr2_bgm_source"] = path
+                save_config(self.cfg)
+                try:
+                    set_sbr2_plugin_value("Audio", "CustomBgmSource", path)
+                except Exception:
+                    pass
+                self._update_sbr2_bgm_label()
+                self._sbr2_start_sync(path)
         chooser.destroy()
 
-    def _sbr2_start_conversion(self, source):
+    def on_sbr2_bgm_refresh(self, _btn):
+        if sbr2_running():
+            self.toast("Close SBR2 first")
+            return
+        source = (self.cfg.get("sbr2_bgm_source") or "").strip()
+        if not source or not Path(source).is_dir():
+            source = (get_sbr2_plugin_value(
+                "Audio", "CustomBgmSource", "") or "").strip()
+        if not source or not Path(source).is_dir():
+            self.toast("Choose a music folder first")
+            return
+        self._sbr2_start_sync(source)
+
+    def _sbr2_start_sync(self, source, then_launch=False):
         if self._sbr2_converting:
+            self.toast("BGM update already running")
             return
         self._sbr2_converting = True
         self.sbr2_bgm_btn.set_sensitive(False)
-        self.toast("Converting BGM to OGG — this can take a while")
+        if hasattr(self, "sbr2_bgm_refresh"):
+            self.sbr2_bgm_refresh.set_sensitive(False)
+        self.toast("Updating BGM playlist…")
 
         def report(done, total):
             GLib.idle_add(self.sbr2_bgm_btn.set_label,
-                          f"Converting… {done}/{total}")
+                          f"Updating… {done}/{total}")
 
         def work():
             try:
-                dest, converted, skipped = convert_bgm_folder(source, report)
-                GLib.idle_add(self._sbr2_conversion_done, str(dest),
-                              converted, skipped, None)
+                dest, converted, removed, skipped, errors = sync_bgm_folder(
+                    source, report)
+                GLib.idle_add(self._sbr2_sync_done, str(dest), converted,
+                              removed, skipped, errors, then_launch)
             except Exception as e:
-                GLib.idle_add(self._sbr2_conversion_done, None, 0, 0, str(e))
+                GLib.idle_add(self._sbr2_sync_done, None, 0, 0, 0, [str(e)],
+                              then_launch)
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _sbr2_conversion_done(self, dest, converted, skipped, error):
+    def _sbr2_sync_done(self, dest, converted, removed, skipped, errors,
+                        then_launch):
         self._sbr2_converting = False
         self.sbr2_bgm_btn.set_sensitive(True)
-        if error:
-            self.toast("BGM conversion failed: " + error)
-            return False
-        try:
-            set_sbr2_plugin_value("Audio", "CustomBgmFolder", dest)
-            set_sbr2_plugin_value("Audio", "CustomBgmShuffle", "true")
-            self._update_sbr2_bgm_label()
-            message = f"SBR2 BGM ready: {converted} tracks"
-            if skipped:
-                message += f", {skipped} skipped"
-            self.toast(message + " — restart SBR2")
-        except Exception as e:
-            self.toast(str(e))
+        if hasattr(self, "sbr2_bgm_refresh"):
+            self.sbr2_bgm_refresh.set_sensitive(True)
+        if dest:
+            try:
+                set_sbr2_plugin_value("Audio", "CustomBgmFolder", dest)
+                self._update_sbr2_bgm_label()
+            except Exception as e:
+                errors = list(errors) + [str(e)]
+        if errors:
+            self.toast("BGM update: " + errors[0])
+        elif dest:
+            message = (f"BGM playlist: +{converted}, -{removed}, "
+                       f"{skipped} unchanged")
+            self.toast(message)
+        if then_launch:
+            self._launch_sbr2_now()
         return False
 
     def on_sbr2_bgm_clear(self, _btn):
@@ -2543,7 +2931,10 @@ class BomberWindow(Adw.ApplicationWindow):
             self.toast("Close SBR2 first")
             return
         try:
+            self.cfg.pop("sbr2_bgm_source", None)
+            save_config(self.cfg)
             set_sbr2_plugin_value("Audio", "CustomBgmFolder", "")
+            set_sbr2_plugin_value("Audio", "CustomBgmSource", "")
             self._update_sbr2_bgm_label()
             self.toast("SBR2 custom BGM disabled")
         except Exception as e:

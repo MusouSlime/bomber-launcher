@@ -366,3 +366,26 @@ Testing caveat: a virtual uinput pad created at runtime was not exposed to
 Proton (no udev `ID_INPUT_JOYSTICK`), so controller input could not be
 exercised end-to-end here. The code uses Unity's legacy controller axes and
 joystick button keycodes, which SBR2 already uses for its own controller UI.
+
+### Tabs, controller nav, BGM auto-advance, performance — 2026-11-25
+
+- F9 overlay is now tabbed: Audio / Graphics / Movies / Story / Options.
+  Q/E, Tab/Shift+Tab and L1/R1 switch tabs; Up/Down/Left/Right and A/B work.
+- Options → **Open game options** closes the overlay and calls the vanilla
+  `MainMenuUI.onSubmitOther` with a bypass window, so the stock Other menu
+  opens.
+- Controller input goes through `InputAdapter` (Steam Input / gamepad) using
+  `UI_SUBMIT`, `UI_CANCEL`, `UI_UP/DOWN/LEFT/RIGHT` and `UI_TAB_L/R`.
+  Events are edge-detected, deduplicated across keyboard/pad, and ignored for
+  0.8 s after opening to avoid spurious events. `Interface.GamepadNavigation`
+  disables pad polling; keyboard still works.
+- Custom BGM no longer loops. When a track finishes the next file is loaded
+  from a no-repeat bag (sequential with Playlist, shuffled with Shuffle).
+  Playlist is now the default; Shuffle is off by default.
+- Performance tiers: LowEnd, UltraLow and HighEnd map to QualitySettings,
+  `ScalableBufferManager` render scale, texture limit, shadows, lights, LOD,
+  AA, VSync and frame caps. HighEnd overrides the floor presets.
+  Verified: LowEnd, UltraLow and HighEnd all apply and the game stays alive.
+- Launcher: performance card, borderless/resolution launch options, SBR2 save
+  backup, BepInEx 6 status/help, and automatic BGM cache sync before launch.
+  The sync is incremental (manifest) and removes tracks that left the source.

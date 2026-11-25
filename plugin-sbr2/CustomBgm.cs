@@ -35,6 +35,14 @@ namespace SBR2QoL
         private static float _pendingFade;
         private static string _currentLabel;
         private static string _currentFile;
+        private static readonly List<string> _bag = new List<string>();
+        private static int _bagPos;
+        private static bool _bagShuffle;
+        private static int _bagCount;
+        private static string _bagFolder;
+        private static string _lastFile;
+        private static float _startedAt;
+        private static bool _paused;
         private static bool _selfTestScheduled;
         private static float _selfTestAt;
         private static float _selfTestCheckAt;
@@ -63,7 +71,7 @@ namespace SBR2QoL
                 _host.hideFlags = HideFlags.HideAndDontSave;
                 _source = _host.AddComponent<AudioSource>();
                 _source.playOnAwake = false;
-                _source.loop = true;
+                _source.loop = false;
                 _source.spatialBlend = 0f;
                 return _source != null;
             }
@@ -111,6 +119,8 @@ namespace SBR2QoL
                 }
                 playable.Sort(StringComparer.OrdinalIgnoreCase);
                 _files = playable.ToArray();
+                _bag.Clear();
+                _bagFolder = null;
                 Plugin.Logger.LogInfo("Custom BGM: " + _files.Length +
                     " track(s) in " + folder);
             }
@@ -174,11 +184,10 @@ namespace SBR2QoL
             if (file == null)
             {
                 if (!IsBgmLabel(label)) return false;
-                file = Plugin.CustomBgmShuffle.Value
-                    ? RandomFile()
-                    : Plugin.CustomBgmPlaylist.Value
-                        ? NextPlaylistFile()
-                        : null;
+                file = Plugin.CustomBgmShuffle.Value ||
+                       Plugin.CustomBgmPlaylist.Value
+                    ? NextFromBag()
+                    : null;
             }
             if (file == null) return false;
 
@@ -189,21 +198,12 @@ namespace SBR2QoL
 
             try
             {
-                AudioClip clip = LoadClip(file);
-                if (clip == null)
+                if (!PlayFile(file))
                 {
                     Fallback();
                     return true;
                 }
-                _source.Stop();
-                _source.clip = clip;
-                _source.volume = Mathf.Clamp01(Plugin.CustomBgmVolume.Value);
-                _source.loop = true;
-                _source.Play();
                 _currentLabel = label;
-                _currentFile = file;
-                Plugin.Logger.LogInfo("Custom BGM: " + label + " -> " +
-                    Path.GetFileName(file));
                 return true;
             }
             catch (Exception e)
@@ -408,8 +408,90 @@ namespace SBR2QoL
             }
         }
 
+        private static bool PlayFile(string file)
+        {
+            AudioClip clip = LoadClip(file);
+            if (clip == null) return false;
+            _source.Stop();
+            _source.clip = clip;
+            _source.volume = Mathf.Clamp01(Plugin.CustomBgmVolume.Value);
+            _source.loop = false;
+            _source.Play();
+            _currentFile = file;
+            _lastFile = file;
+            _startedAt = Time.realtimeSinceStartup;
+            if (!string.IsNullOrEmpty(_label)) _currentLabel = _label;
+            Plugin.Logger.LogInfo("Custom BGM: " +
+                (_label ?? "next") + " -> " +
+                Path.GetFileName(file));
+            return true;
+        }
+
+        private static void RefillBag(bool shuffle)
+        {
+            _bag.Clear();
+            if (_files == null) return;
+            _bag.AddRange(_files);
+            if (shuffle && _bag.Count > 1)
+            {
+                for (int i = _bag.Count - 1; i > 0; i--)
+                {
+                    int j = Random.Next(i + 1);
+                    string tmp = _bag[i];
+                    _bag[i] = _bag[j];
+                    _bag[j] = tmp;
+                }
+            }
+            _bagShuffle = shuffle;
+            _bagCount = _files.Length;
+            _bagFolder = _folder;
+            _bagPos = 0;
+        }
+
+        private static string NextFromBag()
+        {
+            if (_files == null || _files.Length == 0) return null;
+            bool shuffle = Plugin.CustomBgmShuffle.Value;
+            if (_bag.Count == 0 || _bagShuffle != shuffle ||
+                _bagCount != _files.Length || _bagFolder != _folder)
+                RefillBag(shuffle);
+            if (_bagPos >= _bag.Count) RefillBag(shuffle);
+            if (_bag.Count == 0) return null;
+
+            int pick = _bagPos++;
+            if (_files.Length > 1 && _bag[pick] == _lastFile)
+            {
+                for (int i = pick + 1; i < _bag.Count; i++)
+                {
+                    if (_bag[i] == _lastFile) continue;
+                    string tmp = _bag[i];
+                    _bag[i] = _bag[pick];
+                    _bag[pick] = tmp;
+                    break;
+                }
+            }
+            return _bag[pick];
+        }
+
+        private static void PlayNext()
+        {
+            if (_files == null || _files.Length == 0) return;
+            string file = NextFromBag();
+            if (file == null) return;
+            if (!PlayFile(file))
+                Plugin.Logger.LogWarning("Custom BGM next failed: " +
+                    Path.GetFileName(file));
+        }
+
         internal static void Tick()
         {
+            if (_source != null && _source.clip != null && !_paused &&
+                _currentFile != null && _currentLabel != null &&
+                Time.realtimeSinceStartup - _startedAt > 0.25f &&
+                !_source.isPlaying)
+            {
+                PlayNext();
+            }
             if (_source != null && _source.clip != null)
             {
                 float volume = Mathf.Clamp01(Plugin.CustomBgmVolume.Value);
@@ -440,17 +522,20 @@ namespace SBR2QoL
         internal static void Stop()
         {
             if (_source != null) _source.Stop();
+            _paused = false;
             _currentLabel = null;
             _currentFile = null;
         }
 
         internal static void Pause()
         {
+            _paused = true;
             if (_source != null) _source.Pause();
         }
 
         internal static void Unpause()
         {
+            _paused = false;
             if (_source != null && _source.clip != null) _source.UnPause();
         }
 
@@ -458,7 +543,9 @@ namespace SBR2QoL
         {
             if (_source == null || _source.clip == null) return;
             _source.Stop();
+            _source.loop = false;
             _source.Play();
+            _startedAt = Time.realtimeSinceStartup;
         }
     }
 
