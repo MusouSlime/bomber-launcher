@@ -203,3 +203,17 @@ Current restored state:
 - `UnityLogListening = false` is required for the chainloader on this build.
 - `SBR2QoL.dll` loads and registers Harmony patches.
 - `QoLHost` and `CustomBgmPlayer` remain disabled.
+
+### Harmony-only runtime — 2026-11-25
+
+The BepInEx Harmony-only path is now active without managed MonoBehaviour
+injection:
+
+- `SoundManager.Update` is patched with a postfix.
+- The postfix drives `QoLStatic.Tick()` every frame.
+- Tick handles movie skip, HDRP Volume toggles and FOV.
+- Log confirms:
+  `SBR2 QoL tick active (SoundManager.Update)`
+- No `ClassInjector`, no sceneLoaded delegate conversion, no injected host.
+- `QoLHost`/`CustomBgmPlayer` remain disabled; custom BGM still needs a
+  static AudioSource implementation.

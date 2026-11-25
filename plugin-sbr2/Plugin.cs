@@ -55,6 +55,7 @@ namespace SBR2QoL
             // working loader path is selected; injecting QoLHost here crashes
             // the process with an access violation.
             PatchAllSafe();
+            QoLStatic.Init();
 
             Logger.LogInfo("SBR2 QoL loaded (story character='" +
                 StoryCharacterKey.Value + "', BGM folder='" +

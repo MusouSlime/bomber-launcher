@@ -270,6 +270,7 @@ namespace SBR2QoL
         private static bool Prefix(SoundManager __instance, string bgmLabel,
             float fadeTime)
         {
+            QoLStatic.StartOn(__instance);
             return !CustomBgmPlayer.TryPlay(__instance, bgmLabel, fadeTime, false);
         }
     }
