@@ -1,0 +1,20 @@
+{
+  "bundle": "defines/common",
+  "description": "Conservative SBR2 data patch: less story grind, slightly stronger story start, slower enemies, less suicidal strong NPCs, cheaper in-game shop. Test in a copy first.",
+  "edits": [
+    {"table": "StoryCampExpTable_World1", "path": "_datas[*]._nextLevelNeedExp", "op": "scale", "value": 0.6},
+    {"table": "StoryCampExpTable_World2", "path": "_datas[*]._nextLevelNeedExp", "op": "scale", "value": 0.6},
+    {"table": "StoryCampExpTable_World3", "path": "_datas[*]._nextLevelNeedExp", "op": "scale", "value": 0.6},
+
+    {"table": "StoryCharacterStatusDataTable", "path": "_datas[*]._initFirePower", "op": "add", "value": 1},
+    {"table": "StoryCharacterStatusDataTable", "path": "_datas[*]._initBombCount", "op": "add", "value": 1},
+
+    {"table": "EnemyInfoDataTable", "path": "_datas[*]._moveSpeed", "op": "scale", "value": 0.8},
+
+    {"table": "NpcStrongDefData", "path": "_moveRateOverDanger", "op": "set", "value": 0.35},
+    {"table": "NpcStrongDefData", "path": "_bombVisionScore", "op": "set", "value": 100},
+    {"table": "NpcStrongDefData", "path": "_putBombRateByFindEnemy", "op": "set", "value": 0.85},
+
+    {"table": "ShopProductTable", "path": "_datas[*]._price", "op": "scale", "value": 0.5}
+  ]
+}

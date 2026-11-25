@@ -1,0 +1,36 @@
+{
+  "bundle": "defines/common",
+  "description": "Experimental: suppress the four story CASTLE_ATTACK events and the four BASE_DEFENCE triggers in each world. Requires a clear-flag plugin/save edit so camp/gate logic sees them as completed. Test on a copy first.",
+  "edits": [
+    {"table": "StoryEventDataTable_World1", "path": "_datas[0]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World1", "path": "_datas[1]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World1", "path": "_datas[2]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World1", "path": "_datas[3]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World1", "path": "_datas[0]._typeId", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World1", "path": "_datas[1]._typeId", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World1", "path": "_datas[2]._typeId", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World1", "path": "_datas[3]._typeId", "op": "set", "value": 0},
+
+    {"table": "StoryEventDataTable_World2", "path": "_datas[0]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World2", "path": "_datas[1]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World2", "path": "_datas[2]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World2", "path": "_datas[3]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World2", "path": "_datas[0]._typeId", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World2", "path": "_datas[1]._typeId", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World2", "path": "_datas[2]._typeId", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World2", "path": "_datas[3]._typeId", "op": "set", "value": 0},
+
+    {"table": "StoryEventDataTable_World3", "path": "_datas[0]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World3", "path": "_datas[1]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World3", "path": "_datas[2]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World3", "path": "_datas[3]._eventType", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World3", "path": "_datas[0]._typeId", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World3", "path": "_datas[1]._typeId", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World3", "path": "_datas[2]._typeId", "op": "set", "value": 0},
+    {"table": "StoryEventDataTable_World3", "path": "_datas[3]._typeId", "op": "set", "value": 0},
+
+    {"table": "StoryBaseDefenceOccurrenceConditionsTable_World1", "path": "_datas[*]._needMinionCount", "op": "set", "value": 999999},
+    {"table": "StoryBaseDefenceOccurrenceConditionsTable_World2", "path": "_datas[*]._needMinionCount", "op": "set", "value": 999999},
+    {"table": "StoryBaseDefenceOccurrenceConditionsTable_World3", "path": "_datas[*]._needMinionCount", "op": "set", "value": 999999}
+  ]
+}
