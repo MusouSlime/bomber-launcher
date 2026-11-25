@@ -233,29 +233,60 @@ Confirmed working:
 
 Logo skip remains unimplemented for SBR2 until a safe entry-scene hook is found.
 
-### Custom BGM attempt — 2026-11-25
+### Custom BGM — working (2026-11-25)
 
-The existing SBR2 BGM patches target `SoundManager.playAsBGM`,
-`changeBGM`, etc., but the old `CustomBgmPlayer` relied on an injected
-MonoBehaviour and cannot be used.
+Custom BGM now works on the Harmony-only path, using the launcher's existing
+OGG cache (`~/.local/share/bomber-launcher/bgm_cache`).
 
-Attempts:
+What failed and why:
 
-1. `UnityWebRequestMultimedia.GetAudioClip` — runtime fails because the
-   interop `DownloadHandlerAudioClip` constructor is missing.
-2. `WWW` / `LoadFromCacheOrDownload` — interop constructors
-   (`WWW`, `Hash128(uint,uint,uint,uint)`) are missing.
-3. Allocating `DownloadHandlerAudioClip` through `il2cpp_object_new` — access
-   violation.
-4. NVorbis OGG decode into `AudioClip.Create` — compiled, but the boot test was
-   inconclusive and was reverted to the stable Harmony-only build.
+1. `UnityWebRequestMultimedia.GetAudioClip` — the interop
+   `DownloadHandlerAudioClip` constructor is missing.
+2. `WWW.LoadFromCacheOrDownload` — interop `WWW` / `Hash128` constructors are
+   missing.
+3. `il2cpp_object_new<DownloadHandlerAudioClip>` — access violation.
+4. `AudioClip.SetData(float[], 0)` — the instance wrapper checks
+   `((Array)data).Length` on an `Il2CppStructArray<float>`, which reads as 0
+   and throws `ArgumentException: invalid data`.
 
-Decision: do **not** use the interop audio download handlers. The next safe
-route is:
+Working design:
 
-- launcher-side conversion of the selected music folder/cache to PCM WAV
-- plugin-side WAV parser + `AudioClip.Create` / `SetData`
-- no `UnityWebRequest`, `WWW`, `DownloadHandlerAudioClip`, or managed host
+- Decode OGG with **NVorbis** (pure managed) or PCM WAV with a small parser.
+- Create an `AudioClip` with `AudioClip.Create(...)`.
+- Upload with the **static** overload
+  `AudioClip.SetData(clip, Il2CppStructArray<float>, frames, offset)`.
+- Play on a built-in `AudioSource` created on a `DontDestroyOnLoad` object.
+- No managed MonoBehaviour, no `UnityWebRequest`, no `WWW`.
 
-This keeps the Harmony-only loader stable and supports the existing music
-folder after conversion.
+Verified in-game:
+
+- `BGM_SelfTest` and `BGM_sys_mainmenu_01` both load from the 315-track cache.
+- `playing=True clipLength=246.44s time=1.51s`.
+- Captured sink audio matched the test tone (440 Hz for WAV, 880 Hz for OGG).
+- Main menu shows the custom track playing.
+
+### Freeze fix — avoid per-frame scene scans
+
+The first Harmony tick scanned the whole game every frame with
+`Resources.FindObjectsOfTypeAll(...)`. That froze SBR2 at the caution screen.
+
+Replaced with:
+
+- HDRP post-FX toggles via `VolumeManager.instance.stack.GetComponent<T>()`.
+- FOV via cached `Camera.main`.
+- Movie skip via a postfix on `MoviePlayUI.update` (key and auto timer).
+- A `SelfTest` debug flag to exercise the audio path and log heartbeats.
+
+Verified: heartbeats continue, the game reaches the main menu, and the custom
+BGM changes with `BGM_sys_mainmenu_01`.
+
+### Testing note
+
+Synthetic X11 input (`xdotool`) does **not** reach SBR2 under Proton because
+Unity uses raw input. Kernel-level `uinput` input (`ydotool`) works:
+
+```
+ydotool key 57:1 57:0   # Space
+```
+
+This only affects automated testing, not a real keyboard.

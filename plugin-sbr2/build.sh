@@ -23,6 +23,7 @@ dotnet build "$HERE/SBR2QoL.csproj" \
   -o "$HERE/bin"
 
 cp "$HERE/bin/SBR2QoL.dll" "$BEP/plugins/"
+[ -f "$HERE/bin/NVorbis.dll" ] && cp "$HERE/bin/NVorbis.dll" "$BEP/plugins/" || true
 [ -f "$HERE/bin/SBR2QoL.pdb" ] && cp "$HERE/bin/SBR2QoL.pdb" "$BEP/plugins/" || true
 
 echo "Installed: $BEP/plugins/SBR2QoL.dll"

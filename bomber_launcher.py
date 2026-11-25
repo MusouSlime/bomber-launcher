@@ -103,6 +103,70 @@ def _bgm_cache_dir():
     return base / AUDIO_CACHE_NAME
 
 
+def find_sbr2_dir():
+    env = os.environ.get("SBR2_GAME")
+    if env:
+        p = Path(env)
+        if p.is_dir():
+            return p
+    p = (HOME / ".local/share/Steam/steamapps/common/SUPER BOMBERMAN R2")
+    return p if p.is_dir() else None
+
+
+def set_sbr2_plugin_value(section, key, value):
+    game = find_sbr2_dir()
+    if not game:
+        raise RuntimeError("SBR2 game folder not found")
+    path = game / "BepInEx/config/sbr2.qol.cfg"
+    text = path.read_text(errors="replace") if path.exists() else ""
+    out = text.splitlines()
+    in_sec = False
+    found = False
+    for i, line in enumerate(out):
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            in_sec = s[1:-1].strip() == section
+            found = found or in_sec
+        elif in_sec and "=" in s and s.split("=", 1)[0].strip() == key:
+            out[i] = f"{key} = {value}"
+    if not found:
+        out.extend(["", f"[{section}]", f"{key} = {value}"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(out).rstrip() + "\n")
+    return path
+
+
+def apply_sbr2_bgm(source=None):
+    """Point SBR2 at the launcher's OGG music cache."""
+    game = find_sbr2_dir()
+    if not game:
+        print("SBR2 game folder not found")
+        return 1
+    if source is not None:
+        source = Path(source)
+        if not source.is_dir():
+            print("music folder not found:", source)
+            return 1
+        print("converting", source, "to OGG for SBR2...")
+        dest, done, errors = convert_bgm_folder(source)
+        for err in errors[:10]:
+            print("skip:", err)
+        if len(errors) > 10:
+            print("... and", len(errors) - 10, "more errors")
+    else:
+        dest = _bgm_cache_dir()
+    dest = Path(dest)
+    count = len([p for p in dest.rglob("*")
+                 if p.is_file() and p.suffix.lower() in (".ogg", ".wav")])
+    if count == 0:
+        print("no music cache found; pass a music folder")
+        return 1
+    set_sbr2_plugin_value("Audio", "CustomBgmFolder", str(dest))
+    set_sbr2_plugin_value("Audio", "CustomBgmShuffle", "true")
+    print(f"SBR2 custom BGM: {count} track(s) in {dest}")
+    return 0
+
+
 def _safe_track_name(stem):
     cleaned = "".join(
         c if c not in '/\\:*?"<>|' else "_" for c in stem).strip()
@@ -2044,6 +2108,16 @@ def apply_preset(name):
 def main():
     if "--check" in sys.argv:
         raise SystemExit(check())
+    if "--sbr2-bgm" in sys.argv:
+        src = None
+        for i, arg in enumerate(sys.argv):
+            if arg == "--sbr2-bgm" and i + 1 < len(sys.argv):
+                nxt = sys.argv[i + 1]
+                if not nxt.startswith("-"):
+                    src = nxt
+            elif arg.startswith("--sbr2-bgm="):
+                src = arg.split("=", 1)[1]
+        raise SystemExit(apply_sbr2_bgm(src))
     if "--high-end" in sys.argv or "--highend" in sys.argv:
         raise SystemExit(apply_preset("high-end"))
     if "--ultra-low" in sys.argv or "--ultralow" in sys.argv:

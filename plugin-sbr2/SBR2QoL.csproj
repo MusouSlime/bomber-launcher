@@ -7,7 +7,7 @@
     <RootNamespace>SBR2QoL</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <BepInExDir Condition="'$(BepInExDir)' == ''">$(HOME)/.local/share/Steam/steamapps/common/SUPER BOMBERMAN R2/BepInEx</BepInExDir>
   </PropertyGroup>
 
@@ -80,9 +80,16 @@
       <HintPath>$(BepInExDir)/interop/UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Unity.RenderPipelines.HighDefinition.Runtime">
+      <HintPath>$(BepInExDir)/interop/Unity.RenderPipelines.HighDefinition.Runtime.dll</HintPath>
+    </Reference>
     <Reference Include="Unity.RenderPipelines.Core.Runtime">
       <HintPath>$(BepInExDir)/interop/Unity.RenderPipelines.Core.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NVorbis" Version="0.10.5" />
   </ItemGroup>
 </Project>

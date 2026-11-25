@@ -2,22 +2,20 @@
 
 Initial SBR 2 plugin with:
 
-- **QoL:** skip logos, skip movies (key or auto), disable HDRP motion blur /
-  depth of field / bloom / vignette / film grain / chromatic aberration / lens
+- **QoL:** skip movies (key or auto), disable HDRP motion blur / depth of
+  field / bloom / vignette / film grain / chromatic aberration / lens
   distortion, FOV override.
-- **Custom BGM:** play `.ogg` / `.wav` / `.mp3` from a folder, matched by BGM
-  label, with playlist/shuffle fallback.
+- **Custom BGM:** play `.ogg` / `.wav` from a folder, matched by BGM label,
+  with playlist/shuffle fallback. Uses the launcher's `bgm_cache` directly;
+  no WAV conversion or injected MonoBehaviour is needed.
 - **Story character select:** choose the story player from the 38 SBR 2
   character keys instead of being locked to White.
 
 Character porting from SBR 1 is intentionally not in this first plugin.
 
-> This is a scaffold written against the SBR 2 class/method names from the
-> IL2CPP dump. The source has been type-checked against the Il2CppDumper dummy
-> assemblies + BepInEx 6 core, but the final DLL must be built after BepInEx
-> generates the real interop assemblies on the first game launch. If a method
-> name/overload differs, the patch is logged and skipped by `PatchAllSafe`;
-> check `BepInEx/LogOutput.log`.
+> Built against the real BepInEx 6 interop assemblies. Patch failures are
+> logged by `PatchAllSafe`; check `BepInEx/LogOutput.log` if a feature stops
+> working after a game update.
 
 ## Prerequisites
 
@@ -48,19 +46,25 @@ The config is written to `BepInEx/config/sbr2.qol.cfg`.
 
 - `SkipEnabled` — allow the skip key.
 - `SkipKey` — Unity `KeyCode`, default `Space`.
-- `SkipLogos` — currently disabled by default on SBR2; skipping `beginLogo` left the game on a black screen. Safe skip needs a different hook.
+- `SkipLogos` — disabled; the old `beginLogo` hook left the game on a black
+  screen. Skip needs a different entry-scene hook.
 - `AutoSkipMovies` — seconds after which any playing movie is skipped (0 = off).
 
 ### Graphics
 
 - `DisableMotionBlur`, `DisableDepthOfField`, `DisableBloom`,
   `DisableVignette`, `DisableFilmGrain`, `DisableChromaticAberration`,
-  `DisableLensDistortion` — toggle HDRP `Volume` components by type name.
+  `DisableLensDistortion` — toggle the active HDRP volume-stack components.
+  These are read through `VolumeManager.instance.stack`; the game is never
+  scanned with `Resources.FindObjectsOfTypeAll` (that froze SBR2 at the
+  caution screen).
 - `FieldOfView` — gameplay camera FOV; 0 leaves vanilla.
 
 ### Audio
 
-- `CustomBgmFolder` — folder containing tracks. Empty disables replacement.
+- `CustomBgmFolder` — folder containing `.ogg` / `.wav` tracks. Point this at
+  the launcher's `bgm_cache`; OGG is decoded with NVorbis and PCM WAV with the
+  built-in parser. Empty disables replacement.
 - `CustomBgmVolume` — 0.0–1.0.
 - `CustomBgmShuffle` — random track when a label has no exact file.
 - `CustomBgmPlaylist` — cycle tracks when a label has no exact file.
@@ -72,6 +76,11 @@ File matching:
 - otherwise, if shuffle/playlist is on, use a random/next track.
 
 SBR 2 BGM labels start with `BGM_` or `snd_bgm_`.
+
+### Debug
+
+- `SelfTest` — play one custom track shortly after startup and log
+  `playing=True/False`. Leave off for normal play.
 
 ### Story
 
@@ -98,8 +107,8 @@ base defence, last battle).
 - Custom BGM is played through an external `AudioSource`; `SoundManager`’s BGM
   stack/spectrum APIs may not reflect it. `popBGM` stops the custom track and
   lets the original stack restore.
-- Logo skip patches a private nested `EntryScene.LogoManage`; if a patch is not
-  found it logs a warning and the rest of the plugin still loads.
-- HDRP toggles find `Volume` components at runtime by type name, so they survive
-  scene/profile reloads but are not tied to a specific quality preset.
+- Logo skip is disabled; patching `EntryScene.LogoManage.beginLogo` left the
+  game on a black screen.
+- HDRP toggles disable the active volume-stack components, so they apply to the
+  current quality preset without touching saved profiles.
 - Do not use gameplay/story mods in online crossplay or ranked.

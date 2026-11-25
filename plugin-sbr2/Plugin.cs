@@ -37,6 +37,7 @@ namespace SBR2QoL
         internal static ConfigEntry<float> CustomBgmVolume;
         internal static ConfigEntry<bool> CustomBgmShuffle;
         internal static ConfigEntry<bool> CustomBgmPlaylist;
+        internal static ConfigEntry<bool> SelfTest;
 
         // Story
         internal static ConfigEntry<string> StoryCharacterKey;
@@ -99,10 +100,12 @@ namespace SBR2QoL
             CustomBgmVolume = Config.Bind("Audio", "CustomBgmVolume", 0.8f,
                 new ConfigDescription("Custom BGM volume.",
                     new AcceptableValueRange<float>(0f, 1f)));
-            CustomBgmShuffle = Config.Bind("Audio", "CustomBgmShuffle", false,
+            CustomBgmShuffle = Config.Bind("Audio", "CustomBgmShuffle", true,
                 "When a BGM label has no matching file, play a random track.");
             CustomBgmPlaylist = Config.Bind("Audio", "CustomBgmPlaylist", false,
                 "When a BGM label has no matching file, cycle through the folder.");
+            SelfTest = Config.Bind("Debug", "SelfTest", false,
+                "Play the first custom BGM track once at startup to verify the audio path.");
 
             StoryCharacterKey = Config.Bind("Story", "StoryCharacter", "",
                 "Story-mode player character key: white, black, pink, blue, red, " +
