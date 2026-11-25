@@ -504,12 +504,29 @@ namespace SBR2QoL
     // The game's "basic options" entry opens the QoL overlay instead. The
     // original panel never opens, so this is a replacement rather than an
     // extra layer on top of it.
+    [HarmonyPatch(typeof(MainMenuUI), "onSubmitOther")]
+    internal static class ReplaceOptionsGearPatch
+    {
+        private static bool Prefix()
+        {
+            if (!Plugin.ReplaceOptionsMenu.Value) return true;
+            if (Input.GetKey(KeyCode.LeftShift) ||
+                Input.GetKey(KeyCode.RightShift))
+                return true;
+            SettingsOverlay.Toggle();
+            return false;
+        }
+    }
+
     [HarmonyPatch(typeof(OtherUI), "onSubmitBasicOptionPanelButton")]
     internal static class ReplaceOtherBasicOptionPatch
     {
         private static bool Prefix()
         {
             if (!Plugin.ReplaceOptionsMenu.Value) return true;
+            if (Input.GetKey(KeyCode.LeftShift) ||
+                Input.GetKey(KeyCode.RightShift))
+                return true;
             SettingsOverlay.Toggle();
             return false;
         }
@@ -521,6 +538,9 @@ namespace SBR2QoL
         private static bool Prefix()
         {
             if (!Plugin.ReplaceOptionsMenu.Value) return true;
+            if (Input.GetKey(KeyCode.LeftShift) ||
+                Input.GetKey(KeyCode.RightShift))
+                return true;
             SettingsOverlay.Toggle();
             return false;
         }

@@ -344,12 +344,14 @@ The overlay is now controller-navigable:
 - B (`JoystickButton1`), Start (7), Back (6), and the `Cancel` button close it.
 - `Submit` is an alias for A when the Input Manager defines it.
 
-The game's **Basic Settings** entry now opens the overlay instead of the
-vanilla panel:
+The main-menu **gear** and the **Basic Settings** entries now open the
+overlay instead of the vanilla panels:
 
-- `OtherUI.onSubmitBasicOptionPanelButton` prefix (the Other/gear menu entry).
-- `MainMenuUI.onSubmitBasicOption` prefix (other Basic Option paths).
+- `MainMenuUI.onSubmitOther` prefix — the gear.
+- `OtherUI.onSubmitBasicOptionPanelButton` prefix — Basic Settings.
+- `MainMenuUI.onSubmitBasicOption` prefix — other Basic Option paths.
 - Controlled by `[Interface] ReplaceOptionsMenu` (default true).
+- Hold **Shift** while selecting them to reach the vanilla menu.
 
 Config additions:
 

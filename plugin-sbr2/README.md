@@ -48,8 +48,9 @@ built-in uGUI components, so no managed `MonoBehaviour` is injected.
 - Up/Down selects a row; Left/Right changes it; Enter also advances.
 - Controller: left stick or D-pad moves, A changes, B / Start / Back closes.
 - F9 closes and saves to `BepInEx/config/sbr2.qol.cfg`.
-- With `ReplaceOptionsMenu = true`, the game's **Basic Settings** entry opens
-  this overlay instead of the vanilla panel.
+- With `ReplaceOptionsMenu = true`, the main-menu **gear** and the
+  **Basic Settings** entry open this overlay instead of the vanilla panels.
+  Hold **Shift** while selecting them to reach the vanilla menu.
 - The game also sees the same keys, so the menu behind can move while the
   overlay is open. Use it in a menu rather than mid-battle.
 

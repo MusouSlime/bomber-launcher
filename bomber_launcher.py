@@ -2375,8 +2375,8 @@ class BomberWindow(Adw.ApplicationWindow):
                               "Show the in-game settings overlay",
                               "Interface", "OverlayEnabled", True)
         self._sbr2_switch_row(
-            interface, "Replace Basic Settings",
-            "The game's Basic Settings entry opens the overlay instead",
+            interface, "Replace Settings Gear",
+            "Gear / Basic Settings open the overlay; hold Shift for vanilla",
             "Interface", "ReplaceOptionsMenu", True)
         self._sbr2_dropdown_row(
             interface, "Overlay Key", "Keyboard toggle",
