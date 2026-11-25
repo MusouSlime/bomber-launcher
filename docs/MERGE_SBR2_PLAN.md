@@ -232,3 +232,30 @@ Confirmed working:
 - no class injection is used
 
 Logo skip remains unimplemented for SBR2 until a safe entry-scene hook is found.
+
+### Custom BGM attempt — 2026-11-25
+
+The existing SBR2 BGM patches target `SoundManager.playAsBGM`,
+`changeBGM`, etc., but the old `CustomBgmPlayer` relied on an injected
+MonoBehaviour and cannot be used.
+
+Attempts:
+
+1. `UnityWebRequestMultimedia.GetAudioClip` — runtime fails because the
+   interop `DownloadHandlerAudioClip` constructor is missing.
+2. `WWW` / `LoadFromCacheOrDownload` — interop constructors
+   (`WWW`, `Hash128(uint,uint,uint,uint)`) are missing.
+3. Allocating `DownloadHandlerAudioClip` through `il2cpp_object_new` — access
+   violation.
+4. NVorbis OGG decode into `AudioClip.Create` — compiled, but the boot test was
+   inconclusive and was reverted to the stable Harmony-only build.
+
+Decision: do **not** use the interop audio download handlers. The next safe
+route is:
+
+- launcher-side conversion of the selected music folder/cache to PCM WAV
+- plugin-side WAV parser + `AudioClip.Create` / `SetData`
+- no `UnityWebRequest`, `WWW`, `DownloadHandlerAudioClip`, or managed host
+
+This keeps the Harmony-only loader stable and supports the existing music
+folder after conversion.
