@@ -1394,6 +1394,7 @@ class BomberWindow(Adw.ApplicationWindow):
             "sbr2_graphics": "SBR2 GRAPHICS",
             "sbr2_audio": "SBR2 AUDIO",
             "sbr2_story": "SBR2 STORY",
+            "sbr2_interface": "SBR2 INTERFACE",
             "sbr2_debug": "SBR2 DEBUG",
         }
         path = ART / f"section_{name}.png"
@@ -2366,6 +2367,33 @@ class BomberWindow(Adw.ApplicationWindow):
             ["Default (White)"] + [k.capitalize() for k in story_keys],
             [""] + story_keys)
         page.append(story)
+        page.append(Gtk.Separator())
+
+        page.append(self._section("sbr2_interface"))
+        interface = self._card()
+        self._sbr2_switch_row(interface, "F9 Overlay",
+                              "Show the in-game settings overlay",
+                              "Interface", "OverlayEnabled", True)
+        self._sbr2_switch_row(
+            interface, "Replace Basic Settings",
+            "The game's Basic Settings entry opens the overlay instead",
+            "Interface", "ReplaceOptionsMenu", True)
+        self._sbr2_dropdown_row(
+            interface, "Overlay Key", "Keyboard toggle",
+            "Interface", "OverlayKey",
+            ["F9", "F8", "F10", "F11", "Insert"],
+            ["F9", "F8", "F10", "F11", "Insert"])
+        pad_note = Gtk.Label(
+            label=("Controller: left stick / D-pad moves, A changes, "
+                   "B or Start closes."))
+        pad_note.set_xalign(0)
+        pad_note.set_wrap(True)
+        pad_note.add_css_class("row-sub")
+        pad_note.set_margin_start(12)
+        pad_note.set_margin_end(12)
+        pad_note.set_margin_bottom(8)
+        interface.append(pad_note)
+        page.append(interface)
         page.append(Gtk.Separator())
 
         page.append(self._section("sbr2_debug"))

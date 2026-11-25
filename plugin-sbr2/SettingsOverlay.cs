@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -32,6 +33,11 @@ namespace SBR2QoL
         private static bool _built;
         private static bool _visible;
         private static int _selected;
+        private static bool _axesChecked;
+        private static bool _axesOk;
+        private static bool _dpadOk;
+        private static float _nextVertical;
+        private static float _nextHorizontal;
         private static readonly List<Image> Highlights = new List<Image>();
 
         internal static bool Visible
@@ -73,6 +79,118 @@ namespace SBR2QoL
                 Input.GetKeyDown(KeyCode.A)) Adjust(-1);
             else if (Input.GetKeyDown(KeyCode.Return) ||
                 Input.GetKeyDown(KeyCode.KeypadEnter)) Adjust(1);
+
+            PollController();
+        }
+
+        private static bool _submitChecked;
+        private static bool _submitOk;
+        private static bool _cancelChecked;
+        private static bool _cancelOk;
+
+        private static bool ButtonDown(string name)
+        {
+            if (name == "Submit")
+            {
+                if (!_submitChecked)
+                {
+                    _submitChecked = true;
+                    try { Input.GetButtonDown(name); _submitOk = true; }
+                    catch { _submitOk = false; }
+                }
+                return _submitOk && Input.GetButtonDown(name);
+            }
+            if (name == "Cancel")
+            {
+                if (!_cancelChecked)
+                {
+                    _cancelChecked = true;
+                    try { Input.GetButtonDown(name); _cancelOk = true; }
+                    catch { _cancelOk = false; }
+                }
+                return _cancelOk && Input.GetButtonDown(name);
+            }
+            return false;
+        }
+
+        private static void PollController()
+        {
+            if (!_axesChecked)
+            {
+                _axesChecked = true;
+                try
+                {
+                    Input.GetAxisRaw("Vertical");
+                    Input.GetAxisRaw("Horizontal");
+                    _axesOk = true;
+                    try
+                    {
+                        Input.GetAxisRaw("JoyAxis7");
+                        Input.GetAxisRaw("JoyAxis6");
+                        _dpadOk = true;
+                    }
+                    catch
+                    {
+                        _dpadOk = false;
+                    }
+                }
+                catch
+                {
+                    _axesOk = false;
+                }
+            }
+
+            float now = Time.unscaledTime;
+            float vertical = 0f;
+            float horizontal = 0f;
+            if (_axesOk)
+            {
+                vertical = Input.GetAxisRaw("Vertical");
+                horizontal = Input.GetAxisRaw("Horizontal");
+            }
+            if (_dpadOk)
+            {
+                float dpad = Input.GetAxisRaw("JoyAxis7");
+                if (Mathf.Abs(dpad) > 0.55f) vertical = -dpad;
+                dpad = Input.GetAxisRaw("JoyAxis6");
+                if (Mathf.Abs(dpad) > 0.55f) horizontal = dpad;
+            }
+            if (_axesOk && now >= _nextVertical)
+            {
+                float v = vertical;
+                if (v > 0.55f)
+                {
+                    _nextVertical = now + 0.22f;
+                    Move(-1);
+                }
+                else if (v < -0.55f)
+                {
+                    _nextVertical = now + 0.22f;
+                    Move(1);
+                }
+            }
+            if (_axesOk && now >= _nextHorizontal)
+            {
+                float h = horizontal;
+                if (h > 0.55f)
+                {
+                    _nextHorizontal = now + 0.22f;
+                    Adjust(1);
+                }
+                else if (h < -0.55f)
+                {
+                    _nextHorizontal = now + 0.22f;
+                    Adjust(-1);
+                }
+            }
+
+            if (Input.GetKeyDown(KeyCode.JoystickButton0)) Adjust(1); // A
+            if (Input.GetKeyDown(KeyCode.JoystickButton1)) Toggle();  // B
+            if (Input.GetKeyDown(KeyCode.JoystickButton6)) Toggle();  // Back
+            if (Input.GetKeyDown(KeyCode.JoystickButton7)) Toggle();  // Start
+
+            if (ButtonDown("Submit")) Adjust(1);
+            if (ButtonDown("Cancel")) Toggle();
         }
 
         private static void Move(int dir)
@@ -382,4 +500,30 @@ namespace SBR2QoL
                 _title.text = "SBR2 QoL Settings";
         }
     }
+
+    // The game's "basic options" entry opens the QoL overlay instead. The
+    // original panel never opens, so this is a replacement rather than an
+    // extra layer on top of it.
+    [HarmonyPatch(typeof(OtherUI), "onSubmitBasicOptionPanelButton")]
+    internal static class ReplaceOtherBasicOptionPatch
+    {
+        private static bool Prefix()
+        {
+            if (!Plugin.ReplaceOptionsMenu.Value) return true;
+            SettingsOverlay.Toggle();
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(MainMenuUI), "onSubmitBasicOption")]
+    internal static class ReplaceBasicOptionPatch
+    {
+        private static bool Prefix()
+        {
+            if (!Plugin.ReplaceOptionsMenu.Value) return true;
+            SettingsOverlay.Toggle();
+            return false;
+        }
+    }
 }
+

@@ -45,6 +45,7 @@ namespace SBR2QoL
         // Interface
         internal static ConfigEntry<bool> OverlayEnabled;
         internal static ConfigEntry<string> OverlayKeyName;
+        internal static ConfigEntry<bool> ReplaceOptionsMenu;
 
         internal static KeyCode SkipKey = KeyCode.Space;
         internal static KeyCode OverlayKey = KeyCode.F9;
@@ -128,6 +129,8 @@ namespace SBR2QoL
                 "Show the F9 settings overlay.");
             OverlayKeyName = Config.Bind("Interface", "OverlayKey", "F9",
                 "Unity KeyCode that toggles the settings overlay.");
+            ReplaceOptionsMenu = Config.Bind("Interface", "ReplaceOptionsMenu",
+                true, "Open the QoL overlay instead of the game's basic options menu.");
 
             StoryCharacterKey = Config.Bind("Story", "StoryCharacter", "",
                 "Story-mode player character key: white, black, pink, blue, red, " +

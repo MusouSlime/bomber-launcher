@@ -333,3 +333,34 @@ written to `sbr2.qol.cfg`, and game input is blocked while the overlay is open.
 Note: the launcher volume slider used `Gtk.Range::change-value` so programmatic
 value setup does not overwrite the config. The first version used
 `value-changed` and reset `CustomBgmVolume` to 1.0 on realize.
+
+### Controller navigation + Basic Settings replacement — 2026-11-25
+
+The overlay is now controller-navigable:
+
+- Left stick / D-pad axes (`Horizontal` / `Vertical`, plus `JoyAxis6/7` when
+  the Input Manager defines them) move the selection with a 0.22 s repeat.
+- A (`JoystickButton0`) changes the selected value.
+- B (`JoystickButton1`), Start (7), Back (6), and the `Cancel` button close it.
+- `Submit` is an alias for A when the Input Manager defines it.
+
+The game's **Basic Settings** entry now opens the overlay instead of the
+vanilla panel:
+
+- `OtherUI.onSubmitBasicOptionPanelButton` prefix (the Other/gear menu entry).
+- `MainMenuUI.onSubmitBasicOption` prefix (other Basic Option paths).
+- Controlled by `[Interface] ReplaceOptionsMenu` (default true).
+
+Config additions:
+
+```
+[Interface]
+OverlayEnabled = true
+OverlayKey = F9
+ReplaceOptionsMenu = true
+```
+
+Testing caveat: a virtual uinput pad created at runtime was not exposed to
+Proton (no udev `ID_INPUT_JOYSTICK`), so controller input could not be
+exercised end-to-end here. The code uses Unity's legacy controller axes and
+joystick button keycodes, which SBR2 already uses for its own controller UI.
