@@ -68,8 +68,8 @@ namespace SBR2QoL
                 "Allow skipping cutscenes with the skip key.");
             SkipKeyName = Config.Bind("Movies", "SkipKey", "Space",
                 "Unity KeyCode used to skip a playing movie (Space, Escape, ...).");
-            SkipLogos = Config.Bind("Movies", "SkipLogos", true,
-                "Skip the publisher/logo splash at boot.");
+            SkipLogos = Config.Bind("Movies", "SkipLogos", false,
+                "Skip the publisher/logo splash at boot. Disabled for SBR2 until a safe skip path is implemented.");
             AutoSkipMovies = Config.Bind("Movies", "AutoSkipMovies", 0f,
                 new ConfigDescription(
                     "Automatically skip every movie after this many seconds (0 = off).",

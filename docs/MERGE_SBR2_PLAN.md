@@ -217,3 +217,18 @@ injection:
 - No `ClassInjector`, no sceneLoaded delegate conversion, no injected host.
 - `QoLHost`/`CustomBgmPlayer` remain disabled; custom BGM still needs a
   static AudioSource implementation.
+
+### Black-screen fix
+
+The first SBR2 boot test with the plugin went to a black screen. Isolation
+showed the cause was the guessed logo-skip hook: skipping
+`EntryScene.LogoManage.beginLogo` prevents the entry scene from advancing.
+Removing that hook and defaulting `SkipLogos` to `false` restored boot.
+
+Confirmed working:
+
+- game reaches the auto-save/caution screen
+- `SBR2 QoL tick active (SoundManager.Update)` appears
+- no class injection is used
+
+Logo skip remains unimplemented for SBR2 until a safe entry-scene hook is found.

@@ -48,7 +48,7 @@ The config is written to `BepInEx/config/sbr2.qol.cfg`.
 
 - `SkipEnabled` — allow the skip key.
 - `SkipKey` — Unity `KeyCode`, default `Space`.
-- `SkipLogos` — skip the publisher/logo splash.
+- `SkipLogos` — currently disabled by default on SBR2; skipping `beginLogo` left the game on a black screen. Safe skip needs a different hook.
 - `AutoSkipMovies` — seconds after which any playing movie is skipped (0 = off).
 
 ### Graphics

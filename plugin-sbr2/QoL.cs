@@ -279,34 +279,5 @@ namespace SBR2QoL
 
     // Skip the entry/publisher logo sequence. EntryScene.LogoManage is a private
     // nested type, so the target is resolved through AccessTools.
-    [HarmonyPatch]
-    internal static class LogoSkipBeginPatch
-    {
-        private static MethodBase TargetMethod()
-        {
-            var type = AccessTools.Inner(typeof(EntryScene), "LogoManage");
-            return type == null ? null : AccessTools.Method(type, "beginLogo");
-        }
-
-        private static bool Prefix()
-        {
-            return !Plugin.SkipLogos.Value;
-        }
-    }
-
-    [HarmonyPatch]
-    internal static class LogoSkipFinishPatch
-    {
-        private static MethodBase TargetMethod()
-        {
-            var type = AccessTools.Inner(typeof(EntryScene), "LogoManage");
-            return type == null ? null : AccessTools.Method(type, "get_isFinishLogo");
-        }
-
-        private static void Postfix(ref bool __result)
-        {
-            if (Plugin.SkipLogos.Value) __result = true;
-        }
-    }
 
 }
