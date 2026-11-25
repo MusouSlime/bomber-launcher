@@ -42,7 +42,24 @@ namespace SBR2QoL
         // Story
         internal static ConfigEntry<string> StoryCharacterKey;
 
+        // Interface
+        internal static ConfigEntry<bool> OverlayEnabled;
+        internal static ConfigEntry<string> OverlayKeyName;
+
         internal static KeyCode SkipKey = KeyCode.Space;
+        internal static KeyCode OverlayKey = KeyCode.F9;
+
+        internal static void SaveConfig()
+        {
+            try
+            {
+                if (Instance != null) Instance.Config.Save();
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning("Config save failed: " + e.Message);
+            }
+        }
 
         public override void Load()
         {
@@ -107,6 +124,11 @@ namespace SBR2QoL
             SelfTest = Config.Bind("Debug", "SelfTest", false,
                 "Play the first custom BGM track once at startup to verify the audio path.");
 
+            OverlayEnabled = Config.Bind("Interface", "OverlayEnabled", true,
+                "Show the F9 settings overlay.");
+            OverlayKeyName = Config.Bind("Interface", "OverlayKey", "F9",
+                "Unity KeyCode that toggles the settings overlay.");
+
             StoryCharacterKey = Config.Bind("Story", "StoryCharacter", "",
                 "Story-mode player character key: white, black, pink, blue, red, " +
                 "yellow, green, aqua, simon, pyramid, richter, lance, bill, mimi, " +
@@ -115,6 +137,12 @@ namespace SBR2QoL
                 "goemon, magnet, tinyGolem, phantom, sexy, plasma, fiter, " +
                 "Massive, wing, bean, lucaBlight. Empty = vanilla White.");
 
+            if (!Enum.TryParse<KeyCode>(OverlayKeyName.Value, true,
+                out OverlayKey))
+            {
+                OverlayKey = KeyCode.F9;
+                Logger.LogWarning("Invalid OverlayKey; using F9.");
+            }
             if (!Enum.TryParse<KeyCode>(SkipKeyName.Value, true, out SkipKey))
             {
                 SkipKey = KeyCode.Space;

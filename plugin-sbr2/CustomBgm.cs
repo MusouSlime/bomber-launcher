@@ -410,6 +410,12 @@ namespace SBR2QoL
 
         internal static void Tick()
         {
+            if (_source != null && _source.clip != null)
+            {
+                float volume = Mathf.Clamp01(Plugin.CustomBgmVolume.Value);
+                if (Mathf.Abs(_source.volume - volume) > 0.001f)
+                    _source.volume = volume;
+            }
             if (_selfTestAt > 0f && Time.realtimeSinceStartup >= _selfTestAt)
             {
                 _selfTestAt = 0f;

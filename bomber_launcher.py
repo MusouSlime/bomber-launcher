@@ -22,12 +22,16 @@ from pathlib import Path
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 APP_ID = "io.github.bomberlauncher.BomberLauncher"
 APP_NAME = "Bomber Launcher"
 STEAM_APPID = "702700"
 GAME_DIR_NAME = "Super Bomberman R"
+SBR2_APPID = "1913740"
+SBR2_DIR_NAME = "SUPER BOMBERMAN R2"
+SBR2_CFG_REL = Path("BepInEx/config/sbr2.qol.cfg")
+SBR2_PLUGIN_REL = Path("BepInEx/plugins/SBR2QoL.dll")
 
 HOME = Path.home()
 
@@ -136,6 +140,57 @@ def set_sbr2_plugin_value(section, key, value):
     return path
 
 
+def get_sbr2_plugin_value(section, key, default=None):
+    game = find_sbr2_dir()
+    if not game:
+        return default
+    path = game / SBR2_CFG_REL
+    if not path.exists():
+        return default
+    current = None
+    try:
+        for line in path.read_text(errors="replace").splitlines():
+            s = line.strip()
+            if s.startswith("[") and s.endswith("]"):
+                current = s[1:-1].strip()
+            elif current == section and "=" in s and not s.startswith("#"):
+                k, v = s.split("=", 1)
+                if k.strip() == key:
+                    return v.strip()
+    except Exception:
+        pass
+    return default
+
+
+def sbr2_interop_ready():
+    game = find_sbr2_dir()
+    return bool(game and (game / "BepInEx/interop/GameAssembly.dll").exists())
+
+
+def sbr2_plugin_installed():
+    game = find_sbr2_dir()
+    return bool(game and (game / SBR2_PLUGIN_REL).exists())
+
+
+def install_sbr2_plugin():
+    game = find_sbr2_dir()
+    if not game:
+        raise RuntimeError("SBR2 game folder not found")
+    if not (game / "BepInEx/core").is_dir():
+        raise RuntimeError("Install BepInEx 6 IL2CPP x64 into SBR2 first")
+    src = Path(__file__).resolve().parent / "plugin-sbr2" / "bin"
+    dll = src / "SBR2QoL.dll"
+    if not dll.exists():
+        raise RuntimeError("Build plugin-sbr2 first (plugin-sbr2/build.sh)")
+    dest = game / "BepInEx/plugins"
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(dll, dest / dll.name)
+    nvorbis = src / "NVorbis.dll"
+    if nvorbis.exists():
+        shutil.copy2(nvorbis, dest / nvorbis.name)
+    return dest
+
+
 def apply_sbr2_bgm(source=None):
     """Point SBR2 at the launcher's OGG music cache."""
     game = find_sbr2_dir()
@@ -148,11 +203,9 @@ def apply_sbr2_bgm(source=None):
             print("music folder not found:", source)
             return 1
         print("converting", source, "to OGG for SBR2...")
-        dest, done, errors = convert_bgm_folder(source)
-        for err in errors[:10]:
-            print("skip:", err)
-        if len(errors) > 10:
-            print("... and", len(errors) - 10, "more errors")
+        dest, done, skipped = convert_bgm_folder(source)
+        if skipped:
+            print(f"skipped {skipped} track(s)")
     else:
         dest = _bgm_cache_dir()
     dest = Path(dest)
@@ -408,6 +461,15 @@ def find_game_dir():
 def game_running():
     try:
         r = subprocess.run(["pgrep", "-f", "SuperBombermanR.exe"],
+                           capture_output=True, timeout=3)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def sbr2_running():
+    try:
+        r = subprocess.run(["pgrep", "-f", "SuperBombermanR2.exe"],
                            capture_output=True, timeout=3)
         return r.returncode == 0
     except Exception:
@@ -785,22 +847,33 @@ class BomberWindow(Adw.ApplicationWindow):
         root.add_css_class("root")
         self.toasts.set_child(root)
 
+        self.view_stack = Adw.ViewStack()
+        self.view_switcher = Adw.ViewSwitcherTitle()
+        self.view_switcher.set_stack(self.view_stack)
+        self.view_switcher.set_title(APP_NAME)
+
         header = Adw.HeaderBar()
-        title = Gtk.Label(label=APP_NAME)
-        title.add_css_class("header-title")
-        header.set_title_widget(title)
+        header.set_title_widget(self.view_switcher)
         root.append(header)
 
         scroller = Gtk.ScrolledWindow(vexpand=True)
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_child(self.view_stack)
+        self.scroller = scroller
         root.append(scroller)
+
+        switcher_bar = Adw.ViewSwitcherBar()
+        switcher_bar.set_stack(self.view_stack)
+        self.view_switcher.bind_property(
+            "title-visible", switcher_bar, "reveal",
+            GObject.BindingFlags.SYNC_CREATE)
+        root.append(switcher_bar)
 
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         page.set_margin_top(12)
         page.set_margin_bottom(14)
         page.set_margin_start(18)
         page.set_margin_end(18)
-        scroller.set_child(page)
 
         page.append(self._build_hero())
 
@@ -1162,8 +1235,24 @@ class BomberWindow(Adw.ApplicationWindow):
             strip.set_margin_top(4)
             page.append(strip)
 
+        self.view_stack.add_titled_with_icon(
+            page, "sbr1", "SBR1", "applications-games-symbolic")
+        self.view_stack.add_titled_with_icon(
+            self._build_sbr2_page(), "sbr2", "SBR2 QoL",
+            "applications-games-symbolic")
+        self.view_stack.set_visible_child_name(
+            "sbr2" if "--sbr2" in sys.argv else "sbr1")
+
         self.refresh()
         GLib.timeout_add_seconds(3, self._poll)
+
+        fraction = os.environ.get("BOMBER_SCROLL")
+        if fraction:
+            try:
+                GLib.timeout_add(500, self._scroll_fraction,
+                                 float(fraction))
+            except Exception:
+                pass
 
     # -- game folder ------------------------------------------------------
     def _configured_game(self):
@@ -1300,6 +1389,12 @@ class BomberWindow(Adw.ApplicationWindow):
             "basic": "BASIC SETTINGS",
             "environment": "ENVIRONMENT",
             "other": "OTHER",
+            "sbr2_status": "SBR2 STATUS",
+            "sbr2_movies": "SBR2 MOVIES",
+            "sbr2_graphics": "SBR2 GRAPHICS",
+            "sbr2_audio": "SBR2 AUDIO",
+            "sbr2_story": "SBR2 STORY",
+            "sbr2_debug": "SBR2 DEBUG",
         }
         path = ART / f"section_{name}.png"
         if not path.exists():
@@ -1392,6 +1487,8 @@ class BomberWindow(Adw.ApplicationWindow):
         return True
 
     def refresh(self):
+        if hasattr(self, "sbr2_status"):
+            self.refresh_sbr2()
         self._loading = True
         running = game_running()
         if not self.mods:
@@ -2035,6 +2132,394 @@ class BomberWindow(Adw.ApplicationWindow):
         except Exception as e:
             self.toast(str(e))
         self.refresh()
+
+
+
+    def _scroll_fraction(self, fraction):
+        adjustment = self.scroller.get_vadjustment()
+        adjustment.set_value(
+            adjustment.get_upper() * max(0.0, min(1.0, fraction)))
+        return False
+
+    # -- SBR2 tab ---------------------------------------------------------
+    def _sbr2_bool(self, section, key, default=False):
+        value = get_sbr2_plugin_value(
+            section, key, "true" if default else "false")
+        return str(value).strip().lower() in ("true", "1", "yes", "on")
+
+    def _sbr2_write(self, section, key, value, toast=True):
+        if self._sbr2_loading:
+            return
+        try:
+            set_sbr2_plugin_value(section, key, value)
+            if toast:
+                self.toast("SBR2 setting saved — restart the game")
+        except Exception as e:
+            self.toast(str(e))
+
+    def on_sbr2_switch(self, row, _pspec, section, key):
+        self._sbr2_write(section, key,
+                         "true" if row.get_active() else "false")
+
+    def on_sbr2_dropdown(self, row, _pspec, section, key, values):
+        idx = row.get_selected()
+        if 0 <= idx < len(values):
+            self._sbr2_write(section, key, values[idx])
+
+    def on_sbr2_volume_change(self, _scale, _scroll, value):
+        if self._sbr2_loading:
+            return False
+        self._sbr2_write("Audio", "CustomBgmVolume",
+                         f"{value / 100.0:.2f}", toast=False)
+        return False
+
+    def _sbr2_switch_row(self, card, title, subtitle, section, key,
+                         default=False):
+        sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        sw.set_active(self._sbr2_bool(section, key, default))
+        sw.connect("notify::active", self.on_sbr2_switch, section, key)
+        card.append(self._row("avatar_blue.png", title, subtitle, sw))
+        card.append(self._separator())
+        self._sbr2_widgets.append(sw)
+        return sw
+
+    def _sbr2_dropdown_row(self, card, title, subtitle, section, key,
+                           display, values, avatar="avatar_yellow.png"):
+        dd = Gtk.DropDown.new_from_strings(display)
+        dd.set_valign(Gtk.Align.CENTER)
+        current = str(get_sbr2_plugin_value(section, key, "")).strip().lower()
+        index = 0
+        for i, value in enumerate(values):
+            if str(value).strip().lower() == current:
+                index = i
+                break
+        dd.set_selected(index)
+        dd.connect("notify::selected", self.on_sbr2_dropdown,
+                   section, key, values)
+        card.append(self._row(avatar, title, subtitle, dd))
+        card.append(self._separator())
+        self._sbr2_widgets.append(dd)
+        return dd
+
+    def _build_sbr2_page(self):
+        self._sbr2_loading = True
+        self._sbr2_converting = False
+        self._sbr2_chooser = None
+        self._sbr2_widgets = []
+
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        page.set_margin_top(12)
+        page.set_margin_bottom(14)
+        page.set_margin_start(18)
+        page.set_margin_end(18)
+
+        banner = Gtk.Label(label="SUPER BOMBERMAN R 2 — QoL")
+        banner.add_css_class("section-fallback")
+        banner.set_xalign(0)
+        page.append(banner)
+
+        page.append(self._section("sbr2_status"))
+        status = self._card()
+        status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.sbr2_status = Gtk.Label(label="")
+        self.sbr2_status.set_xalign(0)
+        self.sbr2_status.set_wrap(True)
+        self.sbr2_status.add_css_class("row-sub")
+        open_btn = Gtk.Button(label="Open Folder")
+        open_btn.add_css_class("flat")
+        open_btn.set_halign(Gtk.Align.START)
+        open_btn.connect("clicked", self.on_sbr2_open_folder)
+        status_box.append(self.sbr2_status)
+        status_box.append(open_btn)
+        status.append(self._row(
+            "avatar_blue.png", "Game Folder",
+            "Steam install with BepInEx 6 IL2CPP x64", status_box))
+        status.append(self._separator())
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        install = Gtk.Button(label="Install / Update")
+        install.connect("clicked", self.on_sbr2_install)
+        launch = Gtk.Button(label="Launch SBR2")
+        launch.add_css_class("suggested-action")
+        launch.connect("clicked", self.on_sbr2_launch)
+        actions.append(install)
+        actions.append(launch)
+        status.append(self._row(
+            "avatar_yellow.png", "Plugin & Game",
+            "Copy the built plugin, then launch through Steam", actions))
+        page.append(status)
+        page.append(Gtk.Separator())
+
+        page.append(self._section("sbr2_movies"))
+        movies = self._card()
+        self._sbr2_switch_row(movies, "Skip Movies",
+                              "Press the skip key during any movie",
+                              "Movies", "SkipEnabled", True)
+        self._sbr2_dropdown_row(
+            movies, "Skip Key", "Key used to skip a movie",
+            "Movies", "SkipKey",
+            ["Space", "Escape", "Return", "F8"],
+            ["Space", "Escape", "Return", "F8"])
+        self._sbr2_dropdown_row(
+            movies, "Auto-skip Movies", "Seconds before a movie is skipped",
+            "Movies", "AutoSkipMovies",
+            ["Off", "3 s", "5 s", "10 s", "15 s", "30 s"],
+            ["0", "3", "5", "10", "15", "30"])
+        note = Gtk.Label(
+            label=("Logo skip stays off: the old hook left SBR2 on a "
+                   "black screen."))
+        note.set_xalign(0)
+        note.set_wrap(True)
+        note.add_css_class("row-sub")
+        note.set_margin_start(12)
+        note.set_margin_end(12)
+        note.set_margin_bottom(8)
+        movies.append(note)
+        page.append(movies)
+        page.append(Gtk.Separator())
+
+        page.append(self._section("sbr2_graphics"))
+        gfx = self._card()
+        self._sbr2_switch_row(gfx, "Disable Motion Blur",
+                              "HDRP volume stack", "Graphics",
+                              "DisableMotionBlur", True)
+        self._sbr2_switch_row(gfx, "Disable Depth of Field",
+                              "HDRP volume stack", "Graphics",
+                              "DisableDepthOfField", True)
+        self._sbr2_switch_row(gfx, "Disable Bloom", "HDRP volume stack",
+                              "Graphics", "DisableBloom", False)
+        self._sbr2_switch_row(gfx, "Disable Vignette", "HDRP volume stack",
+                              "Graphics", "DisableVignette", False)
+        self._sbr2_switch_row(gfx, "Disable Film Grain",
+                              "HDRP volume stack", "Graphics",
+                              "DisableFilmGrain", False)
+        self._sbr2_switch_row(gfx, "Disable Chromatic Aberration",
+                              "HDRP volume stack", "Graphics",
+                              "DisableChromaticAberration", False)
+        self._sbr2_switch_row(gfx, "Disable Lens Distortion",
+                              "HDRP volume stack", "Graphics",
+                              "DisableLensDistortion", False)
+        self._sbr2_dropdown_row(
+            gfx, "Field of View", "Gameplay camera override",
+            "Graphics", "FieldOfView",
+            ["Vanilla", "60", "70", "75", "80", "85", "90", "100", "110"],
+            ["0", "60", "70", "75", "80", "85", "90", "100", "110"])
+        page.append(gfx)
+        page.append(Gtk.Separator())
+
+        page.append(self._section("sbr2_audio"))
+        audio = self._card()
+        self.sbr2_bgm_btn = Gtk.Button(label="Choose…")
+        self.sbr2_bgm_btn.set_valign(Gtk.Align.CENTER)
+        self.sbr2_bgm_btn.connect("clicked", self.on_sbr2_bgm_folder)
+        self.sbr2_bgm_clear = Gtk.Button(label="Clear")
+        self.sbr2_bgm_clear.add_css_class("flat")
+        self.sbr2_bgm_clear.set_valign(Gtk.Align.CENTER)
+        self.sbr2_bgm_clear.connect("clicked", self.on_sbr2_bgm_clear)
+        bgm_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        bgm_box.append(self.sbr2_bgm_btn)
+        bgm_box.append(self.sbr2_bgm_clear)
+        audio.append(self._row(
+            "avatar_white.png", "Custom BGM Folder",
+            "Music folder converted to the shared OGG cache", bgm_box))
+        audio.append(self._separator())
+
+        volume = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, 0, 100, 5)
+        volume.set_size_request(170, -1)
+        volume.set_draw_value(True)
+        try:
+            volume.set_value(round(float(get_sbr2_plugin_value(
+                "Audio", "CustomBgmVolume", "0.8")) * 100))
+        except Exception:
+            volume.set_value(80)
+        volume.connect("change-value", self.on_sbr2_volume_change)
+        audio.append(self._row("avatar_yellow.png", "BGM Volume",
+                               "Custom track volume", volume))
+        audio.append(self._separator())
+        self._sbr2_widgets.append(volume)
+
+        self._sbr2_switch_row(audio, "Shuffle BGM",
+                              "Random track when a label has no exact file",
+                              "Audio", "CustomBgmShuffle", True)
+        self._sbr2_switch_row(audio, "Playlist BGM",
+                              "Cycle tracks when a label has no exact file",
+                              "Audio", "CustomBgmPlaylist", False)
+        page.append(audio)
+        page.append(Gtk.Separator())
+
+        page.append(self._section("sbr2_story"))
+        story = self._card()
+        story_keys = [
+            "white", "black", "pink", "blue", "red", "yellow", "green",
+            "aqua", "simon", "pyramid", "richter", "lance", "bill", "mimi",
+            "nyami", "alucard", "vicviper", "nurse", "lobby", "tomato",
+            "nakedSnake", "raiden", "oldsnake", "vicviperzero", "somaCruz",
+            "fujisaki", "genso2p", "goemon", "magnet", "tinyGolem",
+            "phantom", "sexy", "plasma", "fiter", "Massive", "wing", "bean",
+            "lucaBlight",
+        ]
+        self._sbr2_dropdown_row(
+            story, "Story Character",
+            "Story-mode player; Default keeps White", "Story",
+            "StoryCharacter",
+            ["Default (White)"] + [k.capitalize() for k in story_keys],
+            [""] + story_keys)
+        page.append(story)
+        page.append(Gtk.Separator())
+
+        page.append(self._section("sbr2_debug"))
+        debug = self._card()
+        self._sbr2_switch_row(debug, "Self Test",
+                              "Play one custom track at startup and log it",
+                              "Debug", "SelfTest", False)
+        page.append(debug)
+
+        tip = Gtk.Label(
+            label="Press F9 in-game for the Harmony-only settings overlay.")
+        tip.add_css_class("footer")
+        tip.set_wrap(True)
+        tip.set_margin_top(6)
+        page.append(tip)
+
+        self._sbr2_loading = False
+        self._update_sbr2_bgm_label()
+        return page
+
+    def refresh_sbr2(self):
+        if not hasattr(self, "sbr2_status"):
+            return
+        game = find_sbr2_dir()
+        running = sbr2_running()
+        if not game:
+            self.sbr2_status.set_text(
+                "Not found — install SUPER BOMBERMAN R2 from Steam")
+            for w in self._sbr2_widgets:
+                w.set_sensitive(False)
+            return
+        core = (game / "BepInEx/core").is_dir()
+        plugin = (game / SBR2_PLUGIN_REL).exists()
+        interop = (game / "BepInEx/interop/GameAssembly.dll").exists()
+        if not core:
+            state = "BepInEx 6 IL2CPP x64 is not installed"
+        elif not plugin:
+            state = "BepInEx ready · plugin not installed"
+        elif not interop:
+            state = "Plugin installed · run once to generate interop"
+        else:
+            state = "Plugin installed · interop ready"
+        if running:
+            state += " · game running"
+        self.sbr2_status.set_text(f"{game}\n{state}")
+        for w in self._sbr2_widgets:
+            w.set_sensitive(not running)
+
+    def _update_sbr2_bgm_label(self):
+        if not hasattr(self, "sbr2_bgm_btn"):
+            return
+        path = (get_sbr2_plugin_value(
+            "Audio", "CustomBgmFolder", "") or "").strip()
+        self._set_folder_button(
+            self.sbr2_bgm_btn, self.sbr2_bgm_clear, path)
+
+    def on_sbr2_install(self, _btn):
+        try:
+            dest = install_sbr2_plugin()
+            self.toast(f"SBR2 plugin installed in {dest}")
+            self.refresh_sbr2()
+        except Exception as e:
+            self.toast(str(e))
+
+    def on_sbr2_launch(self, _btn):
+        try:
+            subprocess.Popen(["steam", "-applaunch", SBR2_APPID],
+                             start_new_session=True,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            self.toast("Launching SUPER BOMBERMAN R2…")
+        except Exception as e:
+            self.toast(f"Launch failed: {e}")
+
+    def on_sbr2_open_folder(self, _btn):
+        game = find_sbr2_dir()
+        if not game:
+            self.toast("SBR2 folder not found")
+            return
+        try:
+            Gio.AppInfo.launch_default_for_uri(game.as_uri(), None)
+        except Exception as e:
+            self.toast(str(e))
+
+    def on_sbr2_bgm_folder(self, _btn):
+        if sbr2_running():
+            self.toast("Close SBR2 first")
+            return
+        if self._sbr2_converting:
+            self.toast("BGM conversion already running")
+            return
+        current = (get_sbr2_plugin_value(
+            "Audio", "CustomBgmFolder", "") or "").strip()
+        self._sbr2_chooser = self._open_folder_chooser(
+            "SBR2 custom BGM folder", current, self._sbr2_bgm_response)
+
+    def _sbr2_bgm_response(self, chooser, response):
+        self._sbr2_chooser = None
+        if response == Gtk.ResponseType.ACCEPT:
+            f = chooser.get_file()
+            path = f.get_path() if f else None
+            if path:
+                self._sbr2_start_conversion(path)
+        chooser.destroy()
+
+    def _sbr2_start_conversion(self, source):
+        if self._sbr2_converting:
+            return
+        self._sbr2_converting = True
+        self.sbr2_bgm_btn.set_sensitive(False)
+        self.toast("Converting BGM to OGG — this can take a while")
+
+        def report(done, total):
+            GLib.idle_add(self.sbr2_bgm_btn.set_label,
+                          f"Converting… {done}/{total}")
+
+        def work():
+            try:
+                dest, converted, skipped = convert_bgm_folder(source, report)
+                GLib.idle_add(self._sbr2_conversion_done, str(dest),
+                              converted, skipped, None)
+            except Exception as e:
+                GLib.idle_add(self._sbr2_conversion_done, None, 0, 0, str(e))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _sbr2_conversion_done(self, dest, converted, skipped, error):
+        self._sbr2_converting = False
+        self.sbr2_bgm_btn.set_sensitive(True)
+        if error:
+            self.toast("BGM conversion failed: " + error)
+            return False
+        try:
+            set_sbr2_plugin_value("Audio", "CustomBgmFolder", dest)
+            set_sbr2_plugin_value("Audio", "CustomBgmShuffle", "true")
+            self._update_sbr2_bgm_label()
+            message = f"SBR2 BGM ready: {converted} tracks"
+            if skipped:
+                message += f", {skipped} skipped"
+            self.toast(message + " — restart SBR2")
+        except Exception as e:
+            self.toast(str(e))
+        return False
+
+    def on_sbr2_bgm_clear(self, _btn):
+        if sbr2_running():
+            self.toast("Close SBR2 first")
+            return
+        try:
+            set_sbr2_plugin_value("Audio", "CustomBgmFolder", "")
+            self._update_sbr2_bgm_label()
+            self.toast("SBR2 custom BGM disabled")
+        except Exception as e:
+            self.toast(str(e))
 
 
 class BomberApp(Adw.Application):

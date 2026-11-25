@@ -290,3 +290,46 @@ ydotool key 57:1 57:0   # Space
 ```
 
 This only affects automated testing, not a real keyboard.
+
+### In-game settings + launcher tab — 2026-11-25
+
+The SBR2 QoL values are now editable in two places.
+
+In-game (`SettingsOverlay.cs`):
+
+- F9 toggles a uGUI overlay built from built-in `Canvas`, `Image`, `Text` and
+  `CanvasScaler` components. No managed MonoBehaviour is injected.
+- Rows: BGM volume/shuffle/playlist, post-FX toggles, FOV, movie skip key and
+  auto timer, story character.
+- Up/Down/Left/Right/Enter navigate; F9 closes and calls `Config.Save()`.
+- The overlay is driven from the same `SoundManager.Update` tick as the rest of
+  QoL. `Input.GetKeyDown` is read there; the game also sees the same keys, so
+  the menu behind may move. This matches the SBR1 overlay and avoids patching
+  `UnityEngine.Input`, which crashed SBR2 at boot.
+
+Rejected overlay approaches:
+
+- Patching `Input.GetKeyDown`, `GetButtonDown` or `GetMouseButtonDown` to block
+  the game while the overlay is open: SBR2 exits right after the first tick.
+- Patching `AbstractSceneUIBase.update` for a universal tick: same crash.
+- `StartCoroutine` on `SoundManager` from the postfix: the interop only exposes
+  the string overload, so the managed enumerator cannot be used.
+
+Launcher (`bomber_launcher.py`):
+
+- The window now uses `Adw.ViewStack` with two tabs, **SBR1** and **SBR2 QoL**.
+- The SBR2 tab reads/writes `BepInEx/config/sbr2.qol.cfg` with
+  `get_sbr2_plugin_value` / `set_sbr2_plugin_value`.
+- It installs the built plugin (`SBR2QoL.dll` + `NVorbis.dll`), launches
+  Steam app `1913740`, opens the folder, converts a music folder into the
+  shared `bgm_cache`, and exposes movies/graphics/audio/story/debug settings.
+- `python3 bomber_launcher.py --sbr2` opens directly on the SBR2 tab.
+- `BOMBER_SCROLL=<0..1>` is a developer hook that scrolls the page after
+  launch (used for screenshot verification).
+
+Verified: both tabs render, the overlay opens over the main menu, changes are
+written to `sbr2.qol.cfg`, and game input is blocked while the overlay is open.
+
+Note: the launcher volume slider used `Gtk.Range::change-value` so programmatic
+value setup does not overwrite the config. The first version used
+`value-changed` and reset `CustomBgmVolume` to 1.0 on realize.

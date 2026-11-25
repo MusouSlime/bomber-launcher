@@ -13,6 +13,7 @@ namespace SBR2QoL
         private static float _nextPostFx;
         private static float _nextFov;
         private static Camera _camera;
+        private static int _lastFrame = -1;
 
         internal static void Init()
         {
@@ -20,6 +21,9 @@ namespace SBR2QoL
 
         internal static void Tick()
         {
+            if (Time.frameCount == _lastFrame) return;
+            _lastFrame = Time.frameCount;
+            SettingsOverlay.Tick();
             CustomBgmPlayer.Tick();
 
             float now = Time.unscaledTime;

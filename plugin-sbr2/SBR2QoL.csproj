@@ -80,6 +80,15 @@
       <HintPath>$(BepInExDir)/interop/UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(BepInExDir)/interop/UnityEngine.UIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(BepInExDir)/interop/UnityEngine.TextRenderingModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(BepInExDir)/interop/UnityEngine.UI.dll</HintPath>
+    </Reference>
     <Reference Include="Unity.RenderPipelines.HighDefinition.Runtime">
       <HintPath>$(BepInExDir)/interop/Unity.RenderPipelines.HighDefinition.Runtime.dll</HintPath>
     </Reference>

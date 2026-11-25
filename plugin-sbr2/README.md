@@ -40,6 +40,28 @@ WINEDLLOVERRIDES="winhttp=n,b" %command%
 
 The config is written to `BepInEx/config/sbr2.qol.cfg`.
 
+## In-game overlay
+
+Press **F9** in game for a Harmony-only settings overlay. It is drawn with
+built-in uGUI components, so no managed `MonoBehaviour` is injected.
+
+- Up/Down selects a row; Left/Right changes it; Enter also advances.
+- F9 closes and saves to `BepInEx/config/sbr2.qol.cfg`.
+- The game also sees the same keys, so the menu behind can move while the
+  overlay is open. Use it in a menu rather than mid-battle.
+
+It covers BGM volume/shuffle/playlist, the HDRP post-FX toggles, FOV, movie
+skip settings and the story character. The BGM folder is chosen in the
+launcher (the overlay only manages values).
+
+Config:
+
+```
+[Interface]
+OverlayEnabled = true
+OverlayKey = F9
+```
+
 ## Config
 
 ### Movies
