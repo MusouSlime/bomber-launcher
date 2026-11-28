@@ -184,3 +184,126 @@ Hypotheses:
 Bomb sliding + player collision at area seams. It has the clearest code
 surface (`startEarlySlide`, `syncSlide`, `enableWarp`,
 `isSlidingThroughBomb`) and the highest chance of a repeatable pass-through.
+
+## Deep dive: player/bomb pass-through (lead #1)
+
+### What the code exposes
+
+**Timed pass-through states** (`AbstractPlayer`):
+
+```text
+SlidingThroughBombParam:
+  float _timer
+  startSlidingThroughBomb(float time)
+  endSlidingThroughBomb()
+  isSlidingThroughBomb()
+  update(float deltaTime)
+
+BombStunDisabledParam:
+  float _timer
+  startBombStunDisabled(float time)
+  endBombStunDisabled()
+  isBombStunDisabled()
+  update(float deltaTime)
+
+InvincibleParam:
+  bool isNeedEffect, isNeedEndEffect
+  float _timer
+  bool _isValidPermanently
+  startInvincible(float time, ...)
+  startStunInvincible(float time)
+  setPostFallInvincible() / resetPostFallInvincible()
+```
+
+These are time-window permissions, not permanent flags. A speedrun-relevant
+bug is likely a way to **refresh, stack, pause, or re-enter** one of these
+windows so the player can cross bombs/fire without the intended timing.
+
+**Collision shape** (`CollisionUtils.FanShape`):
+
+```text
+Vector3 p          // origin
+float radius
+Vector2 normalizedDir
+float halfAngle
+float halfHeight
+bool isHitPoint(Vector3 point)
+AABB getAABB()
+```
+
+`PlayerMaster.checkHit(FanShape)` is a point-in-fan style test. It is not a
+swept capsule. Fast movement between frames can put the player on the other
+side of a bomb/fire/wall corner without a sample inside the shape.
+
+**Movement** (`CharacterMove` / player move states):
+
+```text
+_speed, _dashDirection, _dashStartPosition, _dashEndPosition
+_dashDistance, _dashTimer, dashTimer, speed
+moveDiff(ref Vector3 diff, out bool moveDone, Vector3Int direction)
+```
+
+Dashes are timed with start/end points, which makes them the best candidate
+for tunneling: the dash can cover more distance per collision sample than the
+fan shape.
+
+### Candidate glitches
+
+A. **Dash tunneling through a bomb/fire**
+   - Dash through a bomb or flame at the last moment.
+   - The player's sampled position can be outside the fan on both sides.
+   - Test all dash characters and speed levels.
+
+B. **Sliding-through-bomb window refresh**
+   - Find the skill/effect/item that calls `startSlidingThroughBomb`.
+   - Re-trigger or extend it before it expires.
+   - Pausing may freeze the timer while the effect remains active.
+   - Test each character's special and rule effects.
+
+C. **Bomb-stun immunity refresh**
+   - `startBombStunDisabled` blocks bomb stun for a window.
+   - If a skill can refresh it, walk through explosions.
+   - Test with characters whose skill grants bomb immunity.
+
+D. **Post-fall invincibility**
+   - `setPostFallInvincible` / `resetPostFallInvincible` grant a window after
+     falling into a pit.
+   - Test: fall, respawn, immediately cross fire or take a hit.
+   - May allow a damage boost or a safe path through a hazard.
+
+E. **Collision cooldown / state gate**
+   - Collision is handled in `entryCollision`/`execCollision` states.
+   - Some states have `_collisionTime` timers (`CastleArcState`).
+   - Test whether entering/leaving a state during a hit skips the hit.
+
+F. **Fan-shape corner clip**
+   - Move diagonally past a corner at the fan's edge (`halfAngle`/
+     `halfHeight`).
+   - Test all four corners at normal speed and dash speed.
+
+### Test matrix
+
+| Test | Setup | Measure |
+|---|---|---|
+| Dash vs bomb | Bomb at a known tile, dash across at 1/2/3 tiles | damage, position |
+| Dash vs fire | Flame at max firepower, dash through | damage, position |
+| Slide window | Character skill that grants slide | timer, damage |
+| Stun immunity | Bomb-stun-disabled skill/effect | timer, damage |
+| Post-fall | Fall into a pit near fire | invincible timer, damage |
+| FPS | 30 / 60 / 144 / uncapped | same inputs, position/damage |
+| Pause | Pause during slide/stun/invincible | timer remaining |
+
+### Instrumentation
+
+Log every frame while testing:
+
+```text
+time, frameCount, Time.deltaTime, Time.timeScale
+player position, map index, speed level, dash state/timer
+isSlidingThroughBomb, isBombStunDisabled, isInvincible,
+  isPostFallInvincible
+nearby bomb positions, fuse timers, fire tiles
+```
+
+Do not modify values in the audit build; only read them. The audit plugin
+should run offline/private.
